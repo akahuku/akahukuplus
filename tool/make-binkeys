@@ -1,0 +1,75 @@
+#!/usr/bin/php
+<?php
+require_once "Crypt/Blowfish.php";
+
+$keyfile = "";
+$srcfile = "";
+$dstfile = "";
+$verbose = false;
+
+foreach ($argv as $arg) {
+	if (preg_match('/^--key=(.+)$/', $arg, $re)) {
+		$keyfile = $re[1];
+	}
+	elseif (preg_match('/^--src=(.+)$/', $arg, $re)) {
+		$srcfile = $re[1];
+	}
+	elseif (preg_match('/^--dst=(.+)$/', $arg, $re)) {
+		$dstfile = $re[1];
+	}
+	elseif (preg_match('/^--verbose$/', $arg)) {
+		$verbose = true;
+	}
+}
+
+if ($keyfile == "") {
+	echo "missing key file.";
+	exit(1);
+}
+if ($verbose) {
+	echo "key file: ", $keyfile, "\n";
+}
+
+if ($srcfile == "") {
+	echo "missing source file.";
+	exit(1);
+}
+if ($verbose) {
+	echo "source file: ", $srcfile, "\n";
+}
+
+if ($verbose) {
+	echo "destination file: ", $dstfile, "\n";
+}
+
+$key = @file_get_contents($keyfile);
+if ($key === false) {
+	echo "cannot read the key file: " . $keyfile;
+	exit(1);
+}
+$key = sha1($key);
+if ($verbose) {
+	echo "  sha1 of key: ", $key, "\n";
+}
+
+$content = @file_get_contents($srcfile);
+if ($content === false) {
+	echo "cannot read the source file: ", $srcfile;
+	exit(1);
+}
+if ($verbose) {
+	echo "  content: ", strlen($content), " bytes\n";
+}
+
+$bf = Crypt_Blowfish::factory("ecb");
+$bf->setKey($key);
+$content = $bf->encrypt($content);
+$content = base64_encode($content);
+
+if ($dstfile != "") {
+	file_put_contents($dstfile, $content);
+}
+else {
+	echo $content;
+}
+

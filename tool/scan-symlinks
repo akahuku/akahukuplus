@@ -1,0 +1,176 @@
+#!/usr/bin/php
+<?php
+$result = 0;
+$baseDirLength = 0;
+
+function loadDirFromArg ()
+{
+	global $argv;
+
+	$dir = "";
+	$args = $argv;
+	array_shift($args);
+
+	foreach ($args as $arg) {
+		if (preg_match('/^--.+/', $arg)) {
+			continue;
+		}
+		$dir = $arg;
+		break;
+	}
+
+	if (!$dir) {
+		$dir = ".";
+	}
+
+	return $dir;
+}
+
+function makeBat ($dir, $indent = '')
+{
+	global $result;
+	global $baseDirLength;
+
+	$handle = opendir($dir);
+	if ($handle) {
+		$pushd = "";
+		$popd = "";
+
+		$cdDir = system("cygpath -alw " . realpath($dir));
+		if ($indent != "") {
+			$cdDir = substr($cdDir, $baseDirLength);
+		}
+		if ($cdDir != "") {
+			$indent2 = preg_replace('/\t$/', '', $indent);
+			$result[] = $indent2 . "cd " . $cdDir;
+			$popd = $indent2 . "cd ..";
+		}
+
+		while (($file = readdir($handle)) !== false) {
+			if ($file == "." || $file == "..") continue;
+
+			$file = $dir . DIRECTORY_SEPARATOR . $file;
+			if (is_link($file)) {
+				$target = readlink($file);
+				$switch = "";
+
+				if (is_dir($file)) {
+					$switch = " /d";
+				}
+
+				$result[] = $indent
+					. "mklink"
+					. " " . $switch
+					. " " . basename($file)
+					. " " . str_replace("/", "\\", $target);
+			}
+
+			if (!is_link($file) && is_dir($file)) {
+				$result[] = "mkdir " . basename($file);
+				makeBat($file, $indent . "\t");
+			}
+		}
+
+		if ($popd != "") {
+			$result[] = $popd;
+		}
+
+		closedir($handle);
+	}
+}
+
+function makeShellScript ($dir, $indent = '')
+{
+	global $result;
+	global $baseDirLength;
+
+	$handle = opendir($dir);
+	if ($handle) {
+		$pushd = "";
+		$popd = "";
+
+		$cdDir = realpath($dir);
+		if ($indent != "") {
+			$cdDir = substr($cdDir, $baseDirLength);
+			if ($cdDir != "") {
+				$indent2 = preg_replace('/\t$/', '', $indent);
+				$result[] = $indent2 . "cd " . $cdDir;
+				$popd = $indent2 . "cd ..";
+			}
+		}
+
+		while (($file = readdir($handle)) !== false) {
+			if ($file == "." || $file == "..") continue;
+
+			$file = $dir . "/" . $file;
+			if (is_link($file)) {
+				$target = readlink($file);
+
+				$result[] = $indent
+					. "ln -s"
+					. " " . $target
+					. " " . basename($file);
+			}
+
+			if (!is_link($file) && is_dir($file)) {
+				$result[] = "mkdir " . basename($file);
+				makeShellScript($file, $indent . "\t");
+			}
+		}
+
+		if ($popd != "") {
+			$result[] = $popd;
+		}
+
+		closedir($handle);
+	}
+}
+
+function main ()
+{
+	global $result;
+	global $baseDirLength;
+	global $argv;
+
+	$type = "sh";
+
+	foreach ($argv as $arg) {
+		if (preg_match('/^--type=(.+)$/', $arg, $re)) {
+			$type = $re[1];
+		}
+		if (preg_match('/^--(?:h(?:elp)?|\?)$/', $arg, $re)) {
+			$type = "help";
+		}
+	}
+
+	switch ($type) {
+	case "bat":
+		$dir = loadDirFromArg();
+		$result = array("@echo off");
+		$baseDirLength = strlen(system("cygpath -alw " . $dir)) + 1;
+		makeBat($dir);
+		echo implode("\n", $result);
+		break;
+
+	case "sh":
+		$dir = loadDirFromArg();
+		$result = array("#!/bin/sh");
+		$baseDirLength = strlen(realpath($dir)) + 1;
+		makeShellScript($dir);
+		echo implode("\n", $result);
+		break;
+
+	case "help":
+		echo basename($argv[0]), " [option] [directory]\n";
+		echo "option:\n";
+		echo "  --type=bat  generate bat file for windows command propmpt\n";
+		echo "  --type=sh   generate shell script file for sh\n";
+		break;
+
+	default:
+		echo basename($argv[0]), ": invalid argument.\n";
+		break;
+	}
+}
+
+main();
