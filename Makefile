@@ -119,7 +119,7 @@ $(OPERA_TARGET_PATH): $(OPERA_MTIME_PATH) $(BINKEYS_PATH)
 
 #	create update description file
 	sed -e 's/@appid@/$(OPERA_EXT_ID)/g' \
-		-e 's!@location@!$(OPERA_UPDATE_LOCATION)!g' \
+		-e 's!@location@!$(OPERA_EXT_LOCATION)!g' \
 		-e 's/@version@/$(VERSION)/g' \
 		$(SRC_DIR)/opera.xml > $(DIST_DIR)/$(notdir $(OPERA_UPDATE_LOCATION))
 

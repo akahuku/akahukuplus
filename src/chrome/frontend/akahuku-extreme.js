@@ -1168,24 +1168,20 @@ function createXMLGenerator () {
 		// configurations
 		(function () {
 			var configNode = element(metaNode, 'configurations');
+			var cs = getCatalogSettings();
 			var paramNode;
 
-			var catalog = getCookie('cxyl');
-			if (catalog != undefined) {
-				catalog = catalog.split('x').map(function (a) {return a-0});
+			paramNode = configNode.appendChild(element(configNode, 'param'));
+			paramNode.setAttribute('name', 'catalog.x');
+			paramNode.setAttribute('value', cs[0]);
 
-				paramNode = configNode.appendChild(element(configNode, 'param'));
-				paramNode.setAttribute('name', 'catalog.x');
-				paramNode.setAttribute('value', catalog[0]);
+			paramNode = configNode.appendChild(element(configNode, 'param'));
+			paramNode.setAttribute('name', 'catalog.y');
+			paramNode.setAttribute('value', cs[1]);
 
-				paramNode = configNode.appendChild(element(configNode, 'param'));
-				paramNode.setAttribute('name', 'catalog.y');
-				paramNode.setAttribute('value', catalog[1]);
-
-				paramNode = configNode.appendChild(element(configNode, 'param'));
-				paramNode.setAttribute('name', 'catalog.text');
-				paramNode.setAttribute('value', catalog[2] != 0 ? '1' : '0');
-			}
+			paramNode = configNode.appendChild(element(configNode, 'param'));
+			paramNode.setAttribute('name', 'catalog.text');
+			paramNode.setAttribute('value', cs[2] != 0 ? '1' : '0');
 
 			paramNode = configNode.appendChild(element(configNode, 'param'));
 			paramNode.setAttribute('name', 'storage')
@@ -5032,6 +5028,17 @@ function setBoardCookie (key, value, lifeDays) {
 	setCookie(key, value, lifeDays, re[1]);
 }
 
+function getCatalogSettings () {
+	var data = getCookie('cxyl');
+	if (data == undefined) {
+		data = [15, 5, 0];
+	}
+	else {
+		data = data.split('x').map(function (a) {return a - 0});
+	}
+	return data;
+}
+
 function setBottomStatus (s, persistent) {
 	document.dispatchEvent(new window.CustomEvent('Akahukuplus.bottomStatus', {detail:{
 		message: s,
@@ -6509,13 +6516,10 @@ var commands = {
 		(function () {
 			var textLength = 0;
 			var withText = $('catalog-with-text');
+			var cs = getCatalogSettings();
 
-			var cookieData = getCookie('cxyl');
-			if (cookieData) {
-				cookieData = cookieData.split('x');
-				if (/^[1-9][0-9]*$/.test(cookieData[2])) {
-					textLength = cookieData[2] - 0;
-				}
+			if (/^[1-9][0-9]*$/.test(cs[2])) {
+				textLength = cs[2];
 			}
 
 			if (textLength == 0 && withText.checked) {
@@ -6543,12 +6547,17 @@ var commands = {
 				var newIndicator = wrap.childNodes.length ? 'new' : '';
 				var newClass = wrap.childNodes.length ? 'new' : '';
 				var latestNumber = 0;
-
 				var horzActual = doc.querySelectorAll('table[align="center"] tr:first-child td').length;
 				var vertActual = doc.querySelectorAll('table[align="center"] tr').length;
+				var currentCs = getCatalogSettings();
 
-				$('catalog-horz-number').value = horzActual;
-				$('catalog-vert-number').value = vertActual;
+				if ($('catalog-horz-number').value == '') {
+					$('catalog-horz-number').value = currentCs[0];
+				}
+				if ($('catalog-vert-number').value == '') {
+					$('catalog-vert-number').value = currentCs[1];
+				}
+
 				wrap.style.maxWidth = (CATALOG_ANCHOR_WIDTH * horzActual) + 'px';
 
 				Array.prototype.forEach.call(
@@ -7175,32 +7184,26 @@ var commands = {
 		}
 	},
 	updateCatalogSettings: function (settings) {
-		var storage = getCookie('cxyl');
-		if (storage == undefined) {
-			storage = [15, 5, 0];
-		}
-		else {
-			storage = storage.split('x');
-		}
+		var cs = getCatalogSettings();
 		if ('x' in settings) {
 			var tmp = parseInt(settings.x);
 			if (!isNaN(tmp) && tmp >= 1 && tmp <= 20) {
-				storage[0] = tmp;
+				cs[0] = tmp;
 			}
 		}
 		if ('y' in settings) {
 			var tmp = parseInt(settings.y);
 			if (!isNaN(tmp) && tmp >= 1 && tmp <= 100) {
-				storage[1] = tmp;
+				cs[1] = tmp;
 			}
 		}
 		if ('text' in settings) {
 			var tmp = parseInt(settings.text);
 			if (!isNaN(tmp) && tmp >= 0 && tmp <= 1000) {
-				storage[2] = tmp;
+				cs[2] = tmp;
 			}
 		}
-		setBoardCookie('cxyl', storage.join('x'), CATALOG_COOKIE_LIFE_DAYS);
+		setBoardCookie('cxyl', cs.join('x'), CATALOG_COOKIE_LIFE_DAYS);
 	},
 
 	/*
