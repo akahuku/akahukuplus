@@ -1482,11 +1482,11 @@ div.catalog-popup span {
 		</div>
 		<footer id="footer">
 			<div class="amazon" data-binding="template:amazon"></div>
-			<div class="credit">-
+			<div class="credit">—
 			<a href="http://php.s3.to" target="_top">GazouBBS</a>
 			+ <a href="http://www.2chan.net/" target="_top">futaba</a>
 			/ This page is under control of <a href="http://akahuku.github.io/akahukuplus/" target="_blank">akahukuplus/<xsl:value-of select="meta/version"/></a>
-			-</div>
+			—</div>
 		</footer>
 		<div class="wheel-status hide" id="wheel-status"><span>wow</span><img/></div>
 		<div id="ad-aside-wrap">

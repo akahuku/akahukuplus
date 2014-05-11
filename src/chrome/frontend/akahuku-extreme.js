@@ -6294,17 +6294,19 @@ var commands = {
 		if (isRapidAccess()) return;
 
 		//timingLogger.locked = false;
-		switch (pageModes[0]) {
-		case 'summary':
-			commands.reloadSummary();
-			break;
-		case 'reply':
-			commands.reloadReplies();
-			break;
-		case 'catalog':
-			commands.reloadCatalog();
-			break;
-		}
+		setTimeout(function () {
+			switch (pageModes[0]) {
+			case 'summary':
+				commands.reloadSummary();
+				break;
+			case 'reply':
+				commands.reloadReplies();
+				break;
+			case 'catalog':
+				commands.reloadCatalog();
+				break;
+			}
+		}, 1);
 	},
 	reloadSummary: function () {
 		var content = $('content');
