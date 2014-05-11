@@ -46,7 +46,6 @@ const CATALOG_POPUP_THUMBNAIL_ZOOM_FACTOR = 4;
 
 const DEBUG_ALWAYS_LOAD_XSL = true;			// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
-const DEBUG_HIDE_BANNERS = true;			// default: false
 const DEBUG_IGNORE_LAST_MODIFIED = false;	// default: false
 
 /*
@@ -77,6 +76,7 @@ var transportType;
 var transportLastUsedTime = 0;
 
 // others
+var version = '0.1.0';
 var pageModes = [];
 var appStates = ['command'];
 var viewportRect;
@@ -985,6 +985,8 @@ function createXMLGenerator () {
 			.appendChild(text(isReplyMode ? 'reply' : 'summary'));
 		element(metaNode, 'url')
 			.appendChild(text(url));
+		element(metaNode, 'version')
+			.appendChild(text(version));
 
 		// strip control characters, include LF and CR
 		content = content.replace(/[\u0000-\u001f]/g, ' ');
@@ -1527,6 +1529,11 @@ function createConfigurator () {
 				'$SERVER (サーバ名)、$BOARD (板名)、$THREAD (スレッド番号)、' +
 				'$YEAR (画像の投稿年)、$MONTH (画像の投稿月)、$DAY (画像の投稿日)、' +
 				'$SERIAL (画像番号)、$DIST (画像の分散キー)、$EXT (拡張子)'
+		},
+		hide_banners: {
+			type:'bool',
+			value:false,
+			name:'バナーを隠す'
 		}
 	};
 
@@ -3962,6 +3969,19 @@ function install (mode) {
 	$t('pwd', getCookie('pwdc'));
 
 	/*
+	 * init some hidden parameters
+	 */
+
+	$t(document.getElementsByName('js')[0],
+		'on');
+	$t(document.getElementsByName('scsz')[0],
+		[
+			window.screen.width,
+			window.screen.height,
+			window.screen.colorDepth
+		].join('x'));
+
+	/*
 	 * post form submit listener
 	 */
 
@@ -4048,7 +4068,7 @@ function install (mode) {
 	 */
 
 	setupParallax('#ad-aside-wrap');
-	!DEBUG_HIDE_BANNERS && (function () {
+	!config.data.hide_banners.value && (function () {
 		var iframe = document.querySelector('iframe[data-src]');
 		if (!iframe) return;
 		iframe.src = iframe.getAttribute('data-src');

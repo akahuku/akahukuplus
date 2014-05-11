@@ -1424,7 +1424,7 @@ div.catalog-popup span {
 	<body>
 		<header id="header">
 			<div>
-				<h1><a href="http://dat.2chan.net/b/futaba.htm" data-binding="xpath:/futaba/meta/title"></a></h1>
+				<h1><a href="{meta/board_top}" data-binding="xpath:/futaba/meta/title"></a></h1>
 			</div>
 			<div>
 				現在<span id="viewers" data-binding="xpath:/futaba/meta/viewers"></span>人くらいが見てます.
@@ -1485,7 +1485,7 @@ div.catalog-popup span {
 			<div class="credit">-
 			<a href="http://php.s3.to" target="_top">GazouBBS</a>
 			+ <a href="http://www.2chan.net/" target="_top">futaba</a>
-			/ This page is under control of <a href="http://appsweets.net/akahukuplus/">akahukuplus</a>.
+			/ This page is under control of <a href="http://akahuku.github.io/akahukuplus/" target="_blank">akahukuplus/<xsl:value-of select="meta/version"/></a>
 			-</div>
 		</footer>
 		<div class="wheel-status hide" id="wheel-status"><span>wow</span><img/></div>

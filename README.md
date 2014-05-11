@@ -10,9 +10,7 @@
 * Opera 12 の場合
 
   1. エクステンションファイルを
-
   https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.oex
-
   からダウンロードします。
 
   2. Opera 上のエクステンション管理ページを開きます。

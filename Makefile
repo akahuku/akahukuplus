@@ -106,10 +106,11 @@ $(OPERA_TARGET_PATH): $(OPERA_MTIME_PATH) $(BINKEYS_PATH)
 		> $(OPERA_EMBRYO_SRC_PATH)/config.xml
 
 #	update akahukuplus.js
-	sed -e 's/\(const\s+DEBUG_ALWAYS_LOAD_XSL\s*=\s*\)true/\1false/' \
-		-e 's/\(const\s+DEBUG_DUMP_INTERNAL_XML\s*=\s*\)true/\1false/' \
-		-e 's/\(const\s+DEBUG_HIDE_BANNERS\s*=\s*\)true/\1false/' \
-		-e 's/\(const\s+DEBUG_IGNORE_LAST_MODIFIED\s*=\s*\)true/\1false/' \
+	sed -e 's/\(const\s\+DEBUG_ALWAYS_LOAD_XSL\s*=\s*\)true/\1false/' \
+		-e 's/\(const\s\+DEBUG_DUMP_INTERNAL_XML\s*=\s*\)true/\1false/' \
+		-e 's/\(const\s\+DEBUG_HIDE_BANNERS\s*=\s*\)true/\1false/' \
+		-e 's/\(const\s\+DEBUG_IGNORE_LAST_MODIFIED\s*=\s*\)true/\1false/' \
+		-e "s/\(var\s\+version\s*=\s*\)'[^']\+'/\1'$(VERSION)'/" \
 		$(OPERA_SRC_PATH)/includes/akahuku-extreme.js \
 		> $(OPERA_EMBRYO_SRC_PATH)/includes/akahuku-extreme.js
 
