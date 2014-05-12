@@ -81,6 +81,8 @@ var pageModes = [];
 var appStates = ['command'];
 var viewportRect;
 var cursorPos = {x:0, y:0, pagex:0, pagey:0};
+var subHash = {};
+var nameHash = {};
 var lastModified;
 var logSize = 10000;
 
@@ -556,7 +558,18 @@ function createXMLGenerator () {
 		return node.appendChild(node.ownerDocument.createElement(s));
 	}
 
-	function fetchReplies (s, regex, count, maxReplies, lowBoundNumber, threadNode, subHash, nameHash) {
+	function setDefaultSubjectAndName (xml, metaNode, subHash, nameHash) {
+		element(metaNode, 'sub_default')
+			.appendChild(text(xml, (Object.keys(subHash).sort(function (a, b) {
+				return subHash[b] - subHash[a];
+			})[0] || '').replace(/^\s+|\s+$/g, '')));
+		element(metaNode, 'name_default')
+			.appendChild(text(xml, (Object.keys(nameHash).sort(function (a, b) {
+				return nameHash[b] - nameHash[a];
+		})[0] || '').replace(/^\s+|\s+$/g, '')));
+	}
+
+	function fetchReplies (s, regex, count, maxReplies, lowBoundNumber, threadNode, subHash, nameHash, baseUrl) {
 		var text = textFactory(threadNode.ownerDocument);
 		var repliesNode = element(threadNode, 'replies');
 		var goal = count + maxReplies;
@@ -650,9 +663,11 @@ function createXMLGenerator () {
 			}
 
 			// name
-			re = /name\s*(?:<[^a][^>]*>)+([^<]+)/i.exec(info);
+			re = /Name\s*<font[^>]*>(.+?)<\/font>/i.exec(info);
 			if (re) {
-				re[1] = re[1].replace(/^\s+|\s+$/g, '');
+				re[1] = re[1]
+					.replace(/<[^>]*>/g, '')
+					.replace(/^\s+|\s+$/g, '');
 				element(replyNode, 'name').appendChild(text(re[1]));
 				nameHash[re[1]] = (nameHash[re[1]] || 0) + 1;
 			}
@@ -665,9 +680,48 @@ function createXMLGenerator () {
 				linkify(emailNode);
 			}
 
-			/*
-			 * TODO: src & thumbnail url
-			 */
+			// src & thumbnail url
+			var imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
+			if (imagehref) {
+				var imageNode = element(replyNode, 'image');
+				imageNode.appendChild(text(resolveRelativePath(imagehref[1], baseUrl)));
+				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
+
+				// animated
+				re = /<!--AnimationGIF-->/i.exec(info);
+				if (re) {
+					imageNode.setAttribute('animated', 'true');
+				}
+
+				// bytes
+				re = /\balt="?(\d+)\s*B/i.exec(imagehref[2]);
+				if (re) {
+					imageNode.setAttribute('bytes', re[1]);
+					imageNode.setAttribute('size', getReadableSize(re[1]));
+				}
+
+				// thumbnail
+				var thumbUrl = '', thumbWidth = false, thumbHeight = false;
+				re = /\b(?:data-)?src=([^\s>]+)/i.exec(imagehref[2]);
+				if (re) {
+					thumbUrl = re[1].replace(/^["']|["']$/g, '');
+					thumbUrl = resolveRelativePath(thumbUrl, baseUrl);
+				}
+				re = /\bwidth="?(\d+)"?/i.exec(imagehref[2]);
+				if (re) {
+					thumbWidth = re[1];
+				}
+				re = /\bheight="?(\d+)"?/i.exec(imagehref[2]);
+				if (re) {
+					thumbHeight = re[1];
+				}
+				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
+					var thumbNode = element(replyNode, 'thumb');
+					thumbNode.appendChild(text(thumbUrl));
+					thumbNode.setAttribute('width', thumbWidth);
+					thumbNode.setAttribute('height', thumbHeight);
+				}
+			}
 
 			// comment
 			pushComment(element(replyNode, 'comment'), comment);
@@ -1194,8 +1248,6 @@ function createXMLGenerator () {
 		 * split content into threads
 		 */
 
-		var nameHash = {};
-		var subHash = {};
 		var threadIndex = 0;
 		var threadRegex = /(<br>|<\/div>)(<a[^>]+><img[^>]+><\/a>)?<input type="?checkbox"? name="?\d+"? value="?delete"?[^>]*>.*?<hr>/g;
 		var matches;
@@ -1300,9 +1352,11 @@ function createXMLGenerator () {
 			}
 
 			// name
-			re = /name\s*(?:<[^a][^>]*>)+([^<]+)/i.exec(topicInfo);
+			re = /Name\s*<font[^>]*>(.+?)<\/font>/i.exec(topicInfo);
 			if (re) {
-				re[1] = re[1].replace(/^\s+|\s+$/g, '');
+				re[1] = re[1]
+					.replace(/<[^>]*>/g, '')
+					.replace(/^\s+|\s+$/g, '');
 				element(topicNode, 'name').appendChild(text(re[1]));
 				nameHash[re[1]] = (nameHash[re[1]] || 0) + 1;
 			}
@@ -1392,7 +1446,8 @@ function createXMLGenerator () {
 			var result = fetchReplies(
 				threadRest,
 				/<table[^>]*>.*?<input[^>]*>.*?<\/td>/g,
-				hiddenRepliesCount, maxReplies, -1, threadNode, subHash, nameHash);
+				hiddenRepliesCount, maxReplies, -1, threadNode,
+				subHash, nameHash, baseUrl);
 
 			var lastIndex = result.regex.lastIndex;
 			if (!result.lastReached && result.regex.exec(threadRest)) {
@@ -1411,14 +1466,7 @@ function createXMLGenerator () {
 			threadIndex++;
 		}
 
-		element(metaNode, 'sub_default')
-			.appendChild(text((Object.keys(subHash).sort(function (a, b) {
-				return subHash[b] - subHash[a];
-			})[0] || '').replace(/^\s+|\s+$/g, '')));
-		element(metaNode, 'name_default')
-			.appendChild(text((Object.keys(nameHash).sort(function (a, b) {
-				return nameHash[b] - nameHash[a];
-		})[0] || '').replace(/^\s+|\s+$/g, '')));
+		setDefaultSubjectAndName(xml, metaNode, subHash, nameHash);
 
 		timingLogger.endTag();
 		return {
@@ -1432,8 +1480,10 @@ function createXMLGenerator () {
 		url || (url = window.location.href);
 		typeof maxReplies == 'number' || (maxReplies = REST_REPLIES_PROCESS_COUNT);
 
-		var subHash = {};
-		var nameHash = {};
+		var base = document.getElementsByTagName('base')[0];
+		if (base) {
+			url = base.getAttribute('href');
+		}
 
 		function main () {
 			do {
@@ -1450,10 +1500,12 @@ function createXMLGenerator () {
 					maxReplies,
 					lowBoundNumber,
 					element(xml.documentElement, 'thread'),
-					subHash, nameHash);
+					subHash, nameHash, url);
 
 				result.repliesNode.setAttribute("total", result.repliesCount);
 				result.repliesNode.setAttribute("hidden", context[0].repliesCount);
+				setDefaultSubjectAndName(xml, element(xml.documentElement, 'meta'), subHash, nameHash);
+
 				var worked = callback(xml, context[0].index, result.repliesCount, context[0].repliesCount);
 
 				var lastIndex = context[0].regex.lastIndex;
@@ -3992,6 +4044,32 @@ function install (mode) {
 			commands.post();
 		}, false);
 	})($('postform'));
+
+	/*
+	 * post switcher
+	 */
+
+	(function (elms, handler) {
+		for (var i = 0; i < elms.length; i++) {
+			elms[i].addEventListener('click', handler, false);
+		}
+	})(document.getElementsByName('post-switch'), function (e) {
+		var upfile = $('upfile');
+		var textonly = $('textonly');
+		var resto = document.getElementsByName('resto')[0];
+
+		switch (e.target.value) {
+		case 'reply':
+			upfile.disabled = textonly.disabled = upfile.getAttribute('data-origin') == 'js';
+			resto.disabled = false;
+			break;
+
+		case 'thread':
+			upfile.disabled = textonly.disabled = false;
+			resto.disabled = true;
+			break;
+		}
+	});
 
 	/*
 	 * file element change listener
@@ -6767,13 +6845,21 @@ var commands = {
 						resetForm('com', 'upfile', 'textonly');
 						setBottomStatus('投稿完了');
 
-						switch (pageModes[0]) {
+						var pageMode = pageModes[0];
+						if (pageMode == 'reply' && $('post-switch-thread').checked) {
+							pageMode = 'summary';
+						}
+
+						switch (pageMode) {
 						case 'summary':
 						case 'catalog':
 							if (result.redirect != '') {
 								backend.send(
 									'open',
 									{url:result.redirect, selfUrl:window.location.href});
+							}
+							if ($('post-switch-reply')) {
+								$('post-switch-reply').click();
 							}
 							break;
 						case 'reply':

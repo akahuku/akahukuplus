@@ -279,6 +279,7 @@ hr {
 
 .topic-wrap div.user-id,
 .reply-wrap div.user-id {
+	clear:left;
 	margin:-1em 0 0 0;
 	text-align:right;
 }
@@ -513,6 +514,32 @@ hr {
 
 .topic-wrap.hilight, .reply-wrap > .hilight {
 	background-color:#ea8 !important;
+}
+
+/*
+ * reply image
+ */
+
+.reply-image {
+	float:left;
+	margin:0 8px 8px 0;
+	font-size:small;
+	text-align:center;
+	line-height:1.25;
+	white-space:nowrap;
+}
+
+.reply-image img {
+	margin:0 0 .5em 0;
+	border:none;
+	transition:box-shadow 0.4s ease 0;
+}
+
+.reply-image img:hover {
+	box-shadow:0 1px 4px 2px rgba(0,0,0,0.3);
+}
+
+.reply-image > div {
 }
 
 /*
@@ -1530,7 +1557,10 @@ div.catalog-popup span {
 			<div class="postform">
 				<div class="status">
 				<xsl:choose>
-					<xsl:when test="$page_mode='reply'">レス送信モード</xsl:when>
+					<xsl:when test="$page_mode='reply'">
+						<label><input type="radio" id="post-switch-reply" name="post-switch" value="reply" checked="checked"/>レス送信モード</label>
+						<label><input type="radio" id="post-switch-thread" name="post-switch" value="thread"/>スレッドを立てる</label>
+					</xsl:when>
 					<xsl:otherwise>スレッドを立てる</xsl:otherwise>
 				</xsl:choose>
 				</div>
@@ -1549,7 +1579,22 @@ div.catalog-popup span {
 						</xsl:if>
 						<xsl:apply-templates select="meta/postform/input[@name='sub']"/>
 						<tr><th>コメント</th><td colspan="2"><div class="comment-wrap"><textarea name="com" id="com" resize="false" rows="4"/></div><div id="comment-info" class="comment-info">#</div></td></tr>
-						<xsl:apply-templates select="meta/postform/input[@name='upfile']"/>
+						<xsl:choose>
+							<xsl:when test="meta/postform/input[@name='upfile']">
+								<tr>
+									<th>添付File</th>
+									<td><input type="file" id="upfile" name="upfile"/></td>
+									<td class="thin"><label>[<input type="checkbox" id="textonly" name="textonly" value="on" data-href="#clear-upfile"/>画像なし]</label></td>
+								</tr>
+							</xsl:when>
+							<xsl:otherwise>
+								<tr>
+									<th>添付File</th>
+									<td><input type="file" id="upfile" name="upfile" disabled="disabled" data-origin="js"/></td>
+									<td class="thin"><label>[<input type="checkbox" id="textonly" name="textonly" value="on" disabled="disabled" data-href="#clear-upfile"/>画像なし]</label></td>
+								</tr>
+							</xsl:otherwise>
+						</xsl:choose>
 						<xsl:apply-templates select="meta/postform/input[@name='pwd']"/>
 						</table>
 					</fieldset>
@@ -1713,10 +1758,10 @@ div.catalog-popup span {
 		<div class="topic-wrap" data-number="{topic/number}">
 			<div>
 				<input type="checkbox"/>
-				<xsl:if test="topic/sub"><span class="sub def_{topic/sub=$sub_default}"><xsl:value-of select="topic/sub"/></span> |</xsl:if>
-				<xsl:if test="topic/name"><span class="name def_{topic/name=$name_default}"><xsl:value-of select="topic/name"/></span> |</xsl:if>
+				<xsl:if test="topic/sub"><span class="sub def_{topic/sub=$sub_default}"><xsl:value-of select="topic/sub"/></span> | </xsl:if>
+				<xsl:if test="topic/name"><span class="name def_{topic/name=$name_default}"><xsl:value-of select="topic/name"/></span> | </xsl:if>
 				<span class="postdate"><xsl:value-of select="topic/post_date"/></span> |
-				<xsl:if test="topic/user_id"><span class="user-id">ID:<xsl:value-of select="topic/user_id"/></span><span></span> |</xsl:if>
+				<xsl:if test="topic/user_id"><span class="user-id">ID:<xsl:value-of select="topic/user_id"/></span><span></span> | </xsl:if>
 				<a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>
 				<a class="del js" href="#del">del</a>
 				<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
@@ -1768,12 +1813,26 @@ div.catalog-popup span {
 		<div>
 			<span class="no"><xsl:value-of select="offset"/></span>
 			<input type="checkbox"/>
-			<xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span> |</xsl:if>
-			<xsl:if test="name"><span class="name def_{name=$name_default}"><xsl:value-of select="name"/></span> |</xsl:if>
+			<xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span> | </xsl:if>
+			<xsl:if test="name"><span class="name def_{name=$name_default}"><xsl:value-of select="name"/></span> | </xsl:if>
 			<span class="postdate"><xsl:value-of select="post_date"/></span> |
 			<a class="postno" href="#quote">No.<xsl:apply-templates select="number"/></a>
 			<a class="del js" href="#del">del</a>
 		</div>
+		<xsl:if test="image">
+			<div class="reply-image">
+				<a class="js lightbox" href="{image}" target="_blank">
+					<img src="{thumb}" width="{thumb/@width}" height="{thumb/@height}"/>
+					<br/>
+					<xsl:value-of select="image/@base_name"/>
+				</a>
+				<div>
+					<xsl:value-of select="image/@size"/>
+					<xsl:if test="image/@animated"> - アニメGIF</xsl:if>
+					<br/>[<a class="js save-image" href="{image}">保存する</a>]
+				</div>
+			</div>
+		</xsl:if>
 		<xsl:if test="email"><div class="email">[<xsl:apply-templates select="email"/>]</div></xsl:if>
 		<div class="comment"><xsl:apply-templates select="comment"/></div>
 		<xsl:if test="user_id"><div class="user-id">── <span class="user-id">ID:<xsl:value-of select="user_id"/></span><span></span></div></xsl:if>
@@ -1801,14 +1860,6 @@ div.catalog-popup span {
 
 <xsl:template match="input[@name='sub']">
 <tr><th>題　　名</th><td><input type="{@type}" id="{@name}" name="{@name}" value="{@value}"/></td><td><input type="submit" value="送信"/></td></tr>
-</xsl:template>
-
-<xsl:template match="input[@name='upfile']">
-<tr><th>添付File</th><td><input type="{@type}" id="{@name}" name="{@name}"/></td><td class="thin"><xsl:apply-templates select="../input[@name='textonly']"/></td></tr>
-</xsl:template>
-
-<xsl:template match="input[@name='textonly']">
-<label>[<input type="{@type}" id="{@name}" name="{@name}" value="{@value}" data-href="#clear-upfile"/>画像なし]</label>
 </xsl:template>
 
 <xsl:template match="input[@name='pwd']">
