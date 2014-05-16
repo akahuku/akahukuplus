@@ -10,7 +10,7 @@
 	var ext = require('./kosian/Kosian').Kosian(global, {
 		appName: 'akahukuplus',
 		openBaseUrlPattern: /^https?:\/\/[^.]+\.2chan\.net(?::\d+)?\/[^\/]+\//,
-		cryptKeyPath: 'README.md',
+		cryptKeyPath: 'LICENSE',
 		writeDelaySecs: 1,
 		fstab: {
 			dropbox: {

@@ -56,11 +56,16 @@
 	<tr>
 		<th>
 			<div class="item-name"><xsl:value-of select="@name"/></div>
-			<div class="item-desc"><xsl:value-of select="@internal"/>: <xsl:value-of select="@desc"/></div>
+			<div class="item-desc">
+				<xsl:value-of select="@internal"/>
+				<xsl:if test="@desc">, <xsl:value-of select="@desc"/></xsl:if>
+				<xsl:if test="@min">, 最小値: <xsl:value-of select="@min"/></xsl:if>
+				<xsl:if test="@max">, 最大値: <xsl:value-of select="@max"/></xsl:if>
+			</div>
 		</th>
 		<td>
 			<xsl:choose>
-			<xsl:when test="@type='int'">
+			<xsl:when test="@type='int' or @type='float'">
 			<xsl:element name="input">
 				<xsl:attribute name="type">number</xsl:attribute>
 				<xsl:attribute name="name"><xsl:value-of select="../@prefix"/><xsl:value-of select="@internal"/></xsl:attribute>

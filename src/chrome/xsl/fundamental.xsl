@@ -1307,12 +1307,13 @@ hr {
 
 #catalog .catalog-threads-wrap > div > a {
 	display:block;
+	box-sizing:border-box;
 	margin:0 2px 2px 0;
 	padding:2px;
 	border:1px inset #ccc;
 	font-size:small;
 	line-height:1;
-	width:60px;
+	/*width:60px;*/
 	text-align:center;
 	color:#800;
 	text-decoration:none;

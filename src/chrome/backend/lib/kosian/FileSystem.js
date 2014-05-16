@@ -64,13 +64,16 @@
 				return;
 			}
 
-			this.ext.resource(this.cryptKeyPath, function (data) {
+			this.ext.resource(this.ext.cryptKeyPath, function (data) {
 				var Blowfish = require('./kosian/Blowfish').Blowfish;
 				var SHA1 = require('./kosian/SHA1').SHA1;
-				initFileSystemCore.call(
-					this,
-					(new Blowfish(SHA1.calc(data))).decrypt64(binkeys)
-				);
+
+				var data_sha1 = SHA1.calc(data);
+				var bf = new Blowfish(data_sha1);
+				var decrypted = bf.decrypt64(binkeys);
+
+				initFileSystemCore.call(this, decrypted);
+
 			}, {noCache:true, bind:this});
 		}, {noCache:true, bind:this});
 	};

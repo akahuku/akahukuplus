@@ -33,8 +33,9 @@ const WHEEL_RELOAD_UNIT_SIZE = 120;
 const WHEEL_RELOAD_DEFAULT_FACTOR = 3;
 const WHEEL_RELOAD_THRESHOLD_OVERRIDE = 0;
 const NETWORK_ACCESS_MIN_INTERVAL = 1000 * 3;
-const CATALOG_ANCHOR_WIDTH = 60 + 4 + 2 + 2; // base width + padding + border + margin
-const CATALOG_HORZ_NUMBER = 10;
+const CATALOG_ANCHOR_PADDING = 5 * 2;
+const CATALOG_ANCHOR_MARGIN = 2;
+const CATALOG_THUMB_WIDTH = 50;
 const CATALOG_THUMB_HEIGHT = 50;
 const CATALOG_LONG_CLASS_THRESHOLD = 100;
 const CATALOG_EXPIRE_WARN_RATIO = 0.95;
@@ -56,6 +57,7 @@ var bootVars = {iframeSources:'', bodyHTML:''};
 
 // object instances
 var config;
+var favicon;
 var timingLogger;
 var backend;
 var xmlGenerator;
@@ -96,20 +98,17 @@ window.opera && (function () {
 			return;
 		}
 		if (e.element.text) {
-			//console.log('inline script found: ' + e.element.text);
 			e.element.text = '';
 		}
 		if (e.element.src) {
-			//console.log('external script found: ' + e.element.src);
 			e.element.src = '';
 		}
 		if (e.source) {
-			//console.log('javascript url found: ' + e.source);
 			e.source = '';
 		}
 
-		e.preventDefault();
 		removeAssets('script canceler');
+		return e.preventDefault();
 	}
 
 	window.opera.addEventListener('BeforeScript', cancel, false);
@@ -163,14 +162,24 @@ function removeAssets (context) {
 }
 
 function initialStyle (isStart) {
+	var s;
+
 	if (isStart) {
-		var s = document.documentElement.appendChild(document.createElement('style'));
-		s.type = 'text/css';
-		s.id = 'akahuku_initial_style';
-		s.appendChild(document.createTextNode('body {visibility:hidden}'));
+		try {
+			s = document.documentElement.appendChild(document.createElement('style'));
+		}
+		catch (e) {
+			s = null;
+		}
+
+		if (s) {
+			s.type = 'text/css';
+			s.id = 'akahuku_initial_style';
+			s.appendChild(document.createTextNode('body {visibility:hidden}'));
+		}
 	}
 	else {
-		var s = $('akahuku_initial_style');
+		s = $('akahuku_initial_style');
 		if (s) {
 			s.parentNode.removeChild(s);
 		}
@@ -223,7 +232,7 @@ function handleDOMContentLoaded (e) {
 	removeAssets(e.type);
 	initialStyle(false);
 	config = createConfigurator();
-	config.load();
+	config.assign();
 	resources = createResourceManager();
 	initCustomEventHandler();
 	document.body.innerHTML = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
@@ -316,7 +325,6 @@ function boot () {
 					.setAttribute('data-binding', 'xpath:/futaba/meta/title');
 
 				applyDataBindings(xml);
-				setFavicon();
 
 				function startTransition () {
 					function handleTransitionEnd (e) {
@@ -1558,6 +1566,12 @@ function createConfigurator () {
 			name:'カタログで取得する本文の長さ',
 			min:0
 		},
+		catalog_thumbnail_scale: {
+			type:'float',
+			value:1.0,
+			name:'カタログのサムネイルの表示倍率',
+			min:1.0, max:2.0
+		},
 		storage: {
 			type:'list',
 			value:'dropbox',
@@ -1582,10 +1596,21 @@ function createConfigurator () {
 				'$YEAR (画像の投稿年)、$MONTH (画像の投稿月)、$DAY (画像の投稿日)、' +
 				'$SERIAL (画像番号)、$DIST (画像の分散キー)、$EXT (拡張子)'
 		},
-		hide_banners: {
+		reject_banner_scripts: {
 			type:'bool',
 			value:false,
-			name:'バナーを隠す'
+			name:'バナーの制限',
+			desc:'バナー内の javascript の実行を拒否します。',
+			onsave:function (item) {
+				if (window.opera && typeof widget == 'object') {
+					widget.preferences['reject_banner_scripts'] = item.value ? 1 : 0;
+				}
+			},
+			onload:function (item) {
+				if (window.opera && typeof widget == 'object') {
+					item.value = widget.preferences['reject_banner_scripts'] == 1;
+				}
+			}
 		}
 	};
 
@@ -1594,7 +1619,13 @@ function createConfigurator () {
 
 		switch (data[name].type) {
 		case 'int':
-			value = value - 0;
+			value = parseInt(value);
+			if (isNaN(value)) return;
+			if ('min' in data[name] && value < data[name].min) return;
+			if ('max' in data[name] && value > data[name].max) return;
+			break;
+		case 'float':
+			value = parseFloat(value);
 			if (isNaN(value)) return;
 			if ('min' in data[name] && value < data[name].min) return;
 			if ('max' in data[name] && value > data[name].max) return;
@@ -1624,6 +1655,9 @@ function createConfigurator () {
 		var tmp = {};
 
 		for (var i in data) {
+			if (typeof data[i].onsave == 'function') {
+				data[i].onsave(data[i]);
+			}
 			if (data[i].value != data[i].defaultValue) {
 				tmp[i] = data[i].value;
 			}
@@ -1632,7 +1666,7 @@ function createConfigurator () {
 		window.localStorage.setItem(keyName, JSON.stringify(tmp));
 	}
 
-	function load (storage) {
+	function assign (storage) {
 		if (!storage) {
 			storage = window.localStorage.getItem(keyName);
 			if (storage == null) return;
@@ -1663,6 +1697,10 @@ function createConfigurator () {
 
 	function init () {
 		for (var i in data) {
+			if (typeof data[i].onload == 'function') {
+				debugger;
+				data[i].onload(data[i]);
+			}
 			data[i].defaultValue = data[i].value;
 		}
 	}
@@ -1670,7 +1708,7 @@ function createConfigurator () {
 	init();
 	return {
 		save: save,
-		load: load,
+		assign: assign,
 		reset: reset,
 		get data () {return data},
 		get keyName () {return keyName}
@@ -3430,6 +3468,143 @@ function createSelectionMenu () {
 	};
 }
 
+function createFavicon () {
+	var FAVICON_ID = 'dyn-favicon';
+	var isLoading = false;
+
+	function createLinkNode () {
+		var link = document.head.appendChild(document.createElement('link'));
+		link.setAttribute('rel', 'icon');
+		link.setAttribute('id', FAVICON_ID);
+		return link;
+	}
+
+	function overwriteFavicon (image, favicon) {
+		image = $(image);
+		if (!image) return;
+		if (image.naturalWidth == 0 || image.naturalHeight == 0) return;
+
+		favicon = $(favicon);
+		if (!favicon) return;
+
+		var w = 16;
+		var h = 16;
+		var factor = 3;
+		var canvas = document.createElement('canvas');
+		canvas.width = w * factor;
+		canvas.height = h * factor;
+		var c = canvas.getContext('2d');
+		c.fillStyle = '#000000';
+		c.fillRect(0, 0, canvas.width, canvas.height);
+		var clipSize = Math.min(image.width, image.height);
+		c.drawImage(image,
+			image.width / 2 - clipSize / 2,
+			image.height / 2 - clipSize / 2,
+			clipSize, clipSize, 0, 0, canvas.width, canvas.height);
+
+		var ps = c.getImageData(0, 0, w * factor, h * factor);
+		var pd = c.createImageData ? c.createImageData(w, h) : new ImageData(w, h);
+		var factorPower = Math.pow(factor, 2);
+		for (var i = 0; i < h; i++) {
+			for (var j = 0; j < w; j++) {
+				var avg = [0, 0, 0, 0];
+
+				for (var k = 0; k < factor; k++) {
+					for (var l = 0; l < factor; l++) {
+						avg[0] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 0];
+						avg[1] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 1];
+						avg[2] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 2];
+						avg[3] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 3];
+					}
+				}
+
+				for (var k = 0; k < 4; k++) {
+					avg[k] = Math.floor(avg[k] / factorPower);
+					avg[k] += (255 - avg[k]) / 8;
+					pd.data[(i * w + j) * 4 + k] = Math.min(255, avg[k]);
+				}
+			}
+		}
+
+		canvas.width = w;
+		canvas.height = h;
+		canvas.getContext('2d').putImageData(pd, 0, 0);
+		favicon.href = canvas.toDataURL('image/png');
+
+		c = null;
+		canvas = null;
+	}
+
+	function update () {
+		if (isLoading) return;
+
+		var link = $(FAVICON_ID);
+		if (link) {
+			if (window.opera) {
+				var href = link.href;
+				link.parentNode.removeChild(link);
+				createLinkNode().href = '/favicon.ico';
+
+				setTimeout(function () {
+					var link = $(FAVICON_ID);
+					if (!link) return;
+					link.parentNode.removeChild(link);
+					createLinkNode().href = href;
+				}, 100);
+			}
+			return;
+		}
+
+		switch (pageModes[0]) {
+		case 'summary':
+		case 'catalog':
+			var re = /^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\//.exec(window.location.href);
+			if (!re) break;
+
+			isLoading = true;
+			resources.get(
+				'/images/board/' + re[1] + '-' + re[2] + '.png',
+				{method:'readAsDataURL'},
+				function (data) {
+					if (data) {
+						createLinkNode().href = data;
+					}
+					isLoading = false;
+				}
+			);
+			break;
+
+		case 'reply':
+			var thumb = document.querySelector('article:nth-of-type(1) img');
+			if (!thumb) break;
+
+			isLoading = true;
+			var re = /^[^:]+:\/\/[^.]+\.2chan\.net(?::\d+)?\/([^\/]+)(\/[^\/]+\/thumb\/\d+s\.jpg)/.exec(thumb.src);
+			var src = re ? re[2] : thumb.src;
+			var img = new Image();
+			function handleImageLoad (e) {
+				this.removeEventListener('load', arguments.callee, false);
+				this.removeEventListener('error', arguments.callee, false);
+				overwriteFavicon(this, createLinkNode());
+				img = null;
+				isLoading = false;
+			}
+			img.addEventListener('load', handleImageLoad, false);
+			img.addEventListener('error', handleImageLoad, false);
+			img.src = src;
+			break;
+		}
+	}
+
+	function init () {
+	}
+
+	init();
+	return {
+		update: update
+	};
+}
+
 /*
  * {{{1 page set-up functions
  */
@@ -3945,6 +4120,12 @@ function install (mode) {
 		})
 
 	/*
+	 * favicon maintainer
+	 */
+
+	favicon = createFavicon();
+
+	/*
 	 * window resize handler
 	 */
 
@@ -3984,7 +4165,7 @@ function install (mode) {
 	window.addEventListener('storage', function (e) {
 		if (e.key == config.keyName) {
 			config.reset();
-			config.load();
+			config.assign();
 		}
 	}, false);
 
@@ -4146,12 +4327,13 @@ function install (mode) {
 	 */
 
 	setupParallax('#ad-aside-wrap');
-	!config.data.hide_banners.value && (function () {
+	(function () {
 		var iframe = document.querySelector('iframe[data-src]');
 		if (!iframe) return;
 		iframe.src = iframe.getAttribute('data-src');
 		iframe.removeAttribute('data-src');
-		setTimeout(arguments.callee, BANNER_LOAD_DELAY);
+		var callee = arguments.callee;
+		iframe.onload = function () {setTimeout(callee, BANNER_LOAD_DELAY)};
 	})();
 
 	/*
@@ -4981,117 +5163,6 @@ function serializeXML (xml) {
 		.serializeToString(xml)
 		.replace(/<\/\w+>/g, '$&\n')
 		.replace(/></g, '>\n<');
-}
-
-function setFavicon () {
-	function createLinkNode () {
-		var link = document.head.appendChild(document.createElement('link'));
-		link.setAttribute('rel', 'icon');
-		link.setAttribute('id', 'dyn-favicon');
-		return link;
-	}
-
-	var link = $('dyn-favicon');
-	if (link) {
-		if (window.opera) {
-			var href = link.href;
-			link.parentNode.removeChild(link);
-			createLinkNode().href = '/favicon.ico';
-
-			setTimeout(function () {
-				var link = $('dyn-favicon');
-				if (!link) return;
-				link.parentNode.removeChild(link);
-				createLinkNode().href = href;
-			}, 100);
-		}
-		return;
-	}
-
-	switch (pageModes[0]) {
-	case 'summary':
-	case 'catalog':
-		var re = /^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\//.exec(window.location.href);
-		if (!re) return;
-
-		resources.get(
-			'/images/board/' + re[1] + '-' + re[2] + '.png',
-			{method:'readAsDataURL'},
-			function (data) {
-				if (data) {
-					createLinkNode().href = data;
-				}
-			}
-		);
-		break;
-
-	case 'reply':
-		var thumb = document.querySelector('article:nth-of-type(1) img');
-		if (!thumb) return;
-
-		var re = /^[^:]+:\/\/[^.]+\.2chan\.net(?::\d+)?\/([^\/]+)(\/[^\/]+\/thumb\/\d+s\.jpg)/.exec(thumb.src);
-		var src = re ? re[2] : thumb.src;
-		var img = new Image();
-		img.addEventListener('load', function (e) {
-			this.removeEventListener(e.type, arguments.callee, false);
-			overwriteFavicon(this, createLinkNode());
-			img = null;
-		}, false);
-		img.src = src;
-		break;
-	}
-}
-
-function overwriteFavicon (image, favicon) {
-	favicon = $(favicon);
-	if (!favicon) return;
-
-	var w = 16;
-	var h = 16;
-	var factor = 3;
-	var canvas = document.createElement('canvas');
-	canvas.width = w * factor;
-	canvas.height = h * factor;
-	var c = canvas.getContext('2d');
-	c.fillStyle = '#000000';
-	c.fillRect(0, 0, canvas.width, canvas.height);
-	var clipSize = Math.min(image.width, image.height);
-	c.drawImage(image,
-		image.width / 2 - clipSize / 2,
-		image.height / 2 - clipSize / 2,
-		clipSize, clipSize, 0, 0, canvas.width, canvas.height);
-
-	var ps = c.getImageData(0, 0, w * factor, h * factor);
-	var pd = c.createImageData ? c.createImageData(w, h) : new ImageData(w, h);
-	var factorPower = Math.pow(factor, 2);
-	for (var i = 0; i < h; i++) {
-		for (var j = 0; j < w; j++) {
-			var avg = [0, 0, 0, 0];
-
-			for (var k = 0; k < factor; k++) {
-				for (var l = 0; l < factor; l++) {
-					avg[0] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 0];
-					avg[1] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 1];
-					avg[2] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 2];
-					avg[3] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 3];
-				}
-			}
-
-			for (var k = 0; k < 4; k++) {
-				avg[k] = Math.floor(avg[k] / factorPower);
-				avg[k] += (255 - avg[k]) / 8;
-				pd.data[(i * w + j) * 4 + k] = Math.min(255, avg[k]);
-			}
-		}
-	}
-
-	canvas.width = w;
-	canvas.height = h;
-	canvas.getContext('2d').putImageData(pd, 0, 0);
-	favicon.href = canvas.toDataURL('image/png');
-
-	c = null;
-	canvas = null;
 }
 
 function getCookie (key) {
@@ -6083,7 +6154,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 
 				}
 
-				setFavicon();
+				favicon.update();
 				extractTweets();
 				extractIncompleteFiles();
 
@@ -6478,7 +6549,7 @@ var commands = {
 							footer.classList.remove('hide');
 							footer = null;
 
-							setFavicon();
+							favicon.update();
 							extractTweets();
 							extractIncompleteFiles();
 
@@ -6651,6 +6722,11 @@ var commands = {
 				var vertActual = doc.querySelectorAll('table[align="center"] tr').length;
 				var currentCs = getCatalogSettings();
 
+				//
+				var cellImageWidth = Math.floor(CATALOG_THUMB_WIDTH * config.data.catalog_thumbnail_scale.value);
+				var cellImageHeight = Math.floor(CATALOG_THUMB_HEIGHT * config.data.catalog_thumbnail_scale.value);
+				var anchorWidth = cellImageWidth + CATALOG_ANCHOR_PADDING;
+
 				if ($('catalog-horz-number').value == '') {
 					$('catalog-horz-number').value = currentCs[0];
 				}
@@ -6658,7 +6734,7 @@ var commands = {
 					$('catalog-vert-number').value = currentCs[1];
 				}
 
-				wrap.style.maxWidth = (CATALOG_ANCHOR_WIDTH * horzActual) + 'px';
+				wrap.style.maxWidth = ((anchorWidth + CATALOG_ANCHOR_MARGIN) * horzActual) + 'px';
 
 				Array.prototype.forEach.call(
 					doc.querySelectorAll('table[align="center"] td a'),
@@ -6671,11 +6747,13 @@ var commands = {
 							latestNumber = id;
 						}
 
+						// number of replies
 						from = node.parentNode.querySelector('font');
 						if (from) {
 							repliesCount = from.textContent - 0;
 						}
 
+						// anchor cell
 						var anchor = $('c-' + sortType.key + '-' + id);
 						if (anchor) {
 							if (anchor == insertee) {
@@ -6704,7 +6782,9 @@ var commands = {
 							anchor.id = 'c-' + sortType.key + '-' + id;
 							anchor.setAttribute('data-number', id);
 						}
+						anchor.style.width = anchorWidth + 'px';
 
+						// image
 						var pad = anchor.appendChild(document.createElement('div'));
 
 						['href', 'target'].forEach(function (atr) {
@@ -6719,17 +6799,35 @@ var commands = {
 							['data-src', 'width', 'height', 'alt'].forEach(function (atr) {
 								var value = from.getAttribute(atr);
 								if (value == null) return;
-								to.setAttribute(atr.replace('data-', ''), value);
 
-								if (atr == 'height') {
-									pad.style.height = (CATALOG_THUMB_HEIGHT - value) + 'px';
+								switch (atr) {
+								case 'data-src':
+									to.src = config.data.catalog_thumbnail_scale.value >= 1.5 ?
+										value.replace('/cat/', '/thumb/') : value;
+									break;
+
+								case 'width':
+									value = Math.floor((value - 0) * config.data.catalog_thumbnail_scale.value);
+									to.style.width = value + 'px';
+									break;
+
+								case 'height':
+									value = Math.floor((value - 0) * config.data.catalog_thumbnail_scale.value);
+									to.style.height = value + 'px';
+									pad.style.height = (cellImageHeight - value) + 'px';
+									break;
+
+								case 'alt':
+									to.setAttribute('alt', value);
+									break;
 								}
 							});
 						}
 						else {
-							pad.style.height = CATALOG_THUMB_HEIGHT + 'px';
+							pad.style.height = cellImageHeight + 'px';
 						}
 
+						// text
 						from = node.parentNode.querySelector('small');
 						if (from) {
 							to = anchor.appendChild(document.createElement('div'));
@@ -6743,6 +6841,7 @@ var commands = {
 						to.appendChild(document.createElement('span')).textContent = repliesCount;
 						to.appendChild(document.createElement('span')).textContent = newIndicator;
 
+						// finish
 						anchor.className = newClass;
 					}
 				);
@@ -6996,7 +7095,7 @@ var commands = {
 				populateTextFormItems(dialog.content, function (item) {
 					storage[item.name.replace(/^config-item\./, '')] = item.value;
 				});
-				config.load(storage);
+				config.assign(storage);
 				config.save();
 				applyDataBindings(xmlGenerator.run('').xml);
 			}

@@ -8,7 +8,7 @@ DIST_DIR = dist
 SRC_DIR = src
 EMBRYO_DIR = .embryo
 
-CRYPT_KEY_FILE = README.md
+CRYPT_KEY_FILE = LICENSE
 CRYPT_SRC_FILE = consumer_keys.json
 CRYPT_DST_FILE = consumer_keys.bin
 
@@ -81,7 +81,8 @@ $(BINKEYS_PATH): $(CHROME_SRC_PATH)/$(CRYPT_KEY_FILE) $(CHROME_SRC_PATH)/$(CRYPT
 	tool/make-binkeys \
 		--key=$(CHROME_SRC_PATH)/$(CRYPT_KEY_FILE) \
 		--src=$(CHROME_SRC_PATH)/$(CRYPT_SRC_FILE) \
-		--dst=$@
+		--dst=$@ \
+		--verbose --verbose
 
 FORCE:
 
@@ -95,8 +96,9 @@ FORCE:
 # akahukuplus.oex
 $(OPERA_TARGET_PATH): $(OPERA_MTIME_PATH) $(BINKEYS_PATH)
 #	copy all of sources to embryo dir
-	rsync -rptL --exclude '*.sw?' --exclude '*.bak' --exclude '*~' --exclude '*.sh' \
-		--exclude 'config.xml' --exclude '$(CRYPT_SRC_FILE)' \
+	rsync -rptL --delete \
+		--exclude '*.sw?' --exclude '*.bak' --exclude '*~' --exclude '*.sh' \
+		--exclude 'config.xml' --exclude '$(CRYPT_SRC_FILE)' --exclude 'consumer_keys.json.template' \
 		$(OPERA_SRC_PATH)/ $(OPERA_EMBRYO_SRC_PATH)
 
 #	update the manifest file
@@ -117,6 +119,7 @@ $(OPERA_TARGET_PATH): $(OPERA_MTIME_PATH) $(BINKEYS_PATH)
 #	create binary consumer keys, and remove its json source
 	cp $(BINKEYS_PATH) $(OPERA_EMBRYO_SRC_PATH)
 	rm -f $(OPERA_EMBRYO_SRC_PATH)/$(CRYPT_SRC_FILE)
+	rm -f $(OPERA_EMBRYO_SRC_PATH)/consumer_keys.json.template
 
 #	create update description file
 	sed -e 's/@appid@/$(OPERA_EXT_ID)/g' \
