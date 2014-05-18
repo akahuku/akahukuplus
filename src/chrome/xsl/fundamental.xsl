@@ -476,6 +476,14 @@ hr {
 	visibility:visible;
 }
 
+.reply-wrap a.sodane-null {
+	visibility:hidden;
+}
+
+.reply-wrap:hover a.sodane-null {
+	visibility:visible;
+}
+
 .reply-wrap span.no {
 	margin:0 4px 0 0;
 	color:#c40;
@@ -1765,6 +1773,7 @@ div.catalog-popup span {
 				<xsl:if test="topic/user_id"><span class="user-id">ID:<xsl:value-of select="topic/user_id"/></span><span></span> | </xsl:if>
 				<a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>
 				<a class="del js" href="#del">del</a>
+				&#160;<a class="{topic/sodane/@className} js" href="#sodane"><xsl:value-of select="topic/sodane"/></a>
 				<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
 			</div>
 			<xsl:if test="topic/email"><div class="email">[<xsl:apply-templates select="topic/email"/>]</div></xsl:if>
@@ -1819,6 +1828,7 @@ div.catalog-popup span {
 			<span class="postdate"><xsl:value-of select="post_date"/></span> |
 			<a class="postno" href="#quote">No.<xsl:apply-templates select="number"/></a>
 			<a class="del js" href="#del">del</a>
+			&#160;<a class="{sodane/@className} js" href="#sodane"><xsl:value-of select="sodane"/></a>
 		</div>
 		<xsl:if test="image">
 			<div class="reply-image">

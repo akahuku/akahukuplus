@@ -1,7 +1,9 @@
 // ==UserScript==
 // @name          frontend of akahukuplus extreme
 // @include       http://*.2chan.net/*/*.htm
+// @include       http://*.2chan.net/*/*.htm?*
 // @include       http://*.2chan.net/*/res/*.htm
+// @include       http://*.2chan.net/*/res/*.htm?*
 // @exclude       http://dec.2chan.net/up/*
 // @exclude       http://dec.2chan.net/up2/*
 // ==/UserScript==
@@ -635,6 +637,14 @@ function createXMLGenerator () {
 				re[1] = stripTags(re[1]);
 				markNode.appendChild(text(re[1]));
 				markStatistics.notifyMark(number, re[1]);
+			}
+
+			// そうだね (that's right）
+			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(info);
+			if (re) {
+				var sodaneNode = element(replyNode, 'sodane');
+				sodaneNode.appendChild(text(re[1].replace('x', ' × ')));
+				sodaneNode.setAttribute('className', re[1] == '+' ? 'sodane-null' : 'sodane');
 			}
 
 			// skip, if we can
@@ -1377,6 +1387,14 @@ function createXMLGenerator () {
 				linkify(emailNode);
 			}
 
+			// そうだね (that's right）
+			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
+			if (re) {
+				var sodaneNode = element(topicNode, 'sodane');
+				sodaneNode.appendChild(text(re[1].replace('x', ' × ')));
+				sodaneNode.setAttribute('className', re[1] == '+' ? 'sodane-null' : 'sodane');
+			}
+
 			// ID
 			re = /ID:([^ ]+)/.exec(topicInfoText);
 			if (re) {
@@ -1698,7 +1716,6 @@ function createConfigurator () {
 	function init () {
 		for (var i in data) {
 			if (typeof data[i].onload == 'function') {
-				debugger;
 				data[i].onload(data[i]);
 			}
 			data[i].defaultValue = data[i].value;
@@ -4065,6 +4082,12 @@ function install (mode) {
 
 			commands.reload();
 		})
+		.add('.sodane', function (e, t) {
+			commands.sodane(e, t);
+		})
+		.add('.sodane-null', function (e, t) {
+			commands.sodane(e, t);
+		})
 		.add('*noclass*', function (e, t) {
 			var re1 = /(.*)#[^#]*$/.exec(t.href);
 			var re2 = /(.*)(#[^#]*)?$/.exec(window.location.href);
@@ -4376,6 +4399,31 @@ function install (mode) {
 	 */
 
 	quotePopup = createQuotePopup();
+
+	/*
+	 * switch according to mode of pseudo-query
+	 */
+
+	var queries = (function () {
+		var result = {};
+		window.location.hash
+		.replace(/^#/, '')
+		.split('&').forEach(function (s) {
+			s = s.split('=');
+			s[0] = decodeURIComponent(s[0]);
+			s[1] = s.length >= 2 ? decodeURIComponent(s[1]) : null;
+			result[s[0]] = s[1];
+		});
+		return result;
+	})();
+
+	switch (queries.mode) {
+	case 'cat':
+		setTimeout(function () {
+			commands.toggleCatalogVisibility();
+		}, 1);
+		break;
+	}
 
 	/*
 	 * end!
@@ -5953,6 +6001,27 @@ function updateTopicID (xml, container) {
 	return result;
 }
 
+function updateTopicSodane (xml, container) {
+	var result = false;
+	var sodanes = xml.querySelectorAll('topic > sodane[className="sodane"]');
+	for (var i = 0, goal = sodanes.length; i < goal; i++) {
+		var number = sodanes[i].parentNode.querySelector('number').textContent;
+		var node = container.querySelector('.topic-wrap[data-number="' + number + '"]');
+		if (!node) continue;
+
+		var sodane = node.querySelector('.sodane, .sodane-null');
+		if (!sodane) continue;
+		if (sodane.textContent == sodanes[i].textContent) continue;
+
+		sodane.classList.remove('sodane-null');
+		sodane.classList.add('sodane');
+		sodane.textContent = sodanes[i].textContent;
+
+		result = true;
+	}
+	return result;
+}
+
 function updateMarkedReplies (xml, container, start, end) {
 	var result = false;
 	var marks = xml.querySelectorAll('reply > mark');
@@ -5997,6 +6066,29 @@ function updateReplyIDs (xml, container, start, end) {
 		div.className = span.className = 'user-id';
 		span.textContent = 'ID:' + ids[i].textContent;
 		div.appendChild(document.createElement('span'));
+
+		result = true;
+	}
+	return result;
+}
+
+function updateReplySodanes (xml, container, start, end) {
+	var result = false;
+	var sodanes = xml.querySelectorAll('reply > sodane[className="sodane"]');
+	var parentSelector = getParentSelector(start, end);
+	for (var i = 0, goal = sodanes.length; i < goal; i++) {
+		var number = sodanes[i].parentNode.querySelector('number').textContent;
+
+		var node = container.querySelector(parentSelector + ' > [data-number="' + number + '"]');
+		if (!node) continue;
+
+		var sodane = node.querySelector('.sodane, .sodane-null');
+		if (!sodane) continue;
+		if (sodane.textContent == sodanes[i].textContent) continue;
+
+		sodane.classList.remove('sodane-null');
+		sodane.classList.add('sodane');
+		sodane.textContent = sodanes[i].textContent;
 
 		result = true;
 	}
@@ -6106,6 +6198,10 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 
 					timingLogger.startTag('update reply ids');
 					worked = updateReplyIDs(xml, container, count2 + 1, count) || worked;
+					timingLogger.endTag();
+
+					timingLogger.startTag('update reply sodanes');
+					worked = updateReplySodanes(xml, container, count2 + 1, count) || worked;
 					timingLogger.endTag();
 				}
 
@@ -6622,6 +6718,7 @@ var commands = {
 					timingLogger.startTag('update topic id');
 					updateMarkedTopic(result.xml, document);
 					updateTopicID(result.xml, document);
+					updateTopicSodane(result.xml, document);
 					timingLogger.endTag();
 				}
 				catch (ex) {
@@ -6974,6 +7071,40 @@ var commands = {
 				window.alert(result.error || 'なんかエラー');
 			}
 		);
+	},
+	sodane: function (e, t) {
+		if (!t) return;
+		if (t.getAttribute('data-busy')) return;
+
+		var postNumber = getPostNumber(t);
+		if (!postNumber) return;
+
+		t.setAttribute('data-busy', '1');
+		t.setAttribute('data-text', t.textContent);
+		t.textContent = '...';
+
+		var board = window.location.pathname.split('/')[1];
+		var xhr = new window.XMLHttpRequest;
+		xhr.open('GET', '/sd.php?' + board + '.' + postNumber);
+		xhr.onload = function () {
+			setTimeout(function () {
+				var n = parseInt(xhr.responseText, 10) || 0;
+				t.textContent = 'そうだね \u00d7 ' + n;
+				t.removeAttribute('data-busy');
+				t.removeAttribute('data-text');
+				t = xhr = xhr.onload = xhr.onerror = null;
+			}, 1000);
+		};
+		xhr.onerror = function () {
+			t.textContent = 'なんかエラー';
+			setTimeout(function () {
+				t.textContent = t.getAttribute('data-text');
+				t.removeAttribute('data-busy');
+				t.removeAttribute('data-text');
+				t = xhr = xhr.onload = xhr.onerror = null;
+			}, 1000);
+		};
+		xhr.send();
 	},
 
 	/*
@@ -7379,6 +7510,7 @@ var commands = {
 			if (active && active.childNodes.length == 0) {
 				commands.reloadCatalog();
 			}
+			window.location.hash = '#mode=cat';
 		}
 		else {
 			threads.classList.remove('hide');
@@ -7388,6 +7520,7 @@ var commands = {
 			$t(document.querySelector('#header a[href="#catalog"]'), 'カタログ');
 			catalogPopup.deleteAll();
 			pageModes.shift();
+			window.location.hash = '';
 		}
 	},
 	updateCatalogSettings: function (settings) {
