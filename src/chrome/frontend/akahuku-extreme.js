@@ -1600,11 +1600,6 @@ function createConfigurator () {
 				onedrive:'Microsoft OneDrive'
 			}
 		},
-		lightbox_enabled: {
-			type:'bool',
-			value:true,
-			name:'画像を lightbox で表示する'
-		},
 		save_image_name_template: {
 			type:'string',
 			value:'$SERVER/$BOARD/$SERIAL.$EXT',
@@ -1613,6 +1608,23 @@ function createConfigurator () {
 				'$SERVER (サーバ名)、$BOARD (板名)、$THREAD (スレッド番号)、' +
 				'$YEAR (画像の投稿年)、$MONTH (画像の投稿月)、$DAY (画像の投稿日)、' +
 				'$SERIAL (画像番号)、$DIST (画像の分散キー)、$EXT (拡張子)'
+		},
+		lightbox_enabled: {
+			type:'bool',
+			value:true,
+			name:'画像を lightbox で表示する'
+		},
+		lightbox_zoom_mode: {
+			type:'list',
+			value:'whole',
+			name:'lightbox で表示する際の初期倍率',
+			list:{
+				'whole':'全体',
+				'actual-size':'実寸',
+				'fit-to-width':'幅に合わせる',
+				'fit-to-height':'高さに合わせる',
+				'last':'最後に使用した倍率を使用する'
+			}
 		},
 		reject_banner_scripts: {
 			type:'bool',
@@ -3219,9 +3231,8 @@ function createQuotePopup () {
 	}
 
 	function createPopup (quoteOrigin) {
-		var no = quoteOrigin.element
-			.querySelector('[data-number]')
-			.getAttribute('data-number');
+		var no = quoteOrigin.element.getAttribute('data-number') ||
+			quoteOrigin.element.querySelector('[data-number]').getAttribute('data-number');
 		quoteOrigin.element.id = '_' + no;
 
 		// create new popup
@@ -4441,6 +4452,7 @@ function lightbox (anchor, ignoreThumbnail) {
 	var CLICK_THRESHOLD_DISTANCE = 4;
 	var CLICK_THRESHOLD_TIME = 500;
 	var WHEEL_SCROLL_UNIT_FACTOR = 0.4;
+	var ZOOMMODE_KEY = 'akahukuplus.lightbox.zoomMode';
 
 	var lightboxWrap;
 	var dimmer;
@@ -4564,6 +4576,26 @@ function lightbox (anchor, ignoreThumbnail) {
 				image.naturalWidth + 'x' + image.naturalHeight + ', ' +
 				(image.offsetWidth / image.naturalWidth * 100).toFixed(2) + '%');
 		}
+	}
+
+	function setZoomMode (zm, force) {
+		if (zm != 'whole'
+		&& zm != 'actual-size'
+		&& zm != 'fit-to-width'
+		&& zm != 'fit-to-height') return;
+		if (zm == zoomMode && !force) return;
+
+		zoomMode = zm;
+		window.localStorage.setItem(ZOOMMODE_KEY, zm);
+		applyGeometory(getImageRect());
+	}
+
+	function initZoomMode () {
+		var zm = config.data.lightbox_zoom_mode.value;
+		if (zm == 'last') {
+			zm = window.localStorage.getItem(ZOOMMODE_KEY);
+		}
+		setZoomMode(zm);
 	}
 
 	function init () {
@@ -4691,6 +4723,10 @@ function lightbox (anchor, ignoreThumbnail) {
 		if (image) {
 			image.src = this.src;
 			updateGeometoryInfo();
+
+			setTimeout(function () {
+				initZoomMode();
+			}, 0);
 		}
 		else {
 			image = this;
@@ -4715,6 +4751,7 @@ function lightbox (anchor, ignoreThumbnail) {
 
 			setTimeout(function () {
 				applyGeometory(getImageRect());
+				initZoomMode();
 			}, 0);
 		}
 
@@ -4870,22 +4907,19 @@ function lightbox (anchor, ignoreThumbnail) {
 	function handleZoomModeClick (e, t) {
 		if (isInTransition) return;
 		if (!image) return;
-		zoomMode = t.getAttribute('href').replace('#lightbox-', '');
-		applyGeometory(getImageRect());
+		setZoomMode(
+			t.getAttribute('href').replace('#lightbox-', ''));
 	}
 
 	function handleZoomModeKey (e) {
 		if (isInTransition) return;
 		if (!image) return;
-		var zm = {
+		setZoomMode({
 			'1': 'whole',
 			'2': 'actual-size',
-			w: 'fit-to-width',
-			h: 'fit-to-height'
-		}[e.identifier];
-		if (zm == undefined) return;
-		zoomMode = zm;
-		applyGeometory(getImageRect());
+			'w': 'fit-to-width',
+			'h': 'fit-to-height'
+		}[e.identifier]);
 	}
 
 	function handleSearch (e) {
