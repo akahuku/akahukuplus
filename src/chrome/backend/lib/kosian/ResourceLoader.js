@@ -1,15 +1,28 @@
 /**
  * resource loader
- * =============================================================================
- *
  *
  * @author akahuku@gmail.com
+ */
+/**
+ * Copyright 2014 akahuku, akahuku@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 (function (global) {
 	'use strict';
 
-	var u = require('./kosian/Utils').Utils;
+	var u = require('kosian/Utils').Utils;
 	var self_ = require('sdk/self');
 
 	function ResourceLoader (transportGetter, locationGetter, emitter) {
@@ -26,6 +39,13 @@
 				xhr.removeEventListener('load', handleLoad, false);
 				xhr.removeEventListener('error', handleError, false);
 				xhr = null;
+			}
+
+			function handleLoadFirefox (res) {
+				if (!opts.noCache) {
+					data[resourcePath] = res;
+				}
+				emitter(callback, res);
 			}
 
 			function handleError () {
@@ -48,16 +68,24 @@
 				return;
 			}
 
-			var xhr = transportGetter();
 			var sync = 'sync' in opts && opts.sync;
-			var isText;
+			var isText = false;
+			var responseType = opts.responseType || 'text';
+
+			// special shortcut on firefox, if text is requested synchronously
+			if (self_ && responseType == 'text' && sync) {
+				handleLoadFirefox(self_.data.load(resourcePath));
+				return;
+			}
+
+			var xhr = transportGetter();
 			xhr.open('GET', locationGetter(resourcePath), !sync);
-			if (opts.responseType && opts.responseType != 'text') {
-				xhr.responseType = opts.responseType;
+			if (responseType != 'text') {
+				xhr.responseType = responseType;
 				isText = false;
 			}
 			else {
-				xhr.responseType = 'text';
+				//xhr.responseType = 'text';
 				xhr.overrideMimeType(opts.mimeType || 'text/plain;charset=UTF-8');
 				isText = true;
 			}
@@ -101,12 +129,18 @@
 		else {
 			if (window.location) {
 				locationGetter = function (resourcePath) {
-					return window.location.protocol + '//' + window.location.host + '/' + resourcePath;
+					return window.location.protocol +
+						'//' +
+						window.location.host +
+						('/' + resourcePath).replace(/\/+/g, '/');
 				};
 			}
 			else if (self_) {
 				locationGetter = function (resourcePath) {
-					return self_.data.url(resourcePath);
+					return self_.data.url(
+						resourcePath
+							.replace(/\/+/g, '/')
+							.replace(/^\//, ''));
 				};
 			}
 		}

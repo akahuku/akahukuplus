@@ -45,6 +45,8 @@
 			xhr = xhr.onload = xhr.onerror = null;
 		};
 		xhr.send();
+
+		return true;
 	}
 
 	exports.FetchTweets = FetchTweets;

@@ -73,6 +73,7 @@ var urlStorage;
 var catalogPopup;
 var quotePopup;
 var selectionMenu;
+var historyStateWrapper;
 
 // xmlhttprequest
 var transport;
@@ -88,6 +89,7 @@ var cursorPos = {x:0, y:0, pagex:0, pagey:0};
 var subHash = {};
 var nameHash = {};
 var lastModified;
+var lastScrollTop;
 var logSize = 10000;
 
 /*
@@ -235,13 +237,31 @@ function handleDOMContentLoaded (e) {
 	initialStyle(false);
 	config = createConfigurator();
 	config.assign();
-	resources = createResourceManager();
-	initCustomEventHandler();
-	document.body.innerHTML = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
-	setTimeout(function () {
+	backend = WasaviExtensionWrapper.create({extensionName: 'akahukuplus'});
+
+	var connected = false;
+	var retryRest = 5;
+	var wait = 1000;
+	var gotInit = function (req) {
+		if (connected) return;
+		connected = true;
+		backend.tabId = req.tabId;
+		resources = createResourceManager();
+		initCustomEventHandler();
+		document.body.innerHTML = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
 		timingLogger.endTag();
 		boot();
-	}, 0);
+	};
+	var timeout = function () {
+		if (connected || retryRest <= 0) return;
+		retryRest--;
+		wait += 1000;
+		setTimeout(timeout, wait);
+		backend.connect('init', gotInit);
+	};
+
+	setTimeout(timeout, wait);
+	backend.connect('init', gotInit);
 }
 
 function boot () {
@@ -270,9 +290,7 @@ function boot () {
 				bootVars.bodyHTML + bootVars.iframeSources,
 				null,
 				pageModes[0] == 'reply' ? LEAD_REPLIES_COUNT : null);
-
 			var xml = generateResult.xml;
-			var transitionBackupTimer;
 
 			try {
 				timingLogger.startTag('parsing xsl');
@@ -282,7 +300,7 @@ function boot () {
 			catch (e) {
 				document.body.innerHTML =
 					'akahukuplus: XSL ファイルの DOM ツリー構築に失敗しました。中止します。';
-				$t(document.body.appendChild(document.createElement('div')), e.message);
+				$t(document.body.appendChild(document.createElement('pre')), e.stack);
 				return;
 			}
 
@@ -295,7 +313,7 @@ function boot () {
 			catch (e) {
 				document.body.innerHTML =
 					'akahukuplus: XSL ファイルの評価に失敗しました。中止します。';
-				$t(document.body.appendChild(document.createElement('div')), e.message);
+				$t(document.body.appendChild(document.createElement('pre')), e.stack);
 				return;
 			}
 
@@ -305,7 +323,21 @@ function boot () {
 				document.body.innerHTML = '';
 				xsltProcessor.setParameter(null, 'page_mode', pageModes[0]);
 				xsltProcessor.setParameter(null, 'render_mode', 'full');
-				document.body.appendChild(xsltProcessor.transformToFragment(xml, document));
+
+				var fragment = xsltProcessor.transformToFragment(xml, document);
+				if (!fragment) {
+					throw new Error('Cannot transform and import the XML document.');
+				}
+				var head = fragment.querySelector('head');
+				var body = fragment.querySelector('body');
+				if (head || body) {
+					head && document.head.appendChild(fixFragment(fragment, 'head'));
+					body && document.body.appendChild(fixFragment(fragment, 'body'));
+				}
+				else {
+					document.body.appendChild(fragment);
+				}
+				appendFragment(document.documentElement);
 				timingLogger.endTag();
 
 				// some tweaks: remove obsolete attributes on body element
@@ -329,30 +361,18 @@ function boot () {
 				applyDataBindings(xml);
 
 				function startTransition () {
-					function handleTransitionEnd (e) {
-						if (e) {
-							this.removeEventListener(e.type, arguments.callee, false);
-							if (transitionBackupTimer) {
-								clearTimeout(transitionBackupTimer);
-								transitionBackupTimer = null;
-							}
-						}
+					transitionend('content', function (e) {
 						if (!bootVars) return;
 						bootVars = null;
 
 						install(pageModes[0]);
 
-						timingLogger.endTag('(transitionend' + (e ? '' : ' backup timer') + ')');
+						timingLogger.endTag('(' + e.type + ')');
 						timingLogger.endTag('!');
 						timingLogger.locked = true;
 
 						processRemainingReplies(generateResult.remainingRepliesContext);
-					}
-
-					$('content').addEventListener('transitionend', handleTransitionEnd, false);
-					transitionBackupTimer = setTimeout(
-						handleTransitionEnd,
-						WAIT_AFTER_INIT_TRANSITION);
+					}, WAIT_AFTER_INIT_TRANSITION);
 					$('content').classList.remove('init');
 				}
 
@@ -371,7 +391,7 @@ function boot () {
 			catch (e) {
 				document.body.innerHTML =
 					'akahukuplus: 内部 XML から HTML への変換に失敗しました。中止します。';
-				$t(document.body.appendChild(document.createElement('div')), e.message);
+				$t(document.body.appendChild(document.createElement('pre')), e.stack);
 				return;
 			}
 
@@ -435,10 +455,10 @@ function applyDataBindings (xml) {
 			if (typeof re[1] == 'string' && re[1] != pageModes[0]) continue;
 			try {
 				xsltProcessor.setParameter(null, 'render_mode', re[2]);
-				var f = xsltProcessor.transformToFragment(xml, document);
+				var f = fixFragment(xsltProcessor.transformToFragment(xml, document));
 				if (f.textContent.replace(/^\s+|\s+$/g, '') == '') continue;
 				empty(nodes[i]);
-				nodes[i].appendChild(f);
+				appendFragment(nodes[i], f);
 			}
 			catch (e) {
 				console.error(
@@ -454,8 +474,63 @@ function applyDataBindings (xml) {
  */
 
 function createResourceManager () {
+	function loadViaBackend (path, callback, expires, method) {
+		sendToBackend(
+			'get-resource', {
+				path: path,
+				asDataURL: method == 'readAsDataURL'
+			},
+			function (data) {
+				if (data) {
+					callback(data.data);
+					var slot = {
+						expires: Date.now() + (expires === undefined ? 1000 * 60 * 60 : expires),
+						data: data.data
+					};
+					window.localStorage.setItem(getResKey(path), JSON.stringify(slot));
+				}
+				else {
+					callback(null);
+				}
+			}
+		);
+	}
+	function loadDirectly (path, callback, expires, method) {
+		var file = opera.extension.getFile(path);
+		if (!file) {
+			setTimeout(function () {
+				callback(null);
+				callback = null;
+			}, 1);
+			return;
+		}
+		
+		var fr = new FileReader;
+		fr.onload = function () {
+			callback(fr.result);
+
+			var slot = {
+				expires: Date.now() + (expires === undefined ? 1000 * 60 * 60 : expires),
+				data: fr.result
+			};
+			window.localStorage.setItem(getResKey(path), JSON.stringify(slot));
+
+			callback = fr.onload = fr.onerror = null;
+			fr = null;
+		};
+		fr.onerror = function () {
+			callback(null);
+			callback = fr.onload = fr.onerror = null;
+			fr = null;
+		};
+		fr[method](file);
+	}
+	function getResKey (key) {
+		return 'resource:' + key;
+	}
+
 	function get (key) {
-		var resKey = 'resource:' + key;
+		var resKey = getResKey(key);
 		var opts;
 		var callback;
 
@@ -493,34 +568,12 @@ function createResourceManager () {
 			window.localStorage.removeItem(resKey);
 		}
 
-		var file = opera.extension.getFile(key);
-		if (!file) {
-			setTimeout(function () {
-				callback(null);
-				callback = null;
-			}, 1);
-			return;
+		if (window.opera) {
+			loadDirectly(key, callback, expires, method);
 		}
-		
-		var fr = new FileReader;
-		fr.onload = function () {
-			callback(fr.result);
-
-			var slot = {
-				expires: Date.now() + (expires === undefined ? 1000 * 60 * 60 : expires),
-				data: fr.result
-			};
-			window.localStorage.setItem(resKey, JSON.stringify(slot));
-
-			callback = fr.onload = fr.onerror = null;
-			fr = null;
-		};
-		fr.onerror = function () {
-			callback(null);
-			callback = fr.onload = fr.onerror = null;
-			fr = null;
-		};
-		fr[method](file);
+		else {
+			loadViaBackend(key, callback, expires, method);
+		}
 	}
 
 	return {
@@ -946,7 +999,6 @@ function createXMLGenerator () {
 			anchor.setAttribute('class', linkTargets[index].className);
 			anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
 		}
-		r.detach();
 	}
 
 	function pushComment (node, s) {
@@ -973,6 +1025,9 @@ function createXMLGenerator () {
 				}
 			}
 			else {
+				re = re
+					.replace(/&#([0-9]+);/g, function ($0, $1) {return String.fromCharCode(parseInt($1, 10))})
+					.replace(/&#x([0-9a-f]+);/gi, function ($0, $1) {return String.fromCharCode(parseInt($1, 16))});
 				stack[0].appendChild(text(stack[0].ownerDocument, re));
 				linkify(stack[0]);
 			}
@@ -1267,7 +1322,7 @@ function createXMLGenerator () {
 		 */
 
 		var threadIndex = 0;
-		var threadRegex = /(<br>|<\/div>)(<a[^>]+><img[^>]+><\/a>)?<input type="?checkbox"? name="?\d+"? value="?delete"?[^>]*>.*?<hr>/g;
+		var threadRegex = /(<br>|<\/div>)(<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
 		var matches;
 		markStatistics.start();
 		while ((matches = threadRegex.exec(content))) {
@@ -1851,7 +1906,7 @@ function createClickDispatcher () {
 			result = keys[fragment](e, t);
 		}
 		catch (e) {
-			console.error('clickDispatcher: ' + e.message);
+			console.error('exception in clickDispatcher: ' + e.toString() + '\n' + e.stack);
 			result = undefined;
 		}
 
@@ -2061,7 +2116,7 @@ function createKeyManager () {
 			result = strokes[mode][identifier](virtualKeyboardEvent, document.activeElement);
 		}
 		catch (e) {
-			console.error('keyManager: ' + e.message);
+			console.error('exception in keyManager: ' + e.toString() + '\n' + e.stack);
 			result = undefined;
 		}
 		if (result !== 'passthrough') {
@@ -2191,30 +2246,19 @@ function createSound (name) {
 	}
 }
 
-function createBackendConnector (messageHandler) {
-	function sendToPrestoBackend (command, data, callback) {
-		data || (data = {});
-		if (callback) {
-			var ch = new MessageChannel;
-			ch.port1.onmessage = function (e) {
-				callback && callback(e.data);
-				ch.port1.close();
-				ch = null;
-			};
-			ch.port1.start();
-			opera.extension.postMessage({command:command, data:data}, [ch.port2]);
-		}
-		else {
-			opera.extension.postMessage({command:command, data:data});
-		}
+function sendToBackend (type, data, callback) {
+	var args = Array.prototype.slice.call(arguments), data, callback;
+	if (args.length > 1 && typeof args[args.length - 1] == 'function') {
+		callback = args.pop();
 	}
-
-	if (window.opera) {
-		opera.extension.onmessage = messageHandler;
-		return {
-			send:sendToPrestoBackend
-		};
+	if (args.length > 1) {
+		data = args.pop();
 	}
+	else {
+		data = {};
+	}
+	data.type = type;
+	backend.postMessage(data, callback);
 }
 
 function createMarkStatistics () {
@@ -2806,8 +2850,8 @@ function createCatalogPopup (container) {
 
 	function getRect (elm) {
 		var rect = elm.getBoundingClientRect();
-		var sl = document.documentElement.scrollLeft;
-		var st = document.documentElement.scrollTop;
+		var sl = docScrollLeft();
+		var st = docScrollTop();
 		return {
 			left:   sl + rect.left,
 			top:    st + rect.top,
@@ -2843,7 +2887,7 @@ function createCatalogPopup (container) {
 			thumbnail.className = 'catalog-popup hide';
 			thumbnail.setAttribute('data-url', target.href);
 			thumbnail.addEventListener('click', function (e) {
-				backend.send('open', {url:this.getAttribute('data-url'), selfUrl:window.location.href});
+				sendToBackend('open', {url:this.getAttribute('data-url'), selfUrl:window.location.href});
 			}, false);
 			shrinkedRect = getRect(targetThumbnail);
 		}
@@ -2938,9 +2982,11 @@ function createCatalogPopup (container) {
 		var item = popups[index];
 		if (item.state == 'closing') return;
 
-		var transitionend = function (e) {
-			this.removeEventListener(e.type, arguments.callee, false);
-			this.parentNode && this.parentNode.removeChild(this);
+		var handleTransitionend = function (e) {
+			if (e && e.target) {
+				var t = e.target;
+				t.parentNode && t.parentNode.removeChild(t);
+			}
 			if (item && --item.closingCount <= 0 && item.state == 'closing') {
 				for (var i = 0; i < popups.length; i++) {
 					if (popups[i] == item) {
@@ -2955,12 +3001,12 @@ function createCatalogPopup (container) {
 
 		var count = 0;
 		if (item.thumbnail) {
-			item.thumbnail.addEventListener('transitionend', transitionend, false);
+			transitionend(item.thumbnail, handleTransitionend);
 			setGeometory(item.thumbnail, item.shrinkedRect);
 			count++;
 		}
 		if (item.text) {
-			item.text.addEventListener('transitionend', transitionend, false);
+			transitionend(item.text, handleTransitionend);
 			item.text.classList.remove('run');
 			count++;
 		}
@@ -3264,8 +3310,8 @@ function createQuotePopup () {
 		div.style.left = div.style.top = '0';
 		var w = div.offsetWidth;
 		var h = div.offsetHeight;
-		var sl = document.documentElement.scrollLeft;
-		var st = document.documentElement.scrollTop;
+		var sl = docScrollLeft();
+		var st = docScrollTop();
 		var cw = viewportRect.width;
 		var ch = viewportRect.height;
 		var l = Math.max(0, Math.min(cursorPos.pagex + POPUP_POS_OFFSET, sl + cw - w));
@@ -3322,7 +3368,7 @@ function createQuotePopup () {
 		&& !target.classList.contains('reply-wrap')) return;
 
 		target.classList.add('highlight');
-		var st = document.documentElement.scrollTop;
+		var st = docScrollTop();
 		var y = Math.max(0, target.getBoundingClientRect().top + st - POPUP_HIGHLIGHT_TOP_MARGIN);
 		y < st && window.scrollTo(0, y);
 		removePopup();
@@ -3386,8 +3432,8 @@ function createSelectionMenu () {
 
 		var w = menu.offsetWidth;
 		var h = menu.offsetHeight;
-		var sl = document.documentElement.scrollLeft;
-		var st = document.documentElement.scrollTop;
+		var sl = docScrollLeft();
+		var st = docScrollTop();
 		var cw = viewportRect.width;
 		var ch = viewportRect.height;
 		var l = Math.max(0, Math.min(cursorPos.pagex, sl + cw - w));
@@ -3415,14 +3461,11 @@ function createSelectionMenu () {
 
 		case 'copy':
 		case 'copy-with-quote':
-			backend.send('copy-to-clipboard',
-				{
-					content:key == 'copy' ? text : getQuoted(text)
-				});
+			backend.setClipboard(key == 'copy' ? text : getQuoted(text));
 			break;
 
 		case 'google':
-			backend.send('open',
+			sendToBackend('open',
 				{
 					url:'https://www.google.com/search?hl=ja&q=' +
 						encodeURIComponent(text).replace(/%20/g, '+'),
@@ -3430,7 +3473,7 @@ function createSelectionMenu () {
 				});
 			break;
 		case 'amazon':
-			backend.send('open',
+			sendToBackend('open',
 				{
 					url:'http://www.amazon.co.jp/' +
 						'exec/obidos/external-search' +
@@ -3440,7 +3483,7 @@ function createSelectionMenu () {
 				});
 			break;
 		case 'wikipedia':
-			backend.send('open',
+			sendToBackend('open',
 				{
 					url:'http://ja.wikipedia.org/wiki/' +
 						'%E7%89%B9%E5%88%A5:Search?search=' +
@@ -3450,7 +3493,7 @@ function createSelectionMenu () {
 				});
 			break;
 		case 'youtube':
-			backend.send('open',
+			sendToBackend('open',
 				{
 					url:'http://www.youtube.com/results?search_query=' +
 						encodeURIComponent(text).replace(/%20/g, '+') +
@@ -3504,6 +3547,7 @@ function createFavicon () {
 		var link = document.head.appendChild(document.createElement('link'));
 		link.setAttribute('rel', 'icon');
 		link.setAttribute('id', FAVICON_ID);
+		link.setAttribute('type', 'image/png');
 		return link;
 	}
 
@@ -3531,33 +3575,45 @@ function createFavicon () {
 			clipSize, clipSize, 0, 0, canvas.width, canvas.height);
 
 		var ps = c.getImageData(0, 0, w * factor, h * factor);
-		var pd = c.createImageData ? c.createImageData(w, h) : new ImageData(w, h);
-		var factorPower = Math.pow(factor, 2);
-		for (var i = 0; i < h; i++) {
-			for (var j = 0; j < w; j++) {
-				var avg = [0, 0, 0, 0];
-
-				for (var k = 0; k < factor; k++) {
-					for (var l = 0; l < factor; l++) {
-						avg[0] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 0];
-						avg[1] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 1];
-						avg[2] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 2];
-						avg[3] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 3];
-					}
-				}
-
-				for (var k = 0; k < 4; k++) {
-					avg[k] = Math.floor(avg[k] / factorPower);
-					avg[k] += (255 - avg[k]) / 8;
-					pd.data[(i * w + j) * 4 + k] = Math.min(255, avg[k]);
-				}
-			}
+		var pd;
+		if (window.unsafeWindow && window.unsafeWindow.ImageData) {
+			pd = new window.unsafeWindow.ImageData(w, h);
+		}
+		else if (c.createImageData) {
+			pd = c.createImageData(w, h);
+		}
+		else if (window.ImageData) {
+			pd = new window.ImageData(w, h);
 		}
 
-		canvas.width = w;
-		canvas.height = h;
-		canvas.getContext('2d').putImageData(pd, 0, 0);
-		favicon.href = canvas.toDataURL('image/png');
+		if (pd) {
+			var factorPower = Math.pow(factor, 2);
+			for (var i = 0; i < h; i++) {
+				for (var j = 0; j < w; j++) {
+					var avg = [0, 0, 0, 0];
+
+					for (var k = 0; k < factor; k++) {
+						for (var l = 0; l < factor; l++) {
+							avg[0] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 0];
+							avg[1] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 1];
+							avg[2] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 2];
+							avg[3] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 3];
+						}
+					}
+
+					for (var k = 0; k < 4; k++) {
+						avg[k] = Math.floor(avg[k] / factorPower);
+						avg[k] += (255 - avg[k]) / 8;
+						pd.data[(i * w + j) * 4 + k] = Math.min(255, avg[k]);
+					}
+				}
+			}
+
+			canvas.width = w;
+			canvas.height = h;
+			canvas.getContext('2d').putImageData(pd, 0, 0);
+			favicon.href = canvas.toDataURL('image/png');
+		}
 
 		c = null;
 		canvas = null;
@@ -3595,7 +3651,7 @@ function createFavicon () {
 				{method:'readAsDataURL'},
 				function (data) {
 					if (data) {
-						createLinkNode().href = data;
+						createLinkNode().href = data.replace(/^data:[^,]+/, 'data:image/png;base64');
 					}
 					isLoading = false;
 				}
@@ -3633,6 +3689,21 @@ function createFavicon () {
 	};
 }
 
+function createHistoryStateWrapper (popstateHandler) {
+	window.addEventListener('popstate', popstateHandler, false);
+	return {
+		pushState: function (url) {
+			window.history.pushState(null, '', url);
+		},
+		updateHash: function (hash) {
+			hash = '#' + hash.replace(/^#/, '');
+			window.removeEventListener('popstate', popstateHandler, false);
+			window.location.hash = hash;
+			window.addEventListener('popstate', popstateHandler, false);
+		}
+	};
+}
+
 /*
  * {{{1 page set-up functions
  */
@@ -3641,7 +3712,7 @@ function setupSticky (selector, initCallback, aMarginTop) {
 	var marginTop = undefined;
 
 	function handleScroll () {
-		var scrollTop = document.documentElement.scrollTop;
+		var scrollTop = lastScrollTop = docScrollTop();
 
 		var nodes = document.querySelectorAll(selector);
 		for (var i = 0, goal = nodes.length; i < goal; i++) {
@@ -3689,7 +3760,7 @@ function setupSticky (selector, initCallback, aMarginTop) {
 			marginTop = aMarginTop;
 		}
 		else {
-			marginTop += document.documentElement.scrollTop;
+			marginTop += docScrollTop();
 		}
 		window.addEventListener('scroll', handleScroll, false);
 		handleScroll();
@@ -3717,7 +3788,7 @@ function setupParallax (selector) {
 		if (rect.height > viewportRect.height) {
 			var stickyRange = rect.height - viewportRect.height + marginTop + 16;
 			var scrollRange = document.documentElement.scrollHeight - viewportRect.height;
-			var scrollTop = document.documentElement.scrollTop;
+			var scrollTop = docScrollTop();
 			var value = marginTop - Math.floor(scrollTop / scrollRange * stickyRange);
 			node.style.top = value + 'px';
 		}
@@ -3827,7 +3898,7 @@ function setupWheelReload () {
 
 		var now = Date.now();
 		var wheelDelta = e.wheelDelta;
-		var st = document.documentElement.scrollTop;
+		var st = docScrollTop();
 		var sh = document.documentElement.scrollHeight;
 
 		if (wheelDelta > 0 || st < sh - viewportRect.height) {
@@ -3897,7 +3968,7 @@ function setupPostShadowMouseEvent (tabContent, nodeName, className) {
 		].join(','));
 		if (!unit) return;
 
-		var st = document.documentElement.scrollTop;
+		var st = docScrollTop();
 		var rect = unit.getBoundingClientRect();
 		scrollTop = st;
 		if (rect.top < 0 || rect.bottom >= viewportRect.height) {
@@ -3958,15 +4029,15 @@ function install (mode) {
 	 * connection to backend
 	 */
 
-	backend = createBackendConnector(function (e) {
-		switch (e.data.type) {
+	backend.setMessageListener(function (data) {
+		switch (data.type) {
 		case 'fileio-authorize-response':
 		case 'fileio-write-response':
-			var anchor = $(e.data.anchorId);
+			var anchor = $(data.anchorId);
 
 			var message;
-			if (e.data.error || e.data.state == 'complete') {
-				if (e.data.error) {
+			if (data.error || data.state == 'complete') {
+				if (data.error) {
 					message = '保存失敗';
 				}
 				else {
@@ -3980,7 +4051,7 @@ function install (mode) {
 				}, 1000 * 3, anchor);
 			}
 			else {
-				switch (e.data.state) {
+				switch (data.state) {
 				case 'authorizing':	message = '認可の確認中...'; break;
 				case 'buffered':	message = 'バッファ済み...'; break;
 				case 'writing':		message = '書き込み中...'; break;
@@ -4037,7 +4108,7 @@ function install (mode) {
 			t.id = id;
 			$t(t, '保存中...');
 
-			backend.send('save-image', {
+			sendToBackend('save-image', {
 				url:href,
 				path:config.data.storage.value + ':' + f,
 				mimeType:getImageMimeType(href),
@@ -4050,7 +4121,7 @@ function install (mode) {
 			});
 		})
 		.add('.switch-to', function (e, t) {
-			window.history.pushState(null, '', t.href);
+			historyStateWrapper.pushState(t.href);
 			commands.reload();
 		})
 		.add('.lightbox', function (e, t) {
@@ -4107,7 +4178,7 @@ function install (mode) {
 
 			e.preventDefault();
 			e.stopPropagation();
-			backend.send('open', {url:t.href, selfUrl:window.location.href});
+			sendToBackend('open', {url:t.href, selfUrl:window.location.href});
 		})
 
 	/*
@@ -4134,12 +4205,12 @@ function install (mode) {
 		.addStroke('command.edit', ['esc', 'c-['], commands.deactivatePostForm)
 		.addStroke('command.edit', 'c-s', commands.toggleSage)
 		.addStroke('command.edit', 's-enter', commands.post)
-		.addStroke('command.edit', 'm-a', commands.cursorTopOfLine)
-		.addStroke('command.edit', 'm-e', commands.cursorBottomOfLine)
-		.addStroke('command.edit', 'c-p', commands.cursorPrev)
-		.addStroke('command.edit', 'c-n', commands.cursorNext)
-		.addStroke('command.edit', 'c-b', commands.cursorBack)
-		.addStroke('command.edit', 'c-f', commands.cursorForward)
+		//.addStroke('command.edit', 'm-a', commands.cursorTopOfLine)
+		//.addStroke('command.edit', 'm-e', commands.cursorBottomOfLine)
+		//.addStroke('command//.edit', 'c-p', commands//.cursorPrev)
+		//.addStroke('command//.edit', 'c-n', commands//.cursorNext)
+		//.addStroke('command//.edit', 'c-b', commands//.cursorBack)
+		//.addStroke('command//.edit', 'c-f', commands//.cursorForward)
 		.addStroke('command.edit', 'enter', function (e, t) {
 			switch (t.id) {
 			case 'search-text':
@@ -4164,13 +4235,13 @@ function install (mode) {
 	 */
 
 	setupWindowResizeEvent(window, function (e) {
-		var style = $('dynstyle-comment-maxwidth');
-		if (!style) return;
-
 		var vp = document.body.appendChild(document.createElement('div'));
 		vp.id = 'viewport-rect';
 		viewportRect = vp.getBoundingClientRect();
 		vp.parentNode.removeChild(vp);
+
+		var style = $('dynstyle-comment-maxwidth');
+		if (!style) return;
 		empty(style);
 
 		var text = document.querySelector('article div.text');
@@ -4207,9 +4278,9 @@ function install (mode) {
 	 * history handler
 	 */
 
-	window.addEventListener('popstate', function (e) {
+	historyStateWrapper = createHistoryStateWrapper(function () {
 		commands.reload();
-	}, false);
+	});
 
 	/*
 	 * mouse cursor tracker
@@ -4353,7 +4424,7 @@ function install (mode) {
 		if (!article) return;
 		setupSticky(
 			'article > .image > div', null,
-			article.getBoundingClientRect().top + document.documentElement.scrollTop);
+			article.getBoundingClientRect().top + docScrollTop());
 	})(document.querySelector('article'));
 
 	/*
@@ -4551,7 +4622,7 @@ function lightbox (anchor, ignoreThumbnail) {
 				.forEach(function (p) {image.style[p] = rect[p] + 'px'});
 
 			if (!dropEndEvent) {
-				image.addEventListener('transitionend', handleImageTransitionEnd, false);
+				transitionend(image, handleImageTransitionEnd);
 				isInTransition = true;
 			}
 		}
@@ -4700,8 +4771,6 @@ function lightbox (anchor, ignoreThumbnail) {
 	}
 
 	function handleImageTransitionEnd (e) {
-		e && this.removeEventListener(e.type, arguments.callee, false);
-
 		// show info panel
 		lightboxWrap.querySelector('.info').classList.remove('hide');
 
@@ -4931,12 +5000,13 @@ function lightbox (anchor, ignoreThumbnail) {
 				|| window.navigator.language
 				|| window.navigator.userLanguage).toLowerCase()
 			+ '&image_url=' + encodeURIComponent(image.src);
-			backend.send('open', {url:url, selfUrl:window.location.href});
+			sendToBackend('open', {url:url, selfUrl:window.location.href});
 	}
 
 	function handleStroke (e) {
 		var ev = document.createEvent('MouseEvents');
-		ev.initMouseEvent('mousewheel', true, true, window,
+		ev.initMouseEvent(
+			'mousewheel', true, true, window.unsafeWindow || window,
 			0, 0, 0, 0, 0,
 			e.ctrl, false, e.shift, false,
 			0, null);
@@ -4963,12 +5033,11 @@ function lightbox (anchor, ignoreThumbnail) {
 
 		selectionMenu.enabled = true;
 
-		dimmer.addEventListener('transitionend', function (e) {
-			this.removeEventListener(e.type, arguments.callee, false);
+		transitionend(dimmer, function () {
 			lightboxWrap.classList.add('hide');
 			anchor = image = lightboxWrap = dimmer = imageWrap = receiver = null;
 			appStates.shift();
-		}, false);
+		});
 
 		setTimeout(function () {
 			dimmer.classList.remove('run');
@@ -4989,7 +5058,7 @@ function modalDialog (opts) {
 	var dimmer;
 	var state = 'initializing';
 	var isPending = false;
-	var scrollTop = document.documentElement.scrollTop;
+	var scrollTop = docScrollTop();
 
 	function getRemoteController () {
 		return {
@@ -5088,14 +5157,14 @@ function modalDialog (opts) {
 					}
 
 					try {
-						f = p.transformToFragment(xml, document);
+						f = fixFragment(p.transformToFragment(xml, document));
 					}
 					catch (e) {
 						console.error('transformToFragment failed: ' + e.message);
 						return;
 					}
 
-					f && content.appendChild(f);
+					appendFragment(content, f);
 				}
 				finally {
 					isPending = false;
@@ -5127,7 +5196,7 @@ function modalDialog (opts) {
 		state = 'running';
 
 		setTimeout(function () {
-			document.documentElement.scrollTop = scrollTop;
+			window.scrollTo(0, scrollTop);
 			contentWrap.classList.add('run');
 			dimmer.classList.add('run');
 		}, 0);
@@ -5175,13 +5244,12 @@ function modalDialog (opts) {
 		contentWrap.removeEventListener('mousemove', handleMouseCancel, false);
 		contentWrap.removeEventListener('mouseup', handleMouseCancel, false);
 
-		contentWrap.addEventListener('transitionend', function (e) {
-			this.removeEventListener(e.type, arguments.callee, false);
+		transitionend(contentWrap, function () {
 			opts.onclose && opts.onclose(content);
 			dialogWrap.classList.add('hide');
 			dialogWrap = contentWrap = content = dimmer = null;
 			appStates.shift();
-		}, false);
+		});
 
 		setTimeout(function () {
 			contentWrap.classList.remove('run');
@@ -5221,7 +5289,29 @@ function empty (node) {
 	var r = document.createRange();
 	r.selectNodeContents(node);
 	r.deleteContents();
-	r.detach();
+}
+
+function fixFragment (f, tagName) {
+	var element = f.querySelector(tagName || 'body');
+	if (!element) return f;
+	var r = document.createRange();
+	r.selectNodeContents(element);
+	return r.cloneContents();
+}
+
+function appendFragment (container, f) {
+	container = $(container);
+	if (!container) return;
+	if (f) container.appendChild(f);
+	Array.prototype.forEach.call(
+		document.querySelectorAll('[data-doe]'),
+		function (node) {
+			var doe = node.getAttribute('data-doe');
+			node.removeAttribute('data-doe');
+			node.insertAdjacentHTML('beforeend', doe);
+		}
+	);
+	return container;
 }
 
 function resolveRelativePath (url, baseUrl) {
@@ -5291,9 +5381,13 @@ function getCatalogSettings () {
 }
 
 function setBottomStatus (s, persistent) {
-	document.dispatchEvent(new window.CustomEvent('Akahukuplus.bottomStatus', {detail:{
-		message: s,
-		persistent: persistent}}));
+	var ev = document.createEvent('CustomEvent');
+	ev.initCustomEvent('Akahukuplus.bottomStatus', true, true, {
+		detail:{
+			message: s,
+			persistent: persistent}
+	});
+	document.dispatchEvent(ev);
 }
 
 function getDOMFromString (s) {
@@ -5435,6 +5529,44 @@ function getPostNumber (element) {
 	}
 
 	return null;
+}
+
+function docScrollTop () {
+	return Math.max(
+		document.documentElement.scrollTop,
+		document.body.scrollTop);
+}
+
+function docScrollLeft () {
+	return Math.max(
+		document.documentElement.scrollLeft,
+		document.body.scrollLeft);
+}
+
+function transitionend (element, callback, backupMsec) {
+	element = $(element);
+	if (!element) return;
+
+	var backupTimer;
+	var handler = function (e) {
+		if (backupTimer) {
+			clearTimeout(backupTimer);
+			backupTimer = null;
+		}
+		if (element) {
+			element.removeEventListener('transitionend', arguments.callee, false);
+		}
+		if (callback) {
+			callback.call(element, e);
+		}
+		handler = element = callback = e = null;
+	};
+
+	element.addEventListener('transitionend', handler, false);
+	backupTimer = setTimeout(handler, backupMsec || 3000, {
+		type: 'transitionend-backup',
+		target: element,
+	});
 }
 
 /*
@@ -5611,7 +5743,7 @@ function postBase (type, form, callback) {
 
 	transport = new window.XMLHttpRequest;
 	transportType = type;
-	backend.send('iconv', getIconvPayload(form), handleIconv);
+	sendToBackend('iconv', getIconvPayload(form), handleIconv);
 }
 
 function resetForm () {
@@ -5918,7 +6050,7 @@ function extractTweets () {
 
 	for (var i = 0; i < tweets.length && i < 10; i++) {
 		var id = tweets[i].getAttribute('data-tweet-id');
-		id && backend.send('get-tweet', {url:tweets[i].href, id:id}, getHandler(tweets[i]));
+		id && sendToBackend('get-tweet', {url:tweets[i].href, id:id}, getHandler(tweets[i]));
 		tweets[i].classList.remove('link-twitter');
 	}
 
@@ -5957,7 +6089,7 @@ function extractIncompleteFiles () {
 
 	for (var i = 0; i < files.length && i < 10; i++) {
 		var id = files[i].getAttribute('data-basename');
-		id && backend.send('complete', {url:files[i].href, id:id}, getHandler(files[i]));
+		id && sendToBackend('complete', {url:files[i].href, id:id}, getHandler(files[i]));
 		files[i].classList.remove('incomplete');
 	}
 
@@ -6249,10 +6381,10 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 
 				try {
 					timingLogger.startTag('generate new replies xml');
-					var f = xsltProcessor.transformToFragment(xml, document);
+					var f = fixFragment(xsltProcessor.transformToFragment(xml, document));
 					if (f.querySelector('.reply-wrap')) {
 						lowBoundNumber >= 0 && createRule(container);
-						container.appendChild(f);
+						appendFragment(container, f);
 						stripTextNodes(container);
 						worked = true;
 					}
@@ -6306,7 +6438,7 @@ function scrollToNewReplies () {
 	var rule = getRule();
 	if (!rule) return;
 
-	var scrollTop = document.documentElement.scrollTop;
+	var scrollTop = docScrollTop();
 	var diff = rule.nextSibling.getBoundingClientRect().top - Math.floor(viewportRect.height / 2);
 	if (diff <= 0) return;
 
@@ -6341,12 +6473,11 @@ function setPostThumbnailVisibility (visible) {
 
 	thumb.classList.remove('hide');
 
-	thumb.addEventListener('transitionend', function (e) {
-		this.removeEventListener(e.type, arguments.callee, false);
-		if (!this.classList.contains('run')) {
-			this.classList.add('hide');
+	transitionend(thumb, function (e) {
+		if (!e.target.classList.contains('run')) {
+			e.target.classList.add('hide');
 		}
-	}, false);
+	});
 
 	setTimeout(function () {
 		if (visible) {
@@ -6449,10 +6580,9 @@ function showPanel (callback) {
 
 	if (panel.classList.contains('hide') && !panel.classList.contains('run')) {
 		panel.classList.remove('hide');
-		callback && panel.addEventListener('transitionend', function (e) {
-			this.removeEventListener(e.type, arguments.callee, false);
-			callback(this);
-		}, false);
+		callback && transitionend(panel, function (e) {
+			callback(e.target);
+		});
 		setTimeout(function () {panel.classList.add('run')}, 0);
 	}
 }
@@ -6467,13 +6597,11 @@ function hidePanel (callback) {
 	}
 
 	if (!panel.classList.contains('hide') && panel.classList.contains('run')) {
-		panel.addEventListener('transitionend', function (e) {
-			this.removeEventListener(e.type, arguments.callee, false);
-			this.classList.add('hide');
+		transitionend(panel, function (e) {
+			e.target.classList.add('hide');
 			$('ad-aside-wrap').classList.remove('hide');
-			callback && callback(this);
-		}, false);
-
+			callback && callback(e.target);
+		});
 		setTimeout(function () {panel.classList.remove('run')}, 0);
 	}
 }
@@ -6532,18 +6660,19 @@ var commands = {
 		setPostThumbnailVisibility(false);
 	},
 	scrollPage: function (e) {
-		var st = document.documentElement.scrollTop;
+		var st = docScrollTop();
 		var sh = document.documentElement.scrollHeight;
-		if (e.shift || st < sh - viewportRect.height) {
-			window.scrollTo(0, st + Math.floor(viewportRect.height * 0.75) * (e.shift ? -1 : 1));
-		}
-		else {
+		if (!e.shift && lastScrollTop >= sh - viewportRect.height) {
 			var ev = document.createEvent('MouseEvents');
-			ev.initMouseEvent('mousewheel', true, true, window,
+			var view = window.unsafeWindow || window;
+			ev.initMouseEvent('mousewheel', true, true, view,
 				0, 0, 0, 0, 0,
 				false, false, false, false,
 				0, null);
-			window.dispatchEvent(ev);
+			view.dispatchEvent(ev);
+		}
+		else {
+			return 'passthrough';
 		}
 	},
 	clearUpfile: function () {
@@ -6554,14 +6683,14 @@ var commands = {
 		if (pageModes[0] != 'summary') return;
 		var current = document.querySelector('.nav .nav-links .current');
 		if (!current || !current.previousSibling) return;
-		window.history.pushState(null, '', current.previousSibling.href);
+		historyStateWrapper.pushState(current.previousSibling.href);
 		commands.reload();
 	},
 	summaryNext: function () {
 		if (pageModes[0] != 'summary') return;
 		var current = document.querySelector('.nav .nav-links .current');
 		if (!current || !current.nextSibling) return;
-		window.history.pushState(null, '', current.nextSibling.href);
+		historyStateWrapper.pushState(current.nextSibling.href);
 		commands.reload();
 	},
 
@@ -6643,7 +6772,7 @@ var commands = {
 
 						timingLogger.startTag('transforming');
 						xsltProcessor.setParameter(null, 'render_mode', 'threads');
-						var result = xsltProcessor.transformToFragment(xml, document);
+						var result = fixFragment(xsltProcessor.transformToFragment(xml, document));
 						timingLogger.endTag();
 
 						return result;
@@ -6664,7 +6793,7 @@ var commands = {
 					empty(content);
 					window.scrollTo(0, 0);
 					content.style.height = '';
-					content.appendChild(fragment);
+					appendFragment(content, fragment);
 					fragment = null;
 					timingLogger.endTag();
 
@@ -6673,9 +6802,8 @@ var commands = {
 						timingLogger.endTag();
 
 						timingLogger.startTag('transition');
-						content.addEventListener('transitionend', function (e) {
+						transitionend(content, function () {
 							timingLogger.endTag();
-							this.removeEventListener(e.type, arguments.callee, false);
 							footer.classList.remove('hide');
 							footer = null;
 
@@ -6684,7 +6812,7 @@ var commands = {
 							extractIncompleteFiles();
 
 							timingLogger.endTag();
-						}, false);
+						});
 						content.classList.remove('init');
 						content = indicator = null;
 					}, 0);
@@ -7072,7 +7200,7 @@ var commands = {
 					setTimeout(function () {
 						commands.deactivatePostForm();
 						setPostThumbnail();
-						resetForm('com', 'upfile', 'textonly');
+						resetForm('com', 'upfile', 'textonly', 'baseform');
 						setBottomStatus('投稿完了');
 
 						var pageMode = pageModes[0];
@@ -7084,7 +7212,7 @@ var commands = {
 						case 'summary':
 						case 'catalog':
 							if (result.redirect != '') {
-								backend.send(
+								sendToBackend(
 									'open',
 									{url:result.redirect, selfUrl:window.location.href});
 							}
@@ -7544,7 +7672,7 @@ var commands = {
 			if (active && active.childNodes.length == 0) {
 				commands.reloadCatalog();
 			}
-			window.location.hash = '#mode=cat';
+			historyStateWrapper.updateHash('#mode=cat');
 		}
 		else {
 			threads.classList.remove('hide');
@@ -7554,7 +7682,7 @@ var commands = {
 			$t(document.querySelector('#header a[href="#catalog"]'), 'カタログ');
 			catalogPopup.deleteAll();
 			pageModes.shift();
-			window.location.hash = '';
+			historyStateWrapper.updateHash('');
 		}
 	},
 	updateCatalogSettings: function (settings) {
@@ -7664,7 +7792,8 @@ var commands = {
 					var div = result.appendChild(document.createElement('div'));
 					div.textContent = text;
 					div.className = 'a';
-					div.setAttribute('data-number', node.querySelector('[data-number]').getAttribute('data-number'));
+					div.setAttribute('data-number',
+						node.getAttribute('data-number') || node.querySelector('[data-number]').getAttribute('data-number'));
 					matched++;
 				}
 			}

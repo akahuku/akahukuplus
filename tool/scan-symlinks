@@ -82,23 +82,9 @@ function makeBat ($dir, $indent = '')
 function makeShellScript ($dir, $indent = '')
 {
 	global $result;
-	global $baseDirLength;
 
 	$handle = opendir($dir);
 	if ($handle) {
-		$pushd = "";
-		$popd = "";
-
-		$cdDir = realpath($dir);
-		if ($indent != "") {
-			$cdDir = substr($cdDir, $baseDirLength);
-			if ($cdDir != "") {
-				$indent2 = preg_replace('/\t$/', '', $indent);
-				$result[] = $indent2 . "cd " . $cdDir;
-				$popd = $indent2 . "cd ..";
-			}
-		}
-
 		while (($file = readdir($handle)) !== false) {
 			if ($file == "." || $file == "..") continue;
 
@@ -106,20 +92,33 @@ function makeShellScript ($dir, $indent = '')
 			if (is_link($file)) {
 				$target = readlink($file);
 
-				$result[] = $indent
-					. "ln -s"
-					. " " . $target
-					. " " . basename($file);
+				if (basename($target) == basename($file)) {
+					$result[] = $indent
+						. "ln -s"
+						. " " . $target;
+				}
+				else {
+					$result[] = $indent
+						. "ln -s"
+						. " " . $target
+						. " " . basename($file);
+				}
 			}
 
 			if (!is_link($file) && is_dir($file)) {
-				$result[] = "mkdir " . basename($file);
-				makeShellScript($file, $indent . "\t");
-			}
-		}
+				$result[] = $indent . "mkdir -p " . basename($file);
+				$result[] = $indent . "cd " . basename($file);
+				$currentCount = count($result);
 
-		if ($popd != "") {
-			$result[] = $popd;
+				makeShellScript($file, $indent . "  ");
+
+				if (count($result) > $currentCount) {
+					$result[] = $indent . "cd ..";
+				}
+				else {
+					array_pop($result);
+				}
+			}
 		}
 
 		closedir($handle);

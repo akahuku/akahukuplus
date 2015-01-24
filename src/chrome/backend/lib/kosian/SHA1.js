@@ -26,10 +26,12 @@ var CybozuLabs = {
 		swap16 : function(i16) {
 			return (i16 >> 8) | ((i16 << 8) & 0xff00);
 		},
+		/*
 		put : function(x) {
 			x |= 0;
 			document.write("0x" + Number(x < 0 ? x + 4294967296 : x).toString(16) + "<br>");
 		},
+		 */
 		update_Fx : function(buf, charSize) {
 			var WL = [];
 			var WH = [];

@@ -1,0 +1,16 @@
+kosian
+======
+
+copyright 2014 akahuku, akahuku@gmail.com
+
+
+
+This product includes the following libraries:
+
+* blowfish - Javascript Blowfish Library
+
+  <https://github.com/takezoh/blowfish.js>
+
+* sha1.js
+
+  <http://labs.cybozu.co.jp/blog/mitsunari/sha1/>

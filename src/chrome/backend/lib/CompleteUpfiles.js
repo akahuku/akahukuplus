@@ -89,8 +89,8 @@
 		sa: {base: 'http://www.nijibox6.com/futabafiles/001/',   method: completeSiokaraLink},
 		sp: {base: 'http://www.nijibox2.com/futabafiles/003/',   method: completeSiokaraLink},
 		ss: {base: 'http://www.nijibox5.com/futabafiles/kobin/', method: completeSiokaraLink},
-		su: {base: 'http://www.nijibox5.com/futabafiles/tubu/',   method: completeSiokaraLink},
-		sq: {base: 'http://www.nijibox6.com/futabafiles/mid/',    method: completeSiokaraLink},
+		su: {base: 'http://www.nijibox5.com/futabafiles/tubu/',  method: completeSiokaraLink},
+		sq: {base: 'http://www.nijibox6.com/futabafiles/mid/',   method: completeSiokaraLink},
 
 		f:  {base: 'http://dec.2chan.net/up/',  method: completeUpLink},
 		fu: {base: 'http://dec.2chan.net/up2/', method: completeUpLink}
@@ -112,6 +112,8 @@
 		}
 
 		map[re[1]].method.call(this, id, map[re[1]].base, callback);
+
+		return true;
 	};
 
 	exports.CompleteUpfiles = CompleteUpfiles;

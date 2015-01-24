@@ -1,0 +1,52 @@
+{
+  "manifest_version": 2,
+  "name": "__MSG_akahukuplus_name__",
+  "short_name": "__MSG_akahukuplus_name__",
+  "version": "0.0.1",
+  "description": "__MSG_akahukuplus_desc__",
+  "default_locale": "ja",
+  "icons": {
+     "48": "images/icon048.png",
+    "128": "images/icon128.png"
+  },
+  "permissions": [
+    "tabs", "clipboardRead", "clipboardWrite",
+    "https://*.dropbox.com/*",
+    "https://*.google.com/*",
+    "https://*.googleapis.com/*",
+    "https://apis.live.net/*"
+  ],
+  "background": {
+    "page": "backend/main.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*.2chan.net/*/*.htm",
+        "http://*.2chan.net/*/res/*.htm"
+      ],
+      "exclude_matches": [
+        "http://dec.2chan.net/up/*",
+        "http://dec.2chan.net/up2/*"
+      ],
+      "js": [
+        "frontend/extension_wrapper.js",
+        "frontend/akahuku-extreme.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "http://*.2chan.net/*/futaba.php"
+      ],
+      "js": [
+        "frontend/trampoline.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "homepage_url": "http://appsweets.net/akahukuplus/",
+  "update_url":"https://github.com/akahuku/akahukuplus/raw/master/dist/chrome.xml"
+}

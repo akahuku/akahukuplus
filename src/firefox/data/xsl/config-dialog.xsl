@@ -1,0 +1,1 @@
+../../../chrome/xsl/config-dialog.xsl

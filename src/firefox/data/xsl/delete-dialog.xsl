@@ -1,0 +1,1 @@
+../../../chrome/xsl/delete-dialog.xsl

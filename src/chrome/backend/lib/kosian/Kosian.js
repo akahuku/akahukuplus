@@ -3,30 +3,34 @@
  *
  * @author akahuku@gmail.com
  */
+/**
+ * Copyright 2014 akahuku, akahuku@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 (function () {
 	'use strict';
 
 	var instance;
-	var conditions = [];
+	var bearer = null;
 
-	function noimpl () {console.error('not implemented')}
+	function noimpl () {
+		console.error('not implemented');
+	}
 
 	function Kosian (global, options) {
 		if (this instanceof Kosian) {
-			this.appName = 'wow!';
-			this.cryptKeyPath = '';
-			this.openBaseURLPattern = null;
-			this.utils = require('./kosian/Utils').Utils;
-			this.storage = require('./kosian/StorageWrapper').StorageWrapper(global);
-			this.tabWatcher = require('./kosian/TabWatcher').TabWatcher(global, this.emit);
-			this.resourceLoader = require('./kosian/ResourceLoader').ResourceLoader(global, {
-				transportGetter: this.createTransport,
-				emitter: this.emit
-			});
-			this.fileSystem = require('./kosian/FileSystem').FileSystem(this, options.fstab);
-
-			this.setOptions(options);
 			return this;
 		}
 
@@ -34,20 +38,37 @@
 			return instance;
 		}
 
-		if (!global) {
-			throw new Error('global object not passed.');
+		if (bearer) {
+			if (!global) {
+				throw new Error('global object not passed.');
+			}
+
+			try {
+				instance = bearer(global, options);
+				instance.appName = 'wow!';
+				instance.logMode = false;
+				instance.cryptKeyPath = '';
+				instance.openBaseURLPattern = null;
+				instance.utils = require('kosian/Utils').Utils;
+				instance.storage = require('kosian/StorageWrapper').StorageWrapper(global);
+				instance.tabWatcher = require('kosian/TabWatcher').TabWatcher(global, instance.emit);
+				instance.resourceLoader = require('kosian/ResourceLoader').ResourceLoader(global, {
+					transportGetter: instance.createTransport,
+					emitter: instance.emit
+				});
+				instance.fileSystem = require('kosian/FileSystem').FileSystem(instance, options.fstab);
+				instance.clipboard = require('kosian/Clipboard').Clipboard(global);
+				instance.sound = require('kosian/Sound').Sound();
+
+				instance.setOptions(options);
+			}
+			catch (e) {
+				console.error(e.message);
+				instance = null;
+			}
 		}
 
-		conditions.some(function (condition) {
-			var result = condition(global, options);
-			if (result) {
-				instance = result;
-				return true;
-			}
-		});
-
 		if (!instance) {
-			instance = null;
 			throw new Error('Unknown platform. stop.');
 		}
 
@@ -66,24 +87,41 @@
 		}},
 
 		setAppName: {value: function (arg) {
+			var result = this.appName;
 			arg = arg + '';
 			this.appName = arg;
+			return result;
+		}},
+
+		setLogMode: {value: function (arg) {
+			var result = this.logMode;
+			this.logMode = !!arg;
+			return result;
 		}},
 
 		setCryptKeyPath: {value: function (arg) {
+			var result = this.cryptKeyPath;
 			arg = arg + '';
 			this.cryptKeyPath = arg;
+			return result;
 		}},
 
 		setOpenBaseUrlPattern: {value: function (pattern) {
-			if (!(pattern instanceof RegExp)) return;
-			this.openBaseURLPattern = pattern;
+			var result = this.openBaseURLPattern;
+			/*
+			 * In a very strange thing,
+			 * Firefox 36+ assumes that pattern is NOT RegExp instance.
+			 */
+			//if (!(pattern instanceof RegExp)) return;
+			if (!pattern || typeof pattern.source != 'string') return;
+			this.openBaseURLPattern = new RegExp(pattern.source);
+			return result;
 		}},
 
 		setWriteDelaySecs: {value: function (secs) {
 			secs = Number(secs);
 			if (isNaN(secs) || secs < 0) return;
-			require('./kosian/FileSystemImpl').FileSystemImpl.setWriteDelaySecs(secs);
+			require('kosian/FileSystemImpl').FileSystemImpl.setWriteDelaySecs(secs);
 		}},
 
 		getBaseUrl: {value: function (selfUrl) {
@@ -99,6 +137,9 @@
 
 			if ('appName' in options) {
 				this.setAppName(options.appName);
+			}
+			if ('lodMode' in options) {
+				this.setLogMode(options.logMode);
 			}
 			if ('openBaseUrlPattern' in options) {
 				this.setOpenBaseUrlPattern(options.openBaseUrlPattern);
@@ -117,19 +158,20 @@
 
 		emit: {value: function () {
 			var args = Array.prototype.slice.call(arguments);
-			if (args.length < 1) return;
+			if (args.length < 1) return undefined;
 			var fn = args.shift();
-			if (typeof fn != 'function') return;
+			if (typeof fn != 'function') return undefined;
 			try {
-				fn.apply(null, args);
+				return fn.apply(null, args);
 			}
 			catch (e) {
 				console.error(
-					'background: an error occured inside callback:\n\t' + [
+					'kosian: an error occured inside callback:\n\t' + [
 						'message: ' + e.message,
 						'   line: ' + (e.line || e.lineNumber || '?'),
 						'  stack: ' + (e.stack || '?')
 					].join('\n\t'));
+				return undefined;
 			}
 		}},
 
@@ -248,7 +290,6 @@
 					var st, re
 					try {st = xhr.status} catch (e) {st = 'Unknown status'}
 					try {re = xhr.responseText} catch (e) {re = 'Unknown response'}
-					console.log('request error: ' + st + ': ' + re);
 				}
 
 				try {
@@ -348,23 +389,55 @@
 			}
 		}},
 
+		log: {value: function () {
+			var method = 'log';
+			var force = false;
+			var args = Array.prototype.slice.call(arguments).join(' ');
+
+			if (/^!/.test(args)) {
+				force = true;
+				args = args.substring(1);
+			}
+
+			if (/^INFO:/.test(args)) {
+				method = 'info';
+			}
+			else if (/^ERROR:/.test(args)) {
+				method = 'error';
+			}
+
+			if (this.logMode || force) {
+				console[method](this.appName + ' backend: ' + args);
+			}
+		}},
+
 		receive: {value: noimpl},
 		openTabWithUrl: {value: noimpl},
 		openTabWithFile: {value: noimpl},
+		isTabExist: {value: noimpl},
 		closeTab: {value: noimpl},
 		focusTab: {value: noimpl},
+		nextTab: {value: noimpl},
+		prevTab: {value: noimpl},
 		getTabTitle: {value: noimpl},
+		broadcastToAllTabs: {value: noimpl},
 		createTransport: {value: noimpl},
 		createFormData: {value: noimpl},
 		createBlob: {value: noimpl},
-		sendRequest: {value: noimpl}
+		postMessage: {value: noimpl},
+		broadcast: {value: noimpl},
+		dumpInternalIds: {value: noimpl}
 	});
 
-	Kosian.register = function (condition) {
-		conditions.unshift(condition);
+	Kosian.register = function (abearer) {
+		bearer = abearer;
 	};
 
 	exports.Kosian = Kosian;
+
+	if (require('sdk/self')) {
+		require('kosian/FirefoxImpl');
+	}
 })();
 
 // vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker :

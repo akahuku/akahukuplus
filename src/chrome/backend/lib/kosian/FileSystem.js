@@ -1,9 +1,22 @@
 /**
  * file system interface
- * =============================================================================
- *
  *
  * @author akahuku@gmail.com
+ */
+/**
+ * Copyright 2014 akahuku, akahuku@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 (function (global) {
@@ -14,7 +27,7 @@
 			return new FileSystem(ext, fstab);
 		}
 
-		this.ext = ext || require('./kosian/Kosian').Kosian();
+		this.ext = ext || require('kosian/Kosian').Kosian();
 		this.fstab = fstab;
 		this.init();
 	}
@@ -34,22 +47,21 @@
 		 */
 
 		function initFileSystemCore (data) {
-			var log = [];
-			var FileSystemImpl = require('./kosian/FileSystemImpl').FileSystemImpl;
+			var FileSystemImpl = require('kosian/FileSystemImpl').FileSystemImpl;
 
-			data = this.ext.utils.parseJson(data);
+			data = this.ext.utils.parseJson(data, false);
+			if (data === false) {
+				this.ext.log('!ERROR: cannot restore consumer keys.');
+				data = {};
+			}
 
 			for (var i in this.fstab) {
 				if (!data[i]) continue;
 				if (!('key' in data[i])) continue;
 
 				this.fstab[i].isNull = false;
-				this.fstab[i].instance = FileSystemImpl(i, data[i]);
-				log.push(i);
+				this.fstab[i].instance = FileSystemImpl(i, this.ext, data[i]);
 			}
-
-			this.ext.isDev && console.info(
-				this.ext.appName + ': following filesystems are available: ' + log.join(', '));
 
 			this.fstab.nullFs = {
 				enabled:true,
@@ -58,24 +70,54 @@
 			};
 		}
 
-		this.ext.resource('consumer_keys.bin', function (binkeys) {
-			if (binkeys === false) {
-				this.ext.resource('consumer_keys.json', initFileSystemCore, {noCache:true, bind:this});
+		function handleConsumerKeysLoad (consumerKeys) {
+			if (consumerKeys === false) {
+				this.ext.log('!ERROR: cannot load consumer keys.');
 				return;
 			}
+			this.ext.resource(this.ext.cryptKeyPath, function (cryptKey) {
+				if (cryptKey === false) {
+					this.ext.log('!ERROR: cannot load crypt key.');
+					return;
+				}
 
-			this.ext.resource(this.ext.cryptKeyPath, function (data) {
-				var Blowfish = require('./kosian/Blowfish').Blowfish;
-				var SHA1 = require('./kosian/SHA1').SHA1;
+				var Blowfish = require('kosian/Blowfish').Blowfish;
+				var SHA1 = require('kosian/SHA1').SHA1;
 
-				var data_sha1 = SHA1.calc(data);
-				var bf = new Blowfish(data_sha1);
-				var decrypted = bf.decrypt64(binkeys);
+				var cryptKeyHash = SHA1.calc(cryptKey);
+				var bf = new Blowfish(cryptKeyHash.substring(0, 16));
 
-				initFileSystemCore.call(this, decrypted);
+				if (consumerKeys.charAt(0) == '{') {
+					/*
+					this.ext.isDev && this.ext.log(
+						'!INFO: crypted code:>>>>' +
+						bf.encrypt64(consumerKeys) +
+						'<<<<');
+					 */
+				}
+				else{
+					consumerKeys = bf.decrypt64(consumerKeys);
+				}
 
+				initFileSystemCore.call(this, consumerKeys);
 			}, {noCache:true, bind:this});
-		}, {noCache:true, bind:this});
+		}
+
+		this.ext.resource('consumer_keys.bin', function (binkeys) {
+			if (binkeys !== false) {
+				handleConsumerKeysLoad.call(this, binkeys);
+			}
+			else {
+				this.ext.resource(
+					'consumer_keys.json',
+					handleConsumerKeysLoad,
+					{noCache:true, bind:this});
+			}
+		}, {
+			noCache:true,
+			mimeType:'text/plain;charset=x-user-defined',
+			bind:this
+		});
 	};
 
 	FileSystem.prototype.getInstance = function (path) {
@@ -94,7 +136,7 @@
 
 		for (var i in this.fstab) {
 			var fs = this.fstab[i];
-			if (!fs.instance) {
+			if (!fs || !fs.instance) {
 				continue;
 			}
 			if (fs.isDefault) {
@@ -111,11 +153,44 @@
 		var result = [];
 		for (var i in this.fstab) {
 			var fs = this.fstab[i];
-			if (fs.isNull) continue;
-			result.push({name:i, isDefault:fs.isDefault});
+			if (!fs || fs.isNull) continue;
+			result.push({
+				name:i,
+				enabled:fs.enabled,
+				isDefault:fs.isDefault
+			});
 		}
 		return result;
 	};
+
+	FileSystem.prototype.setInfo = function (info) {
+		var defaultFilesystem = null;
+
+		for (var i in this.fstab) {
+			if (this.fstab[i].isDefault) {
+				defaultFilesystem = i;
+				delete this.fstab[i].isDefault;
+			}
+		}
+
+		for (var i in this.fstab) {
+			if (!(i in info)) continue;
+			if (!this.fstab[i] || this.fstab[i].isNull) continue;
+
+			if ('isDefault' in info[i]) {
+				this.fstab[i].isDefault = !!info[i].isDefault;
+				defaultFilesystem = null;
+			}
+
+			if ('enabled' in info[i]) {
+				this.fstab[i].enabled = !!info[i].enabled;
+			}
+		}
+
+		if (defaultFilesystem != null) {
+			this.fstab[defaultFilesystem].isDefault = true;
+		}
+	}
 
 	FileSystem.prototype.clearCredentials = function (target) {
 		Object.keys(fstab).forEach(function (name) {
@@ -129,7 +204,7 @@
 			else {
 				fs.instance.clearCredentials();
 			}
-		});
+		}, this);
 	};
 
 	FileSystem.prototype.ls = function (path) {

@@ -3,33 +3,32 @@
  *
  * @author akahuku@gmail.com
  */
+/**
+ * Copyright 2014 akahuku, akahuku@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 (function () {
 	'use strict';
 
-	var base = require('./kosian/Kosian').Kosian;
+	var NOTIFY_TIMER_INTERVAL = 1000 * 1;
+	var COLLECT_TIMER_INTERVAL = 1000 * 60 * 3;
+
+	var base = require('kosian/Kosian').Kosian;
 
 	function receive (callback) {
-		opera.extension.onmessage = function (e) {
-			if (!e.data) return;
-
-			var tabId = -1;
-			opera.extension.tabs.getAll().some(function (tab) {
-				if (tab.port == e.source) {
-					tabId = tab.id;
-					return true;
-				}
-			});
-
-			if (e.ports && e.ports.length) {
-				callback(e.data.command, e.data.data, tabId, function (data) {
-					try {e.ports[0].postMessage(data)} catch (ex) {}
-				});
-			}
-			else {
-				callback(e.data.command, e.data.data, tabId, function () {});
-			}
-		}
+		this.receiver = callback;
 	}
 
 	function openTabWithUrl (url, selfUrl, callback) {
@@ -70,10 +69,21 @@
 	}
 
 	function openTabWithFile (file, callback) {
+		var url = location.protocol + '//' + location.hostname + '/' + file;
 		var tab = opera.extension.tabs.create({
-			url:location.href.replace(/\/[^\/]*$/, '/') + file, focused:true
+			url:url, focused:true
 		});
 		this.emit(callback, tab.id, tab.url);
+	}
+
+	function isTabExist (id) {
+		if (id in this.ports) return true;
+		return opera.extension.tabs.getAll().some(function (tab) {
+			if (id instanceof MessagePort && tab.port == id
+			||  typeof id == 'number' && tab.id == id) {
+				return true;
+			}
+		});
 	}
 
 	function closeTab (id) {
@@ -103,6 +113,17 @@
 				this.emit(callback, tab.title);
 				return true;
 			}
+		}, this) || this.emit(callback, null);
+	}
+
+	function broadcastToAllTabs (message, exceptId) {
+		opera.extension.tabs.getAll().forEach(function (tab) {
+			if (exceptId instanceof MessagePort && tab.port == exceptId
+			||  typeof exceptId == 'number' && tab.exceptId == exceptId) {
+				return;
+			}
+
+			doPostMessage(tab.port, message);
 		}, this);
 	}
 
@@ -130,7 +151,17 @@
 		}
 	}
 
-	function sendRequest () {
+	function doPostMessage (port, message) {
+		try {
+			port.postMessage(message);
+			return true;
+		}
+		catch (e) {
+			return false;
+		}
+	}
+
+	function postMessage (/*[id,] message*/) {
 		var id, message;
 
 		switch (arguments.length) {
@@ -147,25 +178,43 @@
 			return;
 		}
 
-		opera.extension.tabs.getAll().some(function (tab) {
-			var found = false;
-			if (id instanceof MessagePort) {
-				found = tab.port == id;
-			}
-			else if (typeof id == 'number') {
-				found = tab.id == id;
-			}
-			else {
-				found = tab.selected;
-			}
-			if (found) {
-				try {
-					tab.postMessage(message);
+		if (id instanceof MessagePort) {
+			doPostMessage(id, message);
+		}
+		else if (typeof id == 'string' && id in this.ports) {
+			doPostMessage(this.ports[id].port, message);
+		}
+		else {
+			opera.extension.tabs.getAll().some(function (tab) {
+				var found = false;
+				if (typeof id == 'number') {
+					found = tab.id == id;
 				}
-				catch (e) {}
-			}
-			return found;
-		});
+				else {
+					found = tab.selected;
+				}
+				if (found) {
+					doPostMessage(tab.port, message);
+				}
+				return found;
+			}, this);
+		}
+	}
+
+	function broadcast (message, exceptId) {
+		for (var id in this.ports) {
+			if (id == exceptId) continue;
+
+			doPostMessage(this.ports[id].port, message);
+		}
+	}
+
+	function dumpInternalIds () {
+		var log = ['*** Internal Ids ***'];
+		for (var id in this.ports) {
+			log.push('id #' + id + ': ' + this.ports[id].url);
+		}
+		return log;
 	}
 
 	function getMessageCatalogPath () {
@@ -210,8 +259,93 @@
 	}
 
 	function OperaImpl () {
+		var that = this;
+		var notifyTimer;
+		var collectTimer;
+		var ports = {};
+
+		function notifyTabId () {
+			notifyTimer && clearTimeout(notifyTimer);
+
+			notifyTimer = setTimeout(function () {
+				notifyTimer = null;
+				opera.extension.tabs.getAll().forEach(function (tab) {
+					try {
+						tab.postMessage({
+							type: 'opera-notify-tab-id',
+							tabId: tab.id
+						});
+					}
+					catch (e) {}
+				});
+			}, NOTIFY_TIMER_INTERVAL);
+
+			if (!collectTimer) {
+				collectTimer = setInterval(collectPorts, COLLECT_TIMER_INTERVAL);
+			}
+		}
+
+		function collectPorts () {
+			var ids = Object.keys(ports);
+
+			if (ids.length == 0) {
+				collectTimer && clearInterval(collectTimer);
+				collectTimer = null;
+				return;
+			}
+
+			ids.forEach(function (id) {
+				if (!doPostMessage(ports[id].port, {type: 'ping'})) {
+					delete ports[id];
+				}
+			});
+		}
+
+		function handleMessage (e) {
+			if (!e || !e.data || !that.receiver) return;
+
+			var req = e.data;
+			var data = req.data;
+			var tabId = -1;
+
+			that.logMode && that.log('got a message:', JSON.stringify(req).substring(0, 200));
+
+			delete req.data;
+
+			if (tabId == -1 && 'tabId' in req) {
+				tabId = req.tabId;
+			}
+			if (tabId == -1 && 'internalId' in req) {
+				tabId = req.internalId;
+			}
+
+			if (e.ports && e.ports.length) {
+				if (/^init\b/.test(req.type) && 'internalId' in req) {
+					ports[req.internalId] = {
+						port: e.ports[0],
+						url: data.url
+					};
+					e.ports[0].onmessage = handleMessage;
+				}
+				that.receiver(
+					req, data, tabId,
+					function (data) {doPostMessage(e.ports[0], data)}
+				);
+			}
+			else {
+				that.receiver(
+					req, data, tabId,
+					function () {}
+				);
+			}
+		}
+
 		base.apply(this, arguments);
-		widget.preferences['widget-id'] = location.href.match(/^widget:\/\/([^\/]+)/)[1];
+		widget.preferences['widget-id'] = location.hostname;
+		opera.extension.onconnect = notifyTabId;
+		opera.extension.onmessage = handleMessage;
+		collectTimer = setInterval(collectPorts, COLLECT_TIMER_INTERVAL);
+		Object.defineProperty(this, 'ports', {value: ports});
 	}
 
 	OperaImpl.prototype = Object.create(base.prototype, {
@@ -224,20 +358,22 @@
 		receive: {value: receive},
 		openTabWithUrl: {value: openTabWithUrl},
 		openTabWithFile: {value: openTabWithFile},
+		isTabExist: {value: isTabExist},
 		closeTab: {value: closeTab},
 		focusTab: {value: focusTab},
 		getTabTitle: {value: getTabTitle},
+		broadcastToAllTabs: {value: broadcastToAllTabs},
 		createTransport: {value: createTransport},
 		createFormData: {value: createFormData},
 		createBlob: {value: createBlob},
-		sendRequest: {value: sendRequest}
+		postMessage: {value: postMessage},
+		broadcast: {value: broadcast},
+		dumpInternalIds: {value: dumpInternalIds}
 	});
 	OperaImpl.prototype.constructor = base;
 
 	base.register(function (global, options) {
-		if (global.opera) {
-			return new OperaImpl(global, options);
-		}
+		return new OperaImpl(global, options);
 	});
 })();
 

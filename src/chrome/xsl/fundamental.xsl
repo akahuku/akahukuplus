@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-	The XSL file, which traslates internal xml into content for akahukuplus extreme
+	The XSL file, which translates internal xml into content for akahukuplus extreme
 
 	@author akahuku@gmail.com
 -->
@@ -84,7 +84,7 @@ hr {
 }
 
 .storage-image:hover {
-	opacity:0.3;
+	opacity:.3;
 }
 
 .dropbox-image {
@@ -116,7 +116,7 @@ hr {
 	border-width:1px;
 	border-color:#e0d0c6;
 	background-color:#faf5e6;
-	box-shadow:0 0 2px 2px rgba(224,208,198,0.5);
+	box-shadow:0 0 2px 2px rgba(224,208,198,.5);
 	z-index:100;
 }
 
@@ -181,7 +181,10 @@ hr {
 	margin:40pt 0 0 0;
 	position:relative;
 	left:0;
-	transition:left 0.4s ease 0;
+	transition-property:left;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 	background-color:#ffe;
 }
 
@@ -208,7 +211,7 @@ hr {
 	font-weight:bold;
 	text-align:center;
 	line-height:1;
-	text-shadow:0 1px 3px rgba(0,0,0,0.75);
+	text-shadow:0 1px 3px rgba(0,0,0,.75);
 }
 
 .page-mode-header.reply-mode {
@@ -325,12 +328,15 @@ hr {
 
 .topic-wrap .link-futaba img,
 .reply-wrap .link-futaba img {
-	transition:box-shadow 0.4s ease 0;
+	transition-property:box-shadow;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 .topic-wrap .link-futaba img:hover,
 .reply-wrap .link-futaba img:hover {
-	box-shadow:0 1px 4px 2px rgba(0,0,0,0.3);
+	box-shadow:0 1px 4px 2px rgba(0,0,0,.3);
 }
 
 .topic-wrap .link-siokara,
@@ -344,12 +350,15 @@ hr {
 	font-size:small;
 	text-align:center;
 	line-height:1;
-	transition:box-shadow 0.4s ease 0;
+	transition-property:box-shadow;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 .topic-wrap .link-siokara:hover,
 .reply-wrap .link-siokara:hover {
-	box-shadow:0 1px 2px 2px rgba(0,0,0,0.1);
+	box-shadow:0 1px 2px 2px rgba(0,0,0,.1);
 }
 
 .topic-wrap .link-siokara .save-image,
@@ -369,11 +378,14 @@ hr {
 #content > article > .image img {
 	margin:0 0 .5em 0;
 	border:none;
-	transition:box-shadow 0.4s ease 0;
+	transition-property:box-shadow;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 #content > article > .image img:hover {
-	box-shadow:0 1px 4px 2px rgba(0,0,0,0.3);
+	box-shadow:0 1px 4px 2px rgba(0,0,0,.3);
 }
 
 #content > article > .image .info-sup {
@@ -540,11 +552,14 @@ hr {
 .reply-image img {
 	margin:0 0 .5em 0;
 	border:none;
-	transition:box-shadow 0.4s ease 0;
+	transition-property:box-shadow;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 .reply-image img:hover {
-	box-shadow:0 1px 4px 2px rgba(0,0,0,0.3);
+	box-shadow:0 1px 4px 2px rgba(0,0,0,.3);
 }
 
 .reply-image > div {
@@ -602,7 +617,7 @@ hr {
 	right:25%;
 	bottom:0;
 	font-size:small;
-	box-shadow:0 0 8px 2px rgba(0,0,0,0.3);
+	box-shadow:0 0 8px 2px rgba(0,0,0,.3);
 	background-color:#ffe;
 	border-radius:4px 4px 0 0;
 }
@@ -611,7 +626,10 @@ hr {
 	overflow-y:hidden;
 	max-height:0;
 	border-bottom:1px solid #ea8;
-	transition:max-height 0.4s ease 0;
+	transition-property:max-height;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 	box-sizing:border-box;
 }
 
@@ -683,6 +701,7 @@ hr {
 	margin:0;
 	padding:0;
 	border:none;
+	outline:none;
 	background-color:#ffe;
 	color:#800;
 	resize:none;
@@ -780,7 +799,10 @@ hr {
 	bottom:0;
 	text-align:right;
 	opacity:0;
-	transition:opacity 0.4s ease 0;
+	transition-property:opacity;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 .post-image-thumbnail-wrap.run {
@@ -791,7 +813,7 @@ hr {
 	margin:0 8px 8px 0;
 	border:8px solid #ffe;
 	border-radius:4px;
-	box-shadow:0 0 8px 2px rgba(0,0,0,0.5);
+	box-shadow:0 0 8px 2px rgba(0,0,0,.5);
 }
 
 /*
@@ -804,9 +826,12 @@ hr {
 	top:40pt;
 	right:0;
 	overflow-x:hidden;
-	opacity:0.1;
+	opacity:.1;
 	text-align:right;
-	transition:width 0.4s ease 0, opacity 0.4s ease 0;
+	transition-property:width,opacity;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 #ad-aside-wrap div {
@@ -826,7 +851,10 @@ hr {
 #ad-aside-wrap div.size-large {
 	position:relative;
 	left:0;
-	transition:left 0.4s ease 0;
+	transition-property:left;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 #ad-aside-wrap div.size-large:hover {
@@ -841,10 +869,13 @@ hr {
 	top:40pt;
 	right:-24%;
 	bottom:8pt;
-	background-color:rgba(255,255,238,0.6);
+	background-color:rgba(255,255,238,.6);
 	border-radius:4px 0 0 4px;
-	box-shadow:0 0 8px 2px rgba(0,0,0,0.3);
-	transition:right 0.4s cubic-bezier(0, 1, 1, 1) 0;
+	box-shadow:0 0 8px 2px rgba(0,0,0,.3);
+	transition-property:right;
+	transition-duration:.4s;
+	transition-timing-function:cubic-bezier(0, 1, 1, 1);
+	transition-delay:0;
 }
 
 #panel-aside-wrap.run {
@@ -865,9 +896,9 @@ hr {
 
 #panel-aside-wrap .panel-tab-wrap {
 	padding:8px 0 0 0;
-	background-color:rgba(0,0,0,0.3);
+	background-color:rgba(0,0,0,.3);
 	text-align:center;
-	box-shadow:0 2px 4px -1px rgba(0,0,0,0.25) inset;
+	box-shadow:0 2px 4px -1px rgba(0,0,0,.25) inset;
 }
 
 #panel-aside-wrap .panel-tab-wrap > a {
@@ -877,7 +908,7 @@ hr {
 	background-color:#400;
 	color:#ccc;
 	border-radius:4px 4px 0 0;
-	box-shadow:0 -1px 3px rgba(0,0,0,0.25);
+	box-shadow:0 -1px 3px rgba(0,0,0,.25);
 	font-size:x-small;
 	line-height:1;
 	text-decoration;none;
@@ -1039,17 +1070,23 @@ hr {
 
 .lightbox-wrap .dimmer {
 	background-color:rgba(0,0,0,0);
-	transition:background-color 0.4s ease 0;
+	transition-property:background-color;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 .lightbox-wrap .dimmer.run {
-	background-color:rgba(0,0,0,0.75);
+	background-color:rgba(0,0,0,.75);
 }
 
 .lightbox-wrap .image-wrap img {
 	position:fixed;
 	border:none;
-	transition:left .5s ease-out 0, top .5s ease-out 0, width .5s ease-out 0, height .5s ease-out 0;
+	transition-property:left,top,width,height;
+	transition-duration:.5s;
+	transition-timing-function:ease-out;
+	transition-delay:0;
 	background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAAXNSR0IArs4c6QAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9kFEAkjBaAOh8kAAAArSURBVCjPY3zw4AEDNiAvL49VnImBRDCqgRjA+P//f6wSDx8+HA0l+mkAAJ4dCLzVvF8ZAAAAAElFTkSuQmCC) left top repeat fixed #888;
 
 }
@@ -1118,11 +1155,14 @@ hr {
 
 .dialog-wrap .dimmer {
 	background-color:rgba(0,0,0,0);
-	transition:background-color 0.4s ease 0;
+	transition-property:background-color;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 .dialog-wrap .dimmer.run {
-	background-color:rgba(0,0,0,0.5);
+	background-color:rgba(0,0,0,.5);
 }
 
 .dialog-wrap .dialog-content-wrap {
@@ -1133,7 +1173,10 @@ hr {
 	align-items:center;
 	align-content:center;
 	opacity:0;
-	transition:opacity 0.4s ease 0;
+	transition-property:opacity;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 }
 
 .dialog-wrap .dialog-content-wrap.run {
@@ -1143,7 +1186,7 @@ hr {
 .dialog-wrap .dialog-content-wrap > div {
 	position:relative;
 	border-radius:12px;
-	box-shadow:0 0 1px 8px rgba(0,0,0,0.2);
+	box-shadow:0 0 1px 8px rgba(0,0,0,.2);
 	background-color:#ffe;
 }
 
@@ -1168,7 +1211,7 @@ hr {
 	font-size:large;
 	line-height:1;
 	text-align:right;
-	box-shadow:0 1px 4px rgba(0,0,0,0.75);
+	box-shadow:0 1px 4px rgba(0,0,0,.75);
 }
 
 .dialog-wrap .dialog-content-title-ex a {
@@ -1203,11 +1246,14 @@ hr {
 	padding:6px 8px 4px 8px;
 	background-color:#fff;
 	color:#333;
-	box-shadow:0 0 4px 2px rgba(0,0,0,0.25);
+	box-shadow:0 0 4px 2px rgba(0,0,0,.25);
 	line-height:1;
 	text-align:center;
 	text-decoration:none;
-	transition:background-color 0.2s ease-in 0,color 0.2s ease-in 0;
+	transition-property:background-color;
+	transition-duration:.2s;
+	transition-timing-function:ease-in;
+	transition-delay:0;
 }
 
 .dialog-wrap .dialog-content-footer > a + a {
@@ -1305,12 +1351,15 @@ hr {
 	align-items:stretch;
 	align-content:flex-start;
 	margin:0 auto 0 auto;
-	transition:opacity 0.4s ease 0;
+	transition-property:opacity;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0;
 	opacity:1;
 }
 
 #catalog .catalog-threads-wrap > div.run {
-	opacity:0.5;
+	opacity:.5;
 }
 
 #catalog .catalog-threads-wrap > div > a {
@@ -1354,7 +1403,10 @@ img.catalog-popup {
 	position:absolute;
 	box-shadow:0 0 4px 4px rgba(0,0,0,.25);
 	cursor:pointer;
-	transition:left .25s ease-out 0, top .25s ease-out 0, width .25s ease-out 0, height .25s ease-out 0;
+	transition-property:left,top,width,height;
+	transition-duration:.25s;
+	transition-timing-function:ease-out;
+	transition-delay:0;
 	z-index:100;
 }
 
@@ -1367,7 +1419,10 @@ div.catalog-popup {
 	box-shadow:0 0 4px 4px rgba(0,0,0,.25);
 	box-sizing:border-box;
 	font-size:x-small;
-	transition:opacity .5s ease-out 0;
+	transition-property:opacity;
+	transition-duration:.5s;
+	transition-timing-function:ease-out;
+	transition-delay:0;
 	opacity:0;
 	z-index:100;
 }
@@ -1393,7 +1448,7 @@ div.catalog-popup span {
 	border-radius:3px;
 	padding:4px 4px 0 4px;
 	background-color:#ffe;
-	box-shadow:0 1px 4px 2px rgba(0,0,0,0.3);
+	box-shadow:0 1px 4px 2px rgba(0,0,0,.3);
 	font-size:small;
 }
 
@@ -1404,7 +1459,7 @@ div.catalog-popup span {
 }
 
 #quote-popup-pool .quote-popup .jumpto-quote-anchor {
-	margin-right:0.5em;
+	margin-right:.5em;
 	font-weight:bold;
 }
 
@@ -1418,7 +1473,7 @@ div.catalog-popup span {
 	border:1px solid silver;
 	font-size:small;
 	z-index:300;
-	box-shadow:0 1px 4px 2px rgba(0,0,0,0.3);
+	box-shadow:0 1px 4px 2px rgba(0,0,0,.3);
 }
 
 #selection-menu > a {
@@ -1527,7 +1582,7 @@ div.catalog-popup span {
 		<div class="wheel-status hide" id="wheel-status"><span>wow</span><img/></div>
 		<div id="ad-aside-wrap">
 		<xsl:for-each select="meta/ads/banners/ad">
-			<div class="{@class}"><xsl:value-of select="." disable-output-escaping="yes"/></div>
+			<div class="{@class}" data-doe="{.}"></div>
 		</xsl:for-each>
 		</div>
 		<div id="panel-aside-wrap" class="hide">
@@ -1715,7 +1770,7 @@ div.catalog-popup span {
 	<body>
 		<ul>
 		<xsl:for-each select="meta/notices/notice">
-			<li><xsl:value-of select="." disable-output-escaping="yes"/></li>
+			<li data-doe="{.}"></li>
 		</xsl:for-each>
 		</ul>
 	</body>
@@ -1725,8 +1780,7 @@ div.catalog-popup span {
 <!-- partial content: amazon ad -->
 <xsl:template match="futaba" mode="amazon">
 <html>
-	<body>
-		<xsl:value-of select="meta/ads/amazon" disable-output-escaping="yes"/>
+	<body data-doe="{meta/ads/amazon}">
 	</body>
 </html>
 </xsl:template>

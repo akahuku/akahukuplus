@@ -1,9 +1,22 @@
 /**
  * online storage interface
- * =============================================================================
- *
  *
  * @author akahuku@gmail.com
+ */
+/**
+ * Copyright 2014 akahuku, akahuku@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 (function () {
@@ -15,7 +28,7 @@
 
 	var authorizeRetryMax = 3;
 	var writeDelaySecsDefault = 10;
-	var u = require('./kosian/Utils').Utils;
+	var u = require('kosian/Utils').Utils;
 	var _ = u._;
 
 	/*
@@ -185,66 +198,13 @@
 	}
 
 	/*
-	 * multipart/related handling class
-	 */
-
-	function GDriveFileContent (metadata, content) {
-		var result;
-		var boundary;
-
-		function getMetadataPart (metadata) {
-			var m = {};
-			for (var i in metadata) {
-				if (metadata[i] != undefined) {
-					m[i] = metadata[i];
-				}
-			}
-			return JSON.stringify(m);
-		}
-
-		function getBoundary () {
-			return '----------' +
-				Math.floor(Math.random() * 0x80000000).toString(36) + '-' +
-				Math.floor(Math.random() * 0x80000000).toString(36) + '-' +
-				Math.floor(Math.random() * 0x80000000).toString(36);
-		}
-
-		function main () {
-			boundary = getBoundary();
-
-			var data = [];
-			data.push(
-				'--' + boundary + '\r\n' +
-				'Content-Type: application/json;charset=UTF-8\r\n' +
-				'\r\n',
-				getMetadataPart(metadata),
-				'\r\n');
-			data.push(
-				'--' + boundary + '\r\n' +
-				'Content-Type: ' + (metadata.mimeType || 'text/plain;charset=UTF-8') + '\r\n' +
-				'\r\n',
-				content,
-				'\r\n');
-			data.push(
-				'--' + boundary + '--\r\n');
-
-			result = new Blob(data);
-			metadata = content = null;
-		}
-
-		main();
-
-		this.__defineGetter__('result', function () {return result});
-		this.__defineGetter__('boundary', function () {return boundary});
-	}
-
-	/*
 	 * file system base class
 	 */
 
-	function FileSystem (options) {
+	function FileSystem (extension, options) {
+		this.extension = extension;
+
 		var self = this;
-		var extension = this.extension = require('./kosian/Kosian').Kosian();
 		var accessToken = '';
 		var refreshToken = '';
 		var tokenType = '';
@@ -309,7 +269,7 @@
 				switch (task.state) {
 				case 'error':
 					self.responseError(task, {
-						app_filesystem_error:[task.message] || _('Unknown file system error')
+						app_filesystem_error:[task.message || _('Unknown file system error')]
 					});
 					self.taskQueue.run();
 					break;
@@ -523,9 +483,19 @@
 			options && this.extension.emit(options.onload, {});
 		},
 		response:function (task, data) {
-			data.type = 'fileio-' + task.task + '-response';
-			task.options && this.extension.emit(task.options.onresponse, data);
-			this.extension.sendRequest(task.tabId, data);
+			var name = task.options && typeof task.options.externalName == 'string' ?
+				task.options.externalName : task.task;
+
+			data.type = 'fileio-' + name + '-response';
+
+			if (task.options && task.options.onresponse) {
+				var result = this.extension.emit(task.options.onresponse, data);
+				if (result) return;
+			}
+
+			//var logMode = this.extension.setLogMode(true);
+			this.extension.postMessage(task.tabId, data);
+			//this.extension.setLogMode(logMode);
 		},
 		responseError:function (task, data) {
 			var errorMessage = false;
@@ -615,7 +585,7 @@
 	 * file system class for dropbox
 	 */
 
-	function FileSystemDropbox (options) {
+	function FileSystemDropbox (extension, options) {
 
 		/*
 		 * privates
@@ -769,7 +739,8 @@
 
 					self.response(task, {
 						state:'complete',
-						status:status || 404
+						status:status || 404,
+						meta:{path:task.path}
 					});
 
 					taskQueue.run();
@@ -840,7 +811,6 @@
 			validateUrl:'https://api.dropbox.com/1/account/info'
 		});
 		var taskQueue = this.taskQueue = new TaskQueue(this, authorize, ls, read, writeBinder.write);
-		var extension = this.extension;
 		var handleError = this.handleError;
 
 		var fileSystemRoot = options.root || 'sandbox';
@@ -864,7 +834,7 @@
 	 * file system class for Google Drive
 	 */
 
-	function FileSystemGDrive (options) {
+	function FileSystemGDrive (extension, options) {
 
 		/*
 		 * privates
@@ -1046,6 +1016,60 @@
 		}
 
 		/*
+		 * multipart/related handling class
+		 */
+
+		function GDriveFileContent (metadata, content) {
+			var result;
+			var boundary;
+
+			function getMetadataPart (metadata) {
+				var m = {};
+				for (var i in metadata) {
+					if (metadata[i] != undefined) {
+						m[i] = metadata[i];
+					}
+				}
+				return JSON.stringify(m);
+			}
+
+			function getBoundary () {
+				return '----------' +
+					Math.floor(Math.random() * 0x80000000).toString(36) + '-' +
+					Math.floor(Math.random() * 0x80000000).toString(36) + '-' +
+					Math.floor(Math.random() * 0x80000000).toString(36);
+			}
+
+			function main () {
+				boundary = getBoundary();
+
+				var data = [];
+				data.push(
+					'--' + boundary + '\r\n' +
+					'Content-Type: application/json;charset=UTF-8\r\n' +
+					'\r\n',
+					getMetadataPart(metadata),
+					'\r\n');
+				data.push(
+					'--' + boundary + '\r\n' +
+					'Content-Type: ' + (metadata.mimeType || 'text/plain;charset=UTF-8') + '\r\n' +
+					'\r\n',
+					content,
+					'\r\n');
+				data.push(
+					'--' + boundary + '--\r\n');
+
+				result = extension.createBlob(data);
+				metadata = content = null;
+			}
+
+			main();
+
+			this.__defineGetter__('result', function () {return result});
+			this.__defineGetter__('boundary', function () {return boundary});
+		}
+
+		/*
 		 * tasks
 		 */
 
@@ -1099,7 +1123,8 @@
 					) {
 						self.response(task, {
 							state:'complete',
-							status:404
+							status:404,
+							meta:{path:task.path}
 						});
 						taskQueue.run();
 						return;
@@ -1161,7 +1186,8 @@
 
 							self.response(task, {
 								state:'complete',
-								status:status || 404
+								status:status || 404,
+								meta:{path:task.path}
 							});
 							taskQueue.run();
 						}
@@ -1317,7 +1343,6 @@
 			]
 		});
 		var taskQueue = this.taskQueue = new TaskQueue(this, authorize, ls, read, writeBinder.write);
-		var extension = this.extension;
 		var handleError = this.handleError;
 
 		var fileSystemRoot = options.root || '';
@@ -1340,7 +1365,7 @@
 	 * file system class for Microsoft OneDrive
 	 */
 
-	function FileSystemOneDrive (options) {
+	function FileSystemOneDrive (extension, options) {
 		/*
 		 * privates
 		 */
@@ -1553,7 +1578,8 @@
 					) {
 						self.response(task, {
 							state:'complete',
-							status:404
+							status:404,
+							meta:{path:task.path}
 						});
 						taskQueue.run();
 						return;
@@ -1610,7 +1636,8 @@
 
 							self.response(task, {
 								state:'complete',
-								status:status || 404
+								status:status || 404,
+								meta:{path:task.path}
 							});
 							taskQueue.run();
 						}
@@ -1733,7 +1760,6 @@
 			]
 		});
 		var taskQueue = this.taskQueue = new TaskQueue(this, authorize, ls, read, writeBinder.write);
-		var extension = this.extension;
 		var handleError = this.handleError;
 
 		var fileSystemRoot = options.root || '';
@@ -1756,14 +1782,14 @@
 	 * export
 	 */
 
-	function FileSystemImpl (name, options) {
+	function FileSystemImpl (name, ext, options) {
 		switch (name) {
 		case 'dropbox':
-			return new FileSystemDropbox(options);
+			return new FileSystemDropbox(ext, options);
 		case 'gdrive':
-			return new FileSystemGDrive(options);
+			return new FileSystemGDrive(ext, options);
 		case 'onedrive':
-			return new FileSystemOneDrive(options);
+			return new FileSystemOneDrive(ext, options);
 		default:
 			return new FileSystem;
 		}

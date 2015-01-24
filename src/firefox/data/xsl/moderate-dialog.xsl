@@ -1,0 +1,1 @@
+../../../chrome/xsl/moderate-dialog.xsl
