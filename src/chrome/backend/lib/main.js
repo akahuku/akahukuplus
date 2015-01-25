@@ -125,7 +125,9 @@
 			case 'init':
 				res({
 					extensionId: ext.id,
-					tabId: sender
+					tabId: sender,
+					version: ext.version,
+					devMode: ext.isDev
 				});
 				break;
 			case 'iconv':
@@ -156,6 +158,9 @@
 				if ('data' in data) {
 					ext.clipboard.set(data.data);
 				}
+				break;
+			case 'play-sound':
+				ext.sound.play(data.key, {volume: data.volume});
 				break;
 			}
 		}

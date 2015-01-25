@@ -9,6 +9,7 @@ outdir = ''
 localedir = ''
 ver = ''
 update_url = ''
+product = 'GoodExtension'
 
 parser = OptionParser.new
 parser.on('--indir directory') {|v| dir = v}
@@ -16,6 +17,7 @@ parser.on('--outdir directory') {|v| outdir = v}
 parser.on('--ver string') {|v| ver = v}
 parser.on('--localedir directory') {|v| localedir = v}
 parser.on('--update-url url') {|v| update_url = v}
+parser.on('--product string') {|v| product = v}
 parser.parse(ARGV)
 
 if dir == '' then
@@ -43,13 +45,21 @@ if localedir != '' then
 		message = JSON.load(File.read("#{localedir}/#{e}/messages.json"))
 		localeCode = e.gsub(/_/, '-').downcase
 
+		element = xml.root.add_element("name")
+		element.text = message["#{product}_name"]['message']
+		element.add_attribute("xml:lang", localeCode)
+
 		element = xml.root.add_element("description")
-		element.text = message['akahukuplus_desc']['message']
+		element.text = message["#{product}_desc"]['message']
 		element.add_attribute("xml:lang", localeCode)
 	}
 end
 
 # strip the elements language description NOT specified
+languageDesc = REXML::XPath.match(xml, "//name[@xml:lang]").length
+if languageDesc > 0 then
+	xml.delete_element("//name[not(@xml:lang)]")
+end
 languageDesc = REXML::XPath.match(xml, "//description[@xml:lang]").length
 if languageDesc > 0 then
 	xml.delete_element("//description[not(@xml:lang)]")
@@ -57,8 +67,14 @@ end
 
 # append update-url if specified
 if update_url != '' then
+	updateDescriptionOverriden = false
 	REXML::XPath.match(xml, "//update-description").each do |node|
 		node.add_attribute("href", update_url)
+		updateDescriptionOverriden = true
+	end
+	if !updateDescriptionOverriden then
+		element = xml.root.add_element("update-description")
+		element.add_attribute("href", update_url)
 	end
 end
 

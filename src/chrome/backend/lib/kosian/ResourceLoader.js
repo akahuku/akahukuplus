@@ -29,6 +29,10 @@
 		var data = {};
 		emitter || (emitter = function (callback, data) {callback(data)});
 
+		this.path = function (path) {
+			return locationGetter(path);
+		};
+
 		this.get = function (resourcePath, callback, opts) {
 			function handleLoad () {
 				var res = isText ? xhr.responseText : xhr.response;

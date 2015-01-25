@@ -45,8 +45,8 @@ if localedir != '' then
 		localized = xml.elements["//Description[1]"].add_element("em:localized")
 		desc = localized.add_element("Description")
 		desc.add_element("em:locale").text = localeCode
-		desc.add_element("em:name").text = productName
-		desc.add_element("em:description").text = message['akahukuplus_desc']['message']
+		desc.add_element("em:name").text = message["#{productName}_name"]['message']
+		desc.add_element("em:description").text = message["#{productName}_desc"]['message']
 	}
 end
 

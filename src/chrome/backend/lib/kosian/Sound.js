@@ -144,7 +144,7 @@
 		}},
 		play: {value: function (key, opts) {
 			if (this.hiddenFrameReady) {
-				this.doPlay.apply(this, arguments);
+				this.doPlay(key, opts);
 			}
 			else {
 				this.blocked = {

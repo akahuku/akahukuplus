@@ -82,6 +82,7 @@ var transportLastUsedTime = 0;
 
 // others
 var version = '0.1.0';
+var devMode = false;
 var pageModes = [];
 var appStates = ['command'];
 var viewportRect;
@@ -246,6 +247,8 @@ function handleDOMContentLoaded (e) {
 		if (connected) return;
 		connected = true;
 		backend.tabId = req.tabId;
+		version = req.version;
+		devMode = req.devMode;
 		resources = createResourceManager();
 		initCustomEventHandler();
 		document.body.innerHTML = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
@@ -1835,7 +1838,7 @@ function createTimingLogger () {
 				item.message + (s ? (' ' + s) : '') +
 				' (' + (now - item.time).toFixed(4) + ' msecs)');
 			if (a.length == 0) {
-				console.log('*** timing dump ***\n' + this.dump());
+				log('*** timing dump ***\n' + this.dump());
 				a.length = b.length = 0;
 			}
 			last = now;
@@ -2091,7 +2094,7 @@ function createKeyManager () {
 		var mode = appStates[0] + (isTextInputElement(focusedNodeName) ? '.edit' : '');
 
 		/*
-		console.log([
+		log([
 			'mode: ' + mode,
 			'fullIdentifier: "' + fullIdentifier + '"',
 			'node name: ' + focusedNodeName
@@ -2187,53 +2190,15 @@ function createKeyManager () {
 }
 
 function createSound (name) {
-	var a = new window.Audio;
-	var ready = false;
 	var volume = 50;
-
-	function init () {
-		var mime = '';
-		var ext = '';
-
-		[
-			{mime:'audio/ogg', ext:'.ogg'},
-			{mime:'audio/mpeg', ext:'.mp3'}
-		]
-		.some(function (item) {
-			if (!a.canPlayType(item.mime)) return;
-			mime = item.mime;
-			ext = item.ext;
-			return true;
-		})
-		&& resources.get(
-			'/sounds/' + name + ext,
-			{method:'readAsDataURL'},
-			function (data) {
-				if (!data) return;
-				a.src = data.replace(/^data:[^;,]+/, 'data:' + mime);
-				ready = true;
-			}
-		);
-	}
-
-	function play () {
-		if (!ready) return;
-		var vol = Math.max(0, Math.min(volume, 100));
-		if (vol <= 0) return;
-		try {
-			!a.ended && a.pause();
-			a.loop = false;
-			a.volume = vol / 100;
-			a.currentTime = 0;
-			a.play();
-		}
-		catch (e) {
-		}
-	}
-
-	init();
 	return {
-		play:play,
+		play: function play () {
+			if (volume <= 0) return;
+			sendToBackend('play-sound', {
+				key: name,
+				volume: volume
+			});
+		},
 		get volume () {
 			return volume;
 		},
@@ -2688,7 +2653,7 @@ function createQueryCompiler () {
 
 			try {
 				source = or(next());
-				console.log(source);
+				log(source);
 			}
 			catch (e) {
 				result = {
@@ -2797,15 +2762,14 @@ function createCatalogPopup (container) {
 	var popups = [];
 	var timer;
 
-	function log (s) {
-		return;
-		console.log(s);
+	function _log (s) {
+		//log(s);
 	}
 
 	function mouseover (e) {
 		if (!config.data.catalog_popup_enabled.value) return;
 		if (transport) return;
-		log('mouseover: ' + (e.target.outerHTML || '<#document>').match(/<[^>]*>/)[0]);
+		_log('mouseover: ' + (e.target.outerHTML || '<#document>').match(/<[^>]*>/)[0]);
 
 		var target;
 		if (e.target.nodeName == 'IMG' || e.target.classList.contains('text')) {
@@ -2819,7 +2783,7 @@ function createCatalogPopup (container) {
 			timer = null;
 		}
 		if (!target) {
-			log('mouseover: target not found');
+			_log('mouseover: target not found');
 			closeAll();
 			return;
 		}
@@ -2829,7 +2793,7 @@ function createCatalogPopup (container) {
 			timer = null;
 			for (var p = document.elementFromPoint(cursorPos.x, cursorPos.y); p; p = p.parentNode) {
 				if (p == target) {
-					log('mouseover phase 2: target found');
+					_log('mouseover phase 2: target found');
 					prepare(target);
 					break;
 				}
@@ -2871,10 +2835,10 @@ function createCatalogPopup (container) {
 
 	function prepare (target) {
 		var index = indexOf(target);
-		log('prepare: index: ' + index +
+		_log('prepare: index: ' + index +
 			', target: ' + (target.querySelector('.text') || {textContent:''}).textContent);
 		if (index >= 0) {
-			log('prepare: popup for the target already exists. exit.');
+			_log('prepare: popup for the target already exists. exit.');
 			return;
 		}
 
@@ -2924,24 +2888,24 @@ function createCatalogPopup (container) {
 			thumbnail.addEventListener('error', function () {
 				this.removeEventListener('load', arguments.callee, false);
 				this.removeEventListener('error', arguments.callee, false);
-				close(target);
+				open(target);
 			}, false);
 		}
 		else {
 			open(index);
 		}
-		log('exit prepare');
+		_log('exit prepare');
 	}
 
 	function open (target) {
 		var index = typeof target == 'number' ? target : indexOf(target);
 		if (index < 0 || target >= popups.length) {
-			log('open: index is ' + index + ' invalid. exit.');
+			_log('open: index is ' + index + ' invalid. exit.');
 			return;
 		}
 
 		var item = popups[index];
-		log('open: ' + item.text.textContent);
+		_log('open: ' + item.text.textContent);
 		if (item.thumbnail) {
 			if (!item.zoomedRect) {
 				item.zoomedRect = {
@@ -2969,13 +2933,13 @@ function createCatalogPopup (container) {
 			setTimeout(function () {item.text.classList.add('run')}, 0);
 		}
 		item.state = 'running';
-		log('exit open');
+		_log('exit open');
 	}
 
 	function close (target) {
 		var index = typeof target == 'number' ? target : indexOf(target);
 		if (index < 0 || index >= popups.length) {
-			log('close: index ' + index + ' is invalid. exit.');
+			_log('close: index ' + index + ' is invalid. exit.');
 			return;
 		}
 
@@ -2997,7 +2961,7 @@ function createCatalogPopup (container) {
 				}
 			}
 		};
-		log('close: ' + item.text.textContent);
+		_log('close: ' + item.text.textContent);
 
 		var count = 0;
 		if (item.thumbnail) {
@@ -3017,11 +2981,11 @@ function createCatalogPopup (container) {
 			item.state = 'closing';
 			item.closingCount = count;
 		}
-		log('exit close');
+		_log('exit close');
 	}
 
 	function closeAll (except) {
-		log('closeAll: closing ' + popups.length + ' popup(s)');
+		_log('closeAll: closing ' + popups.length + ' popup(s)');
 		var elms = Array.prototype.slice.call(document.querySelectorAll('body > .catalog-popup'));
 		for (var i = 0; i < popups.length; i++) {
 			['thumbnail', 'text'].forEach(function (p) {
@@ -3211,7 +3175,10 @@ function createQuotePopup () {
 			sentinelComment.innerHTML.split(/<br[^>]*>/i).some(function (t) {
 				span.innerHTML = t;
 				var result = false;
-				var fragment = span.textContent.replace(/[\s\u3000]*$/, '');
+				var fragment = span.textContent
+					.replace(/^\s+/, '')
+					.replace(/[\s\u3000]+$/, '');
+
 				if (/^(?:>|&gt;)/.test(fragment)) {
 					if (!quoteTextForSearch) {
 						quoteTextForSearch = [fragment];
@@ -5569,6 +5536,11 @@ function transitionend (element, callback, backupMsec) {
 	});
 }
 
+function log () {
+	devMode && console.log(
+		Array.prototype.slice.call(arguments).join(' '));
+}
+
 /*
  * {{{1 functions for posting
  */
@@ -7192,7 +7164,7 @@ var commands = {
 				response = response.replace(/\r\n|\r|\n/g, '\t');
 				/warning/i.test(response) && console.info(response.replace(/.{1,72}/g, '$&\n'));
 
-				//console.log('got post result:\n' + response.replace(/.{1,72}/g, '$&\n'));
+				//log('got post result:\n' + response.replace(/.{1,72}/g, '$&\n'));
 
 				var result = parsePostResponse(response);
 				if (result.redirect) {
@@ -7763,7 +7735,7 @@ var commands = {
 	search: function () {
 		var tester = createQueryCompiler().compile($('search-text').value);
 		if (tester.message) {
-			console.log(tester.message);
+			log(tester.message);
 			return;
 		}
 

@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <widget xmlns="http://www.w3.org/ns/widgets" id="http://akahuku.github.io/akahukuplus/" defaultlocale="ja" version="0.0.1">
-	<name xml:lang="en">akahukuplus</name>
-	<description xml:lang="en">Take your futaba life higher.</description>
-	<license href="http://www.apache.org/licenses/LICENSE-2.0.html" xml:lang="en">Licensed under the Apache License, Version 2.0</license>
+	<name>akahukuplus</name>
+	<description>Take your futaba life higher.</description>
 
-	<name xml:lang="ja">赤福プラス</name>
-	<description xml:lang="ja">ふたばライフを豊かにする.</description>
-	<license href="http://www.apache.org/licenses/LICENSE-2.0.html" xml:lang="ja">Apache ライセンス（Version 2.0）のもとライセンスされます</license>
-
+	<license href="http://www.apache.org/licenses/LICENSE-2.0.html">Licensed under the Apache License, Version 2.0</license>
 	<author href="http://appsweets.net/" email="akahuku@gmail.com">toshiaki futaba</author>
 
 	<icon src="images/icon048.png" width="48" height="48"/>
@@ -24,6 +20,4 @@
 	<access origin="https://google.com/" subdomains="true"/>
 	<access origin="https://googleapis.com/" subdomains="true"/>
 	<access origin="https://apis.live.net/"/>
-
-	<!--@update-description@-->
 </widget>

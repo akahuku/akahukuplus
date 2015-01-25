@@ -84,6 +84,11 @@ FIREFOX_SRC_PATH = $(SRC_DIR)/$(FIREFOX_SRC_DIR)
 FIREFOX_EMBRYO_SRC_PATH = $(EMBRYO_DIR)/$(FIREFOX_SRC_DIR)
 FIREFOX_TEST_PROFILE_PATH := $(shell $(CYGPATH) profile/firefox)
 
+SED_SCRIPT_DEBUG_OFF = -e 's/\(const\s\+DEBUG_ALWAYS_LOAD_XSL\s*=\s*\)true/\1false/' \
+	-e 's/\(const\s\+DEBUG_DUMP_INTERNAL_XML\s*=\s*\)true/\1false/' \
+	-e 's/\(const\s\+DEBUG_HIDE_BANNERS\s*=\s*\)true/\1false/' \
+	-e 's/\(const\s\+DEBUG_IGNORE_LAST_MODIFIED\s*=\s*\)true/\1false/'
+
 # basic rules
 # ========================================
 
@@ -103,7 +108,9 @@ $(BINKEYS_PATH): $(CHROME_SRC_PATH)/$(CRYPT_KEY_FILE) $(CHROME_SRC_PATH)/$(CRYPT
 
 FORCE:
 
-.PHONY: clean all FORCE
+.PHONY: all clean \
+	runfx \
+	FORCE
 
 #
 # rules to make akahukuplus.crx
@@ -115,6 +122,11 @@ $(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEY_PATH)
 #	copy all of sources to embryo dir
 	$(RSYNC) $(RSYNC_OPT) \
 		$(CHROME_SRC_PATH)/ $(CHROME_EMBRYO_SRC_PATH)
+
+#	update akahukuplus.js
+	sed $(SED_SCRIPT_DEBUG_OFF) \
+		$(CHROME_SRC_PATH)/frontend/akahuku-extreme.js \
+		> $(CHROME_EMBRYO_SRC_PATH)/frontend/akahuku-extreme.js
 
 #	update manifest
 	tool/update-chrome-manifest.rb \
@@ -170,16 +182,13 @@ $(OPERA_TARGET_PATH): $(OPERA_MTIME_PATH) $(BINKEYS_PATH)
 	$(RSYNC) $(RSYNC_OPT) $(OPERA_SRC_PATH)/ $(OPERA_EMBRYO_SRC_PATH)
 
 #	update akahukuplus.js
-	sed -e 's/\(const\s\+DEBUG_ALWAYS_LOAD_XSL\s*=\s*\)true/\1false/' \
-		-e 's/\(const\s\+DEBUG_DUMP_INTERNAL_XML\s*=\s*\)true/\1false/' \
-		-e 's/\(const\s\+DEBUG_HIDE_BANNERS\s*=\s*\)true/\1false/' \
-		-e 's/\(const\s\+DEBUG_IGNORE_LAST_MODIFIED\s*=\s*\)true/\1false/' \
-		-e "s/\(var\s\+version\s*=\s*\)'[^']\+'/\1'$(VERSION)'/" \
+	sed $(SED_SCRIPT_DEBUG_OFF) \
 		$(OPERA_SRC_PATH)/includes/akahuku-extreme.js \
 		> $(OPERA_EMBRYO_SRC_PATH)/includes/akahuku-extreme.js
 
 #	update the manifest file
 	tool/update-opera-config.rb \
+		--product $(PRODUCT) \
 		--indir $(OPERA_SRC_PATH) \
 		--outdir $(OPERA_EMBRYO_SRC_PATH) \
 		--ver $(VERSION) \
@@ -216,6 +225,11 @@ $(BLINKOPERA_TARGET_PATH): $(BLINKOPERA_MTIME_PATH) $(BINKEY_PATH)
 #	copy all of sources to embryo dir
 	$(RSYNC) $(RSYNC_OPT) \
 		$(BLINKOPERA_SRC_PATH)/ $(BLINKOPERA_EMBRYO_SRC_PATH)
+
+#	update akahukuplus.js
+	sed $(SED_SCRIPT_DEBUG_OFF) \
+		$(BLINKOPERA_SRC_PATH)/frontend/akahuku-extreme.js \
+		> $(BLINKOPERA_EMBRYO_SRC_PATH)/frontend/akahuku-extreme.js
 
 #	update manifest
 	tool/update-chrome-manifest.rb \
@@ -259,6 +273,11 @@ $(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH) $(BINKEY_PATH)
 #	copy all of sources to embryo dir
 	$(RSYNC) $(RSYNC_OPT) \
 		$(FIREFOX_SRC_PATH)/ $(FIREFOX_EMBRYO_SRC_PATH)
+
+#	update akahukuplus.js
+	sed $(SED_SCRIPT_DEBUG_OFF) \
+		$(FIREFOX_SRC_PATH)/data/frontend/akahuku-extreme.js \
+		> $(FIREFOX_EMBRYO_SRC_PATH)/data/frontend/akahuku-extreme.js
 
 #	strip script tag from options.html
 #	sed -e 's/<script[^>]*><\/script>//g' \
@@ -312,5 +331,15 @@ $(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH) $(BINKEY_PATH)
 $(FIREFOX_MTIME_PATH): FORCE
 	@mkdir -p $(FIREFOX_EMBRYO_SRC_PATH) $(DIST_DIR)
 	tool/mtime.rb --dir $(FIREFOX_SRC_PATH) --base $(FIREFOX_TARGET_PATH) --out $@
+
+
+
+#
+# rules to test
+# ========================================
+#
+
+runfx: FORCE
+	cd $(FIREFOX_SRC_PATH) && cfx run -p $(abspath $(FIREFOX_TEST_PROFILE_PATH))
 
 # end
