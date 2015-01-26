@@ -1302,9 +1302,7 @@ hr {
 }
 
 .wheel-status img {
-	width:10px;
-	height:2px;
-	background:url(data:image/gif;base64,R0lGODlhCgACAKECAIAAAP//7v///////yH/C05FVFNDQVBFMi4wAwEAAAAh+QQBGQABACwAAAAACgACAAACBISPmQUAIfkEARkAAAAsAAAAAAoAAgAAAgSMj5kFADs=) left top no-repeat transparent;
+	border:none;
 }
 
 /*
@@ -1579,11 +1577,27 @@ div.catalog-popup span {
 			/ This page is under control of <a href="http://akahuku.github.io/akahukuplus/" target="_blank">akahukuplus/<xsl:value-of select="meta/version"/></a>
 			—</div>
 		</footer>
-		<div class="wheel-status hide" id="wheel-status"><span>wow</span><img/></div>
+		<div class="wheel-status hide" id="wheel-status"><span>wow</span><img width="10" height="2" src="data:image/gif;base64,R0lGODlhCgACAKECAIAAAP//7v///////yH/C05FVFNDQVBFMi4wAwEAAAAh+QQBGQABACwAAAAACgACAAACBISPmQUAIfkEARkAAAAsAAAAAAoAAgAAAgSMj5kFADs="/></div>
 		<div id="ad-aside-wrap">
-		<xsl:for-each select="meta/ads/banners/ad">
-			<div class="{@class}" data-doe="{.}"></div>
-		</xsl:for-each>
+			<xsl:choose>
+				<xsl:when test="meta/configurations/param[@name='banner_enabled']/@value='1'">
+					<xsl:for-each select="meta/ads/banners/ad">
+						<div class="{@class}">
+							<xsl:element name="iframe">
+								<xsl:attribute name="frameborder">0</xsl:attribute>
+								<xsl:attribute name="width"><xsl:value-of select="@width"/></xsl:attribute>
+								<xsl:attribute name="height"><xsl:value-of select="@height"/></xsl:attribute>
+								<xsl:attribute name="src"><xsl:value-of select="@src"/></xsl:attribute>
+							</xsl:element>
+						</div>
+					</xsl:for-each>
+				</xsl:when>
+				<xsl:otherwise>
+					<xsl:for-each select="meta/ads/banners/ad">
+						<div class="{@class}" data-banner-markup="{@src}"></div>
+					</xsl:for-each>
+				</xsl:otherwise>
+			</xsl:choose>
 		</div>
 		<div id="panel-aside-wrap" class="hide">
 			<div class="panel-header">パネル</div>

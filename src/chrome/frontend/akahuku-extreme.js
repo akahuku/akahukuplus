@@ -19,7 +19,6 @@
  */
 
 const FUTABA_CHARSET = 'Shift_JIS';
-const WAIT_INIT_TRANSITION = 100;
 const WAIT_AFTER_INIT_TRANSITION = 1000;
 const WAIT_AFTER_RELOAD = 500;
 const WAIT_AFTER_POST = 500;
@@ -380,9 +379,7 @@ function boot () {
 				}
 
 				if (document.readyState == 'complete') {
-					setTimeout(function () {
-						startTransition();
-					}, WAIT_INIT_TRANSITION);
+					startTransition();
 				}
 				else {
 					window.addEventListener('load', function (e) {
@@ -1262,6 +1259,7 @@ function createXMLGenerator () {
 			for (var i in adsHash) {
 				var width = /width="(\d+)"/.exec(i);
 				var height = /height="(\d+)"/.exec(i);
+				var src = /src="([^"]*)"/.exec(i);
 				if (!width || !height) continue;
 
 				var adNode = element(bannersNode, 'ad');
@@ -1269,6 +1267,7 @@ function createXMLGenerator () {
 
 				width = width[1] - 0;
 				height = height[1] - 0;
+				src = src[1];
 
 				if (width == 468 && height == 60) {
 					className = 'mini';
@@ -1281,6 +1280,9 @@ function createXMLGenerator () {
 
 				adNode.appendChild(text(i));
 				adNode.setAttribute('class', 'size-' + className);
+				adNode.setAttribute('width', width);
+				adNode.setAttribute('height', height);
+				adNode.setAttribute('src', src);
 			}
 
 			var re = /<div\s+class="ama"[^>]*>(.+<\/blockquote>)\s*<\/div>/i.exec(content);
@@ -1318,6 +1320,10 @@ function createXMLGenerator () {
 			paramNode = configNode.appendChild(element(configNode, 'param'));
 			paramNode.setAttribute('name', 'storage')
 			paramNode.setAttribute('value', config.data.storage.value)
+
+			paramNode = configNode.appendChild(element(configNode, 'param'));
+			paramNode.setAttribute('name', 'banner_enabled')
+			paramNode.setAttribute('value', config.data.banner_enabled.value ? '1' : '0')
 		})();
 
 		/*
@@ -1684,21 +1690,10 @@ function createConfigurator () {
 				'last':'最後に使用した倍率を使用する'
 			}
 		},
-		reject_banner_scripts: {
+		banner_enabled: {
 			type:'bool',
-			value:false,
-			name:'バナーの制限',
-			desc:'バナー内の javascript の実行を拒否します。',
-			onsave:function (item) {
-				if (window.opera && typeof widget == 'object') {
-					widget.preferences['reject_banner_scripts'] = item.value ? 1 : 0;
-				}
-			},
-			onload:function (item) {
-				if (window.opera && typeof widget == 'object') {
-					item.value = widget.preferences['reject_banner_scripts'] == 1;
-				}
-			}
+			value:true,
+			name:'バナーを表示する'
 		}
 	};
 
@@ -4399,14 +4394,15 @@ function install (mode) {
 	 */
 
 	setupParallax('#ad-aside-wrap');
-	(function () {
-		var iframe = document.querySelector('iframe[data-src]');
-		if (!iframe) return;
-		iframe.src = iframe.getAttribute('data-src');
-		iframe.removeAttribute('data-src');
-		var callee = arguments.callee;
-		iframe.onload = function () {setTimeout(callee, BANNER_LOAD_DELAY)};
-	})();
+	setTimeout(function () {
+		Array.prototype.forEach.call(
+			document.querySelectorAll('iframe[data-src]'),
+			function (iframe) {
+				iframe.src = iframe.getAttribute('data-src');
+				iframe.removeAttribute('data-src');
+			}
+		);
+	}, 1000 * 1);
 
 	/*
 	 * mouse wheel handler
@@ -4448,6 +4444,19 @@ function install (mode) {
 	 */
 
 	quotePopup = createQuotePopup();
+
+	/*
+	 * special custom events from my keysnail.js :-)
+	 *
+	 * RequestMoreContent:
+	 *    emulates space key behavior at bottom of page
+	 *    on Presto Opera
+	 */
+
+	document.addEventListener('RequestMoreContent', function (e) {
+		e.preventDefault();
+		commands.invokeMousewheelEvent();
+	}, false);
 
 	/*
 	 * switch according to mode of pseudo-query
@@ -5350,9 +5359,8 @@ function getCatalogSettings () {
 function setBottomStatus (s, persistent) {
 	var ev = document.createEvent('CustomEvent');
 	ev.initCustomEvent('Akahukuplus.bottomStatus', true, true, {
-		detail:{
-			message: s,
-			persistent: persistent}
+		message: '' + s,
+		persistent: !!persistent
 	});
 	document.dispatchEvent(ev);
 }
@@ -6496,40 +6504,41 @@ function setPostThumbnail (file) {
 	var fr = new FileReader;
 	fr.onload = function () {
 		var img = document.createElement('img');
+		img.onload = function () {
+			var containerWidth = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
+			var containerHeight = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
+			var size = getThumbnailSize(
+				img.naturalWidth, img.naturalHeight,
+				containerWidth, containerHeight);
+
+			var canvas = document.createElement('canvas');
+			canvas.width = size.width;
+			canvas.height = size.height;
+
+			var c = canvas.getContext('2d');
+			c.fillStyle = '#f0e0d6';
+			c.fillRect(0, 0, canvas.width, canvas.height);
+			c.drawImage(
+				img,
+				0, 0, img.naturalWidth, img.naturalHeight,
+				0, 0, canvas.width, canvas.height);
+
+			thumbWrap.classList.add('hide');
+			thumb.classList.remove('run');
+			thumbWrap.setAttribute('data-available', '2');
+			thumb.width = canvas.width;
+			thumb.height = canvas.height;
+			thumb.src = canvas.toDataURL();
+			setTimeout(function () {commands.activatePostForm()}, 0);
+
+			img = img.onload = null;
+		};
 		img.src = fr.result;
-
-		var containerWidth = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
-		var containerHeight = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
-		var size = getThumbnailSize(
-			img.naturalWidth, img.naturalHeight,
-			containerWidth, containerHeight);
-
-		var canvas = document.createElement('canvas');
-		canvas.width = size.width;
-		canvas.height = size.height;
-
-		var c = canvas.getContext('2d');
-		c.fillStyle = '#f0e0d6';
-		c.fillRect(0, 0, canvas.width, canvas.height);
-		c.drawImage(
-			img,
-			0, 0, img.naturalWidth, img.naturalHeight,
-			0, 0, canvas.width, canvas.height);
-
-		thumbWrap.classList.add('hide');
-		thumb.classList.remove('run');
-		thumbWrap.setAttribute('data-available', '2');
-		thumb.src = canvas.toDataURL();
-		setTimeout(function () {
-			commands.activatePostForm();
-		}, 0);
-
-		img = canvas = fr = null;
+		fr = null;
 	};
 	fr.onerror = function () {
 		thumbWrap.removeAttribute('data-available');
 		setPostThumbnailVisibility(false);
-
 		fr = null;
 	};
 	fr.readAsDataURL(file);
@@ -6635,17 +6644,20 @@ var commands = {
 		var st = docScrollTop();
 		var sh = document.documentElement.scrollHeight;
 		if (!e.shift && lastScrollTop >= sh - viewportRect.height) {
-			var ev = document.createEvent('MouseEvents');
-			var view = window.unsafeWindow || window;
-			ev.initMouseEvent('mousewheel', true, true, view,
-				0, 0, 0, 0, 0,
-				false, false, false, false,
-				0, null);
-			view.dispatchEvent(ev);
+			commands.invokeMousewheelEvent();
 		}
 		else {
 			return 'passthrough';
 		}
+	},
+	invokeMousewheelEvent: function () {
+		var ev = document.createEvent('MouseEvents');
+		var view = window.unsafeWindow || window;
+		ev.initMouseEvent('mousewheel', true, true, view,
+			0, 0, 0, 0, 0,
+			false, false, false, false,
+			0, null);
+		view.dispatchEvent(ev);
 	},
 	clearUpfile: function () {
 		resetForm('upfile');

@@ -64,7 +64,10 @@
 		var state = 0;
 		var existsTab = null;
 		var rightTabIndex = -1;
-		Array.prototype.some.call(tabs, function (tab) {
+
+		Array.prototype.slice.call(tabs)
+		.sort(function (tab1, tab2) {return tab1.index - tab2.index})
+		.some(function (tab) {
 			if (tab.url == url) {
 				existsTab = tab;
 				return true;
