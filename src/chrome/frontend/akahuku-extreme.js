@@ -2067,7 +2067,7 @@ function createKeyManager () {
 			// ctrl code directly
 			else if (keyCode >= 0 && keyCode <= 31) {
 				c.push('c');
-				baseKeyName = String.fromCharCode(keyCode + 96);
+				baseKeyName = String.fromCharCode(keyCode + 64).toLowerCase();
 				c.push(baseKeyName);
 				logicalCharCode = keyCode;
 			}
@@ -2107,6 +2107,7 @@ function createKeyManager () {
 	}
 
 	function invoke (e, mode, identifier, virtualKeyboardEvent) {
+//console.log('keyManager#invoke: mode:' + mode + ', id:' + identifier + ', ev:' + JSON.stringify(virtualKeyboardEvent));
 		if (!(mode in strokes) || !(identifier in strokes[mode])) return;
 
 		var result;
@@ -2828,6 +2829,17 @@ function createCatalogPopup (container) {
 		elm.style.height = rect.height + 'px';
 	}
 
+	function clip (rect) {
+		var sl = viewportRect.left + docScrollLeft();
+		var st = viewportRect.top + docScrollTop();
+		var sr = sl + viewportRect.width;
+		var sb = st + viewportRect.height;
+		if ('left' in rect && rect.left < sl) rect.left = sl;
+		if ('left' in rect && 'right' in rect && 'width' in rect && rect.right > sr) rect.left = sr - rect.width;
+		if ('top' in rect && rect.top < st) rect.top = st;
+		if ('top' in rect && 'bottom' in rect && 'height' in rect && rect.bottom > sb) rect.top = sb - rect.height;
+	}
+
 	function prepare (target) {
 		var index = indexOf(target);
 		_log('prepare: index: ' + index +
@@ -2914,6 +2926,7 @@ function createCatalogPopup (container) {
 				item.zoomedRect.top = item.shrinkedRect.top +
 					item.shrinkedRect.height -
 					item.zoomedRect.height;
+				clip(item.zoomedRect);
 			}
 			setGeometory(item.thumbnail, item.shrinkedRect);
 			item.thumbnail.classList.remove('hide');
@@ -2921,9 +2934,15 @@ function createCatalogPopup (container) {
 		}
 		if (item.text) {
 			var rect = getRect(item.target);
-			item.text.style.left = Math.floor(rect.left + (rect.width / 2) - (CATALOG_POPUP_TEXT_WIDTH / 2)) + 'px';
-			item.text.style.top = ((item.shrinkedRect ? item.shrinkedRect.bottom : rect.bottom) + 8) + 'px';
-			item.text.style.width = CATALOG_POPUP_TEXT_WIDTH + 'px';
+			rect = {
+				left: Math.floor(rect.left + (rect.width / 2) - (CATALOG_POPUP_TEXT_WIDTH / 2)),
+				top: (item.shrinkedRect ? item.shrinkedRect.bottom : rect.bottom) + 8,
+				width: CATALOG_POPUP_TEXT_WIDTH
+			};
+			clip(rect);
+			item.text.style.left = rect.left + 'px';
+			item.text.style.top = rect.top + 'px';
+			item.text.style.width = rect.width + 'px';
 			item.text.classList.remove('hide');
 			setTimeout(function () {item.text.classList.add('run')}, 0);
 		}
@@ -7075,7 +7094,8 @@ var commands = {
 						if (from) {
 							to = anchor.appendChild(document.createElement('div'));
 							to.className = 'text';
-							to.textContent = from.textContent.substring(0, 4);
+							var fromText = from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!');
+							to.textContent = /([\uff00-\uffef]{2}|[^\uff00-\uffef]){1,4}/.exec(fromText)[0];
 							to.setAttribute('data-text', from.textContent);
 						}
 
