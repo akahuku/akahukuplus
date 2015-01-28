@@ -3817,9 +3817,7 @@ function setupVideoViewer () {
 	}
 
 	function handleScroll () {
-		if (timer) {
-			clearTimeout(timer);
-		}
+		if (timer) return;
 		timer = setTimeout(function () {
 			timer = null;
 			doit();
@@ -3843,8 +3841,9 @@ function setupVideoViewer () {
 				}
 				else {
 					// visible
-					if (node.childNodes.length == 0) {
-						node.insertAdjacentHTML('beforeend', node.getAttribute('data-markup'));
+					var markup = node.getAttribute('data-markup');
+					if (markup && node.childNodes.length == 0) {
+						node.insertAdjacentHTML('beforeend', markup);
 					}
 				}
 			}
