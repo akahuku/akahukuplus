@@ -371,6 +371,11 @@ function boot () {
 					document.head.appendChild(node);
 				}
 
+				// some tweaks: ensure title element exists
+				if (document.head.getElementsByTagName('title').length == 0) {
+					document.head.appendChild(document.createElement('title')).setAttribute('data-binding', 'xpath:/futaba/meta/title');
+				}
+
 				// expand all bindings
 				applyDataBindings(xml);
 
