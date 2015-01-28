@@ -330,13 +330,28 @@ function boot () {
 				if (!fragment) {
 					throw new Error('Cannot transform and import the XML document.');
 				}
+
 				var head = fragment.querySelector('head');
 				var body = fragment.querySelector('body');
+				var removeHeadElements = function () {
+					Array.prototype.slice
+					.call(document.querySelectorAll('head > *'))
+					.forEach(function (node) {
+						if (node.nodeName == 'BASE') return;
+						node.parentNode.removeChild(node);
+					});
+				};
 				if (head || body) {
-					head && document.head.appendChild(fixFragment(fragment, 'head'));
-					body && document.body.appendChild(fixFragment(fragment, 'body'));
+					if (head) {
+						removeHeadElements();
+						document.head.appendChild(fixFragment(fragment, 'head'));
+					}
+					if (body) {
+						document.body.appendChild(fixFragment(fragment, 'body'));
+					}
 				}
 				else {
+					removeHeadElements();
 					document.body.appendChild(fragment);
 				}
 				appendFragment(document.documentElement);
@@ -356,13 +371,11 @@ function boot () {
 					document.head.appendChild(node);
 				}
 
-				// some tweaks: add a binding attribute to existing elements
-				document.getElementsByTagName('title')[0]
-					.setAttribute('data-binding', 'xpath:/futaba/meta/title');
-
+				// expand all bindings
 				applyDataBindings(xml);
 
-				function startTransition () {
+				// start transition
+				var startTransition = function () {
 					transitionend('content', function (e) {
 						if (!bootVars) return;
 						bootVars = null;
@@ -376,8 +389,7 @@ function boot () {
 						processRemainingReplies(generateResult.remainingRepliesContext);
 					}, WAIT_AFTER_INIT_TRANSITION);
 					$('content').classList.remove('init');
-				}
-
+				};
 				if (document.readyState == 'complete') {
 					startTransition();
 				}
@@ -385,6 +397,7 @@ function boot () {
 					window.addEventListener('load', function (e) {
 						this.removeEventListener(e.type, arguments.callee, false);
 						startTransition();
+						startTransition = null;
 					}, false);
 				}
 			}
@@ -3759,6 +3772,15 @@ function setupParallax (selector) {
 		marginTop = node.getBoundingClientRect().top;
 		window.addEventListener('scroll', handleScroll, false);
 		handleScroll();
+		setTimeout(function () {
+			Array.prototype.forEach.call(
+				document.querySelectorAll('iframe[data-src]'),
+				function (iframe) {
+					iframe.src = iframe.getAttribute('data-src');
+					iframe.removeAttribute('data-src');
+				}
+			);
+		}, 1000 * 1);
 	}
 
 	function handleScroll () {
@@ -3776,6 +3798,52 @@ function setupParallax (selector) {
 		else {
 			node.style.top = '';
 		}
+	}
+
+	init();
+}
+
+function setupVideoViewer () {
+	var timer;
+
+	function init () {
+		window.addEventListener('scroll', handleScroll, false);
+		doit();
+	}
+
+	function handleScroll () {
+		if (timer) {
+			clearTimeout(timer);
+		}
+		timer = setTimeout(function () {
+			timer = null;
+			doit();
+		}, 1000);
+	}
+
+	function doit () {
+		var st = docScrollTop();
+		var vt = st - viewportRect.height;
+		var vb = st + viewportRect.height * 2;
+		Array.prototype.forEach.call(
+			document.querySelectorAll('.inline-video'),
+			function (node) {
+				var rect = node.getBoundingClientRect();
+				if (rect.bottom + st < vt
+				||  rect.top + st > vb) {
+					// invisible
+					if (node.childNodes.length) {
+						empty(node);
+					}
+				}
+				else {
+					// visible
+					if (node.childNodes.length == 0) {
+						node.insertAdjacentHTML('beforeend', node.getAttribute('data-markup'));
+					}
+				}
+			}
+		);
 	}
 
 	init();
@@ -4413,15 +4481,12 @@ function install (mode) {
 	 */
 
 	setupParallax('#ad-aside-wrap');
-	setTimeout(function () {
-		Array.prototype.forEach.call(
-			document.querySelectorAll('iframe[data-src]'),
-			function (iframe) {
-				iframe.src = iframe.getAttribute('data-src');
-				iframe.removeAttribute('data-src');
-			}
-		);
-	}, 1000 * 1);
+
+	/*
+	 * inline viewo viewer
+	 */
+
+	setupVideoViewer();
 
 	/*
 	 * mouse wheel handler
@@ -5566,6 +5631,19 @@ function transitionend (element, callback, backupMsec) {
 function log () {
 	devMode && console.log(
 		Array.prototype.slice.call(arguments).join(' '));
+}
+
+function getTextForCatalog (text, maxLength) {
+	var score = 0;
+	var result = '';
+	for (var i = 0, goal = text.length; i < goal; i++) {
+		var ch = text.charAt(i);
+		var s = /[\uff61-\uffdc\uffe8-\uffee]/.test(ch) ? .5 : 1;
+		if (score >= maxLength || score + s > maxLength) break;
+		result += ch;
+		score += s;
+	}
+	return result;
 }
 
 /*
@@ -7094,8 +7172,8 @@ var commands = {
 						if (from) {
 							to = anchor.appendChild(document.createElement('div'));
 							to.className = 'text';
-							var fromText = from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!');
-							to.textContent = /([\uff00-\uffef]{2}|[^\uff00-\uffef]){1,4}/.exec(fromText)[0];
+							to.textContent = getTextForCatalog(
+								from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!'), 4);
 							to.setAttribute('data-text', from.textContent);
 						}
 

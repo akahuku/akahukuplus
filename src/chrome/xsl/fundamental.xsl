@@ -30,6 +30,10 @@
 <xsl:template match="futaba" mode="full">
 <html lang="ja">
 	<head>
+		<meta http-equiv="Content-type" content="text/html; charset=UTF-8"/>
+		<meta http-equiv="Content-Script-Type" content="text/javascript"/>
+		<meta http-equiv="Content-Style-Type" content="text/css"/>
+		<title data-binding="xpath:/futaba/meta/title"></title>
 		<link rel="prev" href="{meta/link[@rel='prev']}"/>
 		<link rel="next" href="{meta/link[@rel='next']}"/>
 		<style type="text/css">
@@ -563,6 +567,27 @@ hr {
 }
 
 .reply-image > div {
+}
+
+/*
+ * inline video
+ */
+
+#content .inline-video-container {
+}
+
+#content .inline-video {
+	background-color:#666;
+}
+
+#content .inline-video-container .youtube {
+	width:420px;
+	height:315px;
+}
+
+#content .inline-video-container .nico2 {
+	width:312px;
+	height:176px;
 }
 
 /*
@@ -1975,15 +2000,15 @@ div.catalog-popup span {
 </a>
 </xsl:when>
 <xsl:when test="contains(@class,'link-youtube') and not(name(..)='q')">
-<div class="inline-video">
-	<a href="{@href}" target="_blank"><xsl:value-of select="."/></a><br/>
-	<iframe width="420" height="315" src="//www.youtube.com/embed/{@youtube-key}" frameborder="0" allowfullscreen="allowfullscreen"></iframe>
+<div class="inline-video-container">
+	<a href="{@href}" target="_blank"><xsl:value-of select="."/></a>
+	<div class="inline-video youtube" data-markup="&lt;iframe width='420' height='315' src='//www.youtube.com/embed/{@youtube-key}' frameborder='0' allowfullscreen='allowfullscreen'&gt;&lt;/iframe&gt;"></div>
 </div>
 </xsl:when>
 <xsl:when test="contains(@class,'link-nico2') and not(name(..)='q')">
-<div class="inline-video">
-	<a href="{@href}" target="_blank"><xsl:value-of select="."/></a><br/>
-	<iframe width="312" height="176" src="http://ext.nicovideo.jp/thumb/{@nico2-key}" scrolling="no" style="border:solid 1px #CCC;" frameborder="0"></iframe>
+<div class="inline-video-container">
+	<a href="{@href}" target="_blank"><xsl:value-of select="."/></a>
+	<div class="inline-video nico2" data-markup="&lt;iframe width='312' height='176' src='http://ext.nicovideo.jp/thumb/{@nico2-key}' scrolling='no' style='border:solid 1px #CCC;' frameborder='0'&gt;&lt;/iframe&gt;"></div>
 </div>
 </xsl:when>
 <xsl:when test="contains(@class,'link-futaba') and not (name(..)='q')">
