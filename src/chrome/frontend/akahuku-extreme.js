@@ -1959,186 +1959,31 @@ function createClickDispatcher () {
 }
 
 function createKeyManager () {
-	var SPECIAL_KEYS = {
-		8: 'bs',
-		9: 'tab',
-		13: 'enter',
-		27: 'esc',
-
-		33:'pageup', 34:'pagedown', 35:'end',  36:'home',   37:'left',
-		38:'up',     39:'right',    40:'down', 45:'insert', 46:'delete',
-
-		112: 'f1', 113:  'f2', 114:  'f3', 115:  'f4',
-		116: 'f5', 117:  'f6', 118:  'f7', 119:  'f8',
-		120: 'f9', 121: 'f10', 122: 'f11', 123: 'f12'
-	};
-	var SPECIAL_KEY_CODES = {
-		8:8,
-		9:9,
-		13:13,
-		27:27,
-		46:127
-	};
-	var TRANSLATE_TABLE_WEBKIT = {
-		'u+0008':  8,  'backspace': 8,
-		'u+0009':  9,  'tab':       9,
-		'u+000d':  13, 'enter':     13,
-		'u+001b':  27, 'esc':       27,
-
-		'pageup':33, 'pagedown':34, 'end': 35, 'home':  36, 'left':  37,
-		'up':    38, 'right':   39, 'down':40, 'insert':45, 'u+007f':46,
-
-		'f1':112, 'f2': 113, 'f3': 114, 'f4': 115,
-		'f5':116, 'f6': 117, 'f7': 118, 'f8': 119,
-		'f9':120, 'f10':121, 'f11':122, 'f12':123
-	};
-
-	var specialKeyName;
-	var specialKeyCode;
 	var strokes = {};
 
-	function keydown (e) {
-		//if (isTextInputElement()) return;
-		if (e.shiftKey && e.keyCode == 16 || e.ctrlKey && e.keyCode == 17) return;
-		if (window.chrome) {
-			specialKeyName = false;
-
-			// special keys
-			if (specialKeyName === false) {
-				var translated = TRANSLATE_TABLE_WEBKIT[e.keyIdentifier.toLowerCase()];
-				if (translated !== undefined) {
-					specialKeyName = SPECIAL_KEYS[translated] || false;
-					specialKeyCode = SPECIAL_KEY_CODES[translated] || -translated;
-				}
-			}
-
-			// ctrl code shortcuts: ctrl + *
-			if (specialKeyName === false) {
-				if (e.ctrlKey && (
-					e.keyCode >= 64 && e.keyCode <= 95 ||
-					e.keyCode >= 96 && e.keyCode <= 127 ||
-					e.keyCode == 219)
-				) {
-					keypress({
-						shiftKey:e.shiftKey,
-						ctrlKey:e.ctrlKey,
-						keyCode:e.keyCode & 0x1f,
-						preventDefault:function () {e.preventDefault()}
-					});
-				}
-			}
-
-			if (specialKeyName !== false) {
-				keypress(e);
-			}
-		}
-		else {
-			specialKeyName = e.keyCode == e.which && SPECIAL_KEYS[e.keyCode] ?
-				SPECIAL_KEYS[e.keyCode] : false;
-			specialKeyCode = SPECIAL_KEY_CODES[e.keyCode] || -e.keyCode;
-
-			if (window.opera && specialKeyName !== false && e.keyCode != 13) {
-				keypress(e);
-			}
-		}
-	}
-
 	function keypress (e) {
-		//if (isTextInputElement()) return;
-
-		var c = [];
-		var baseKeyName;
-		var logicalCharCode;
-		var isSpecial = false;
-
-		if (specialKeyName) {
-			e.shiftKey && c.push('s');
-			e.ctrlKey  && c.push('c');
-			(e.altKey || e.metaKey) && c.push('m');
-			baseKeyName = specialKeyName;
-			c.push(specialKeyName);
-			logicalCharCode = specialKeyCode;
-			isSpecial = true;
-		}
-		else {
-			var keyCode = e.keyCode || e.charCode;
-
-			// ctrl code shortcuts: ctrl + *
-			if (e.ctrlKey && (keyCode >= 64 && keyCode <= 95 || keyCode >= 97 && keyCode <= 127)) {
-				c.push('c');
-				baseKeyName = String.fromCharCode(keyCode & 0x5f).toLowerCase();
-				c.push(baseKeyName);
-				logicalCharCode = keyCode & 0x1f;
-			}
-			else if (e.ctrlKey && keyCode == 32) {
-				c.push('c');
-				baseKeyName = ' ';
-				c.push(baseKeyName);
-				logicalCharCode = 0;
-			}
-			// printable chars
-			else if (keyCode >= 32 && keyCode <= 127) {
-				baseKeyName = String.fromCharCode(keyCode);
-				c.push(baseKeyName);
-				logicalCharCode = keyCode;
-			}
-			// ctrl code directly
-			else if (keyCode >= 0 && keyCode <= 31) {
-				c.push('c');
-				baseKeyName = String.fromCharCode(keyCode + 64).toLowerCase();
-				c.push(baseKeyName);
-				logicalCharCode = keyCode;
-			}
-			// others
-			else {
-				baseKeyName = keyCode;
-				c.push(baseKeyName);
-				logicalCharCode = keyCode;
-			}
-		}
-
 		var focusedNodeName = getFocusedNodeName();
-
 		if (isSpecialInputElement(focusedNodeName)) {
 			return;
 		}
 
-		var fullIdentifier = c.join('-');
-		var mode = appStates[0] + (isTextInputElement(focusedNodeName) ? '.edit' : '');
-
-		/*
-		log([
-			'mode: ' + mode,
-			'fullIdentifier: "' + fullIdentifier + '"',
-			'node name: ' + focusedNodeName
-		].join(', '));
-	     */
-
-		invoke(e, mode, fullIdentifier, {
-			code:             logicalCharCode,
-			identifier:       baseKeyName,
-			fullIdentifier:   fullIdentifier,
-			shift:            e.shiftKey,
-			ctrl:             e.ctrlKey,
-			isSpecial:        isSpecial
-		});
-	}
-
-	function invoke (e, mode, identifier, virtualKeyboardEvent) {
-//console.log('keyManager#invoke: mode:' + mode + ', id:' + identifier + ', ev:' + JSON.stringify(virtualKeyboardEvent));
-		if (!(mode in strokes) || !(identifier in strokes[mode])) return;
+		var mode = appStates[0] +
+			(isTextInputElement(focusedNodeName) ? '.edit' : '');
+		if (!(mode in strokes) || !(e.key in strokes[mode])) {
+			return;
+		}
 
 		var result;
 		try {
-			result = strokes[mode][identifier](virtualKeyboardEvent, document.activeElement);
+			result = strokes[mode][e.key](e, document.activeElement);
 		}
-		catch (e) {
-			console.error('exception in keyManager: ' + e.toString() + '\n' + e.stack);
+		catch (ex) {
+			console.error(
+				'exception in keyManager: ' + ex.toString() + '\n' + e.stack);
 			result = undefined;
 		}
 		if (result !== 'passthrough') {
-			e.preventDefault();
-			e.stopPropagation();
+			return false;
 		}
 	}
 
@@ -2191,15 +2036,22 @@ function createKeyManager () {
 		return this;
 	}
 
-	function init () {
-		document.addEventListener('keydown', keydown, true);
-		document.addEventListener('keypress', keypress, true);
+	function updateManifest (mode) {
+		if (!mode) {
+			mode = appStates[0];
+		}
+		if (!(mode in strokes)) {
+			return;
+		}
+		qeema.setManifest(Object.keys(strokes[mode]));
 	}
 
-	init();
+	qeema.install().addListener(keypress);
+
 	return {
 		addStroke:addStroke,
-		removeStroke:removeStroke
+		removeStroke:removeStroke,
+		updateManifest:updateManifest
 	};
 }
 
@@ -3836,6 +3688,7 @@ function setupVideoViewer () {
 				||  rect.top + st > vb) {
 					// invisible
 					if (node.childNodes.length) {
+						setBottomStatus('解放: ' + node.parentNode.getElementsByTagName('a')[0].href);
 						empty(node);
 					}
 				}
@@ -3843,6 +3696,7 @@ function setupVideoViewer () {
 					// visible
 					var markup = node.getAttribute('data-markup');
 					if (markup && node.childNodes.length == 0) {
+						setBottomStatus('読み込み中: ' + node.parentNode.getElementsByTagName('a')[0].href);
 						node.insertAdjacentHTML('beforeend', markup);
 					}
 				}
@@ -4242,7 +4096,7 @@ function install (mode) {
 	keyManager = createKeyManager();
 	keyManager
 		.addStroke('command', 'r', commands.reload)
-		.addStroke('command', ' ', commands.scrollPage)
+		.addStroke('command', 'space', commands.scrollPage)
 		.addStroke('command', 'z', commands.summaryBack)
 		.addStroke('command', '.', commands.summaryNext)
 		.addStroke('command', '?', commands.openHelpDialog)
@@ -4255,15 +4109,15 @@ function install (mode) {
 
 		.addStroke('command', 'i', commands.activatePostForm)
 
-		.addStroke('command.edit', ['esc', 'c-['], commands.deactivatePostForm)
-		.addStroke('command.edit', 'c-s', commands.toggleSage)
-		.addStroke('command.edit', 's-enter', commands.post)
+		.addStroke('command.edit', ['esc', 'C-['], commands.deactivatePostForm)
+		.addStroke('command.edit', 'C-s', commands.toggleSage)
+		.addStroke('command.edit', 'S-enter', commands.post)
 		//.addStroke('command.edit', 'm-a', commands.cursorTopOfLine)
 		//.addStroke('command.edit', 'm-e', commands.cursorBottomOfLine)
-		//.addStroke('command//.edit', 'c-p', commands//.cursorPrev)
-		//.addStroke('command//.edit', 'c-n', commands//.cursorNext)
-		//.addStroke('command//.edit', 'c-b', commands//.cursorBack)
-		//.addStroke('command//.edit', 'c-f', commands//.cursorForward)
+		//.addStroke('command.edit', 'C-p', commands.cursorPrev)
+		//.addStroke('command.edit', 'C-n', commands.cursorNext)
+		//.addStroke('command.edit', 'C-b', commands.cursorBack)
+		//.addStroke('command.edit', 'C-f', commands.cursorForward)
 		.addStroke('command.edit', 'enter', function (e, t) {
 			switch (t.id) {
 			case 'search-text':
@@ -4276,6 +4130,7 @@ function install (mode) {
 				return 'passthrough';
 			}
 		})
+		.updateManifest();
 
 	/*
 	 * favicon maintainer
@@ -4811,9 +4666,10 @@ function lightbox (anchor, ignoreThumbnail) {
 
 		keyManager
 			.addStroke('lightbox', ['1', '2', 'w', 'h'], handleZoomModeKey)
-			.addStroke('lightbox', ['esc', 'c-['], leave)
+			.addStroke('lightbox', ['esc', 'C-['], leave)
 			.addStroke('lightbox', 's', handleSearch)
-			.addStroke('lightbox', ' ', handleStroke);
+			.addStroke('lightbox', 'space', handleStroke)
+			.updateManifest();
 
 		// disable auto selection menu
 		selectionMenu.enabled = false;
@@ -5101,6 +4957,7 @@ function lightbox (anchor, ignoreThumbnail) {
 			lightboxWrap.classList.add('hide');
 			anchor = image = lightboxWrap = dimmer = imageWrap = receiver = null;
 			appStates.shift();
+			keyManager.updateManifest();
 		});
 
 		setTimeout(function () {
@@ -5249,8 +5106,9 @@ function modalDialog (opts) {
 			.add('#cancel-dialog', handleCancel);
 
 		keyManager
-			.addStroke('dialog', ['esc', 'c-['], handleCancel)
+			.addStroke('dialog', ['esc', 'C-['], handleCancel)
 			.addStroke('dialog', 'enter', handleOk)
+			.updateManifest();
 
 		contentWrap.addEventListener('mousedown', handleMouseCancel, false);
 		contentWrap.addEventListener('mousemove', handleMouseCancel, false);
@@ -5313,6 +5171,7 @@ function modalDialog (opts) {
 			dialogWrap.classList.add('hide');
 			dialogWrap = contentWrap = content = dimmer = null;
 			appStates.shift();
+			keyManager.updateManifest();
 		});
 
 		setTimeout(function () {
@@ -5447,7 +5306,7 @@ function getCatalogSettings () {
 function setBottomStatus (s, persistent) {
 	var ev = document.createEvent('CustomEvent');
 	ev.initCustomEvent('Akahukuplus.bottomStatus', true, true, {
-		message: '' + s,
+		message: s || '',
 		persistent: !!persistent
 	});
 	document.dispatchEvent(ev);

@@ -292,9 +292,9 @@
 
 	ChromeImpl.prototype = Object.create(base.prototype, {
 		kind: {value: 'Chrome'},
-		isDev: {value: chrome.app.getDetails().version == '0.0.1'},
-		version: {value: chrome.app.getDetails().version},
-		id: {value: chrome.app.getDetails().id},
+		isDev: {value: chrome.runtime.getManifest().version == '0.0.1'},
+		version: {value: chrome.runtime.getManifest().version},
+		id: {value: location.host},
 
 		receive: {value: receive},
 		openTabWithUrl: {value: openTabWithUrl},
