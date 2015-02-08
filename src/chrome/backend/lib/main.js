@@ -54,7 +54,7 @@
 				js: [
 					'frontend/extension_wrapper.js',
 					'frontend/qeema.js',
-					'frontend/akahuku-extreme.js'
+					'frontend/akahukuplus.js'
 				],
 				run_at: 'start'
 			}

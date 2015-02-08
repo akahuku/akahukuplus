@@ -125,8 +125,8 @@ $(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEY_PATH)
 
 #	update akahukuplus.js
 	sed $(SED_SCRIPT_DEBUG_OFF) \
-		$(CHROME_SRC_PATH)/frontend/akahuku-extreme.js \
-		> $(CHROME_EMBRYO_SRC_PATH)/frontend/akahuku-extreme.js
+		$(CHROME_SRC_PATH)/frontend/akahukuplus.js \
+		> $(CHROME_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
 
 #	update manifest
 	tool/update-chrome-manifest.rb \
@@ -183,8 +183,8 @@ $(OPERA_TARGET_PATH): $(OPERA_MTIME_PATH) $(BINKEYS_PATH)
 
 #	update akahukuplus.js
 	sed $(SED_SCRIPT_DEBUG_OFF) \
-		$(OPERA_SRC_PATH)/includes/akahuku-extreme.js \
-		> $(OPERA_EMBRYO_SRC_PATH)/includes/akahuku-extreme.js
+		$(OPERA_SRC_PATH)/includes/akahukuplus.js \
+		> $(OPERA_EMBRYO_SRC_PATH)/includes/akahukuplus.js
 
 #	update the manifest file
 	tool/update-opera-config.rb \
@@ -228,8 +228,8 @@ $(BLINKOPERA_TARGET_PATH): $(BLINKOPERA_MTIME_PATH) $(BINKEY_PATH)
 
 #	update akahukuplus.js
 	sed $(SED_SCRIPT_DEBUG_OFF) \
-		$(BLINKOPERA_SRC_PATH)/frontend/akahuku-extreme.js \
-		> $(BLINKOPERA_EMBRYO_SRC_PATH)/frontend/akahuku-extreme.js
+		$(BLINKOPERA_SRC_PATH)/frontend/akahukuplus.js \
+		> $(BLINKOPERA_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
 
 #	update manifest
 	tool/update-chrome-manifest.rb \
@@ -276,8 +276,8 @@ $(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH) $(BINKEY_PATH)
 
 #	update akahukuplus.js
 	sed $(SED_SCRIPT_DEBUG_OFF) \
-		$(FIREFOX_SRC_PATH)/data/frontend/akahuku-extreme.js \
-		> $(FIREFOX_EMBRYO_SRC_PATH)/data/frontend/akahuku-extreme.js
+		$(FIREFOX_SRC_PATH)/data/frontend/akahukuplus.js \
+		> $(FIREFOX_EMBRYO_SRC_PATH)/data/frontend/akahukuplus.js
 
 #	strip script tag from options.html
 #	sed -e 's/<script[^>]*><\/script>//g' \
