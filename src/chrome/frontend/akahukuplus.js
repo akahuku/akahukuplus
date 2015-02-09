@@ -1892,6 +1892,9 @@ function createClickDispatcher () {
 		}
 		if (fragment == null) {
 			fragment = t.getAttribute('href');
+			if (fragment == null) {
+				fragment = t.getAttribute('data-href');
+			}
 		}
 		if (fragment == null) {
 			return;

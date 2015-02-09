@@ -1,14 +1,121 @@
 {
-	"akahukuplus_locale": {
-		"message": "日本語"
-	},
-	"akahukuplus_locale_code": {
-		"message": "ja"
-	},
-	"akahukuplus_name": {
-		"message": "赤福プラス"
-	},
-	"akahukuplus_desc": {
-		"message": "ふたばライフを豊かにする."
-	}
+  "akahukuplus_locale": {
+    "message": "日本語"
+  },
+  "akahukuplus_locale_code": {
+    "message": "ja"
+  },
+  "akahukuplus_name": {
+    "message": "赤福プラス"
+  },
+  "akahukuplus_desc": {
+    "message": "ふたばライフを豊かにする."
+  },
+  "_plural_rule@function": {
+    "message": "isone(one)"
+  },
+  "authentication_declined_@0": {
+    "message": "認証が拒否されました: {0}",
+    "description": "Authentication declined: {0}"
+  },
+  "cannot_emulate_mkdir_p": {
+    "message": "mkdir -p をエミュレートできません",
+    "description": "Cannot emulate mkdir -p"
+  },
+  "cannot_overwrite_a_directory": {
+    "message": "ディレクトリに上書きはできません。",
+    "description": "Cannot overwrite a directory."
+  },
+  "cannot_read_a_directory_content": {
+    "message": "ディレクトリの内容を読むことはできません。",
+    "description": "Cannot read a directory content."
+  },
+  "cannot_retrieve_path_metadata": {
+    "message": "パスのメタ情報を取得できません",
+    "description": "Cannot retrieve path metadata"
+  },
+  "csrf_token_not_matched": {
+    "message": "CSRF トークンが合致しません",
+    "description": "CSRF Token not matched"
+  },
+  "failed_to_retrieve_directory_id": {
+    "message": "ディレクトリ ID の取得に失敗しました。",
+    "description": "Failed to retrieve directory id."
+  },
+  "failed_to_retrieve_metadata_of_children": {
+    "message": "子供のメタ情報の取得に失敗しました。",
+    "description": "Failed to retrieve metadata of children."
+  },
+  "failed_to_retrieve_path_metadata": {
+    "message": "パスのメタ情報の取得に失敗しました。",
+    "description": "Failed to retrieve path metadata."
+  },
+  "failed_to_retrieve_root_metadata": {
+    "message": "ルートのメタ情報の取得に失敗しました。",
+    "description": "Failed to retrieve root metadata."
+  },
+  "failed_to_save_@0": {
+    "message": "保存に失敗しました ({0})",
+    "description": "Failed to save ({0})"
+  },
+  "file_not_found": {
+    "message": "ファイルが見つかりません。",
+    "description": "File not found."
+  },
+  "invalid_authentication_state_eca_@0": {
+    "message": "認証の状態が不正 (eca): {0}",
+    "description": "Invalid authentication state (eca): {0}"
+  },
+  "invalid_authentication_state_fai_@0": {
+    "message": "認証の状態が不正 (fai): {0}",
+    "description": "Invalid authentication state (fai): {0}"
+  },
+  "invalid_authentication_state_fat_@0": {
+    "message": "認証の状態が不正 (fat): {0}",
+    "description": "Invalid authentication state (fat): {0}"
+  },
+  "invalid_authentication_state_wts_@0": {
+    "message": "認証の状態が不正 (wts): {0}",
+    "description": "Invalid authentication state (wts): {0}"
+  },
+  "invalid_authorization_response": {
+    "message": "認証のレスポンスが不正",
+    "description": "Invalid authorization response"
+  },
+  "invalid_content_response_": {
+    "message": "不正な内容レスポンス: ",
+    "description": "Invalid content response: "
+  },
+  "invalid_path": {
+    "message": "不正なパスです。",
+    "description": "Invalid path."
+  },
+  "invalid_status_code_@0": {
+    "message": "状態コード #{0} は不正です",
+    "description": "Invalid status code #{0}"
+  },
+  "network_error": {
+    "message": "ネットワークエラー",
+    "description": "Network Error"
+  },
+  "not_a_authentication_task_@0": {
+    "message": "認証タスクではありません: {0}",
+    "description": "Not a authentication task: {0}"
+  },
+  "unable_to_download": {
+    "message": "ダウンロードできません。",
+    "description": "Unable to download."
+  },
+  "unknown_file_system_error": {
+    "message": "未知のファイルシステムエラー",
+    "description": "Unknown file system error"
+  },
+  "unknown_mime_type_@0": {
+    "message": "未知の MIME タイプ: {0}",
+    "description": "Unknown MIME type: {0}"
+  },
+  "user_unmatch": {
+    "message": "ユーザーが一致しません。",
+    "description": "User unmatch."
+  }
 }
