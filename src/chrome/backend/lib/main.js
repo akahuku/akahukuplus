@@ -42,10 +42,7 @@
 			{
 				name: 'akahukuplus',
 				matches: [
-					function (url) {
-						var result = /^http:\/\/[^.]+\.2chan\.net\/[^\/]+\/(?:futaba|(?:res\/)?\d+)\.html?\b/.test(url);
-						return result;
-					}
+					/^http:\/\/[^.]+\.2chan\.net\/[^\/]+\/(?:futaba|(?:res\/)?\d+)\.html?\b/
 				],
 				exclude_matches: [
 					'http://dec.2chan.net/up/*',
@@ -170,6 +167,7 @@
 			return lateResponse;
 		}
 	});
+
 })(this);
 
 // vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker :

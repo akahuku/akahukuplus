@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2014 akahuku, akahuku@gmail.com
+ * Copyright 2012-2015 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@
 			this.fstab.nullFs = {
 				enabled:true,
 				isNull:true,
-				instance:FileSystemImpl()
+				instance:FileSystemImpl(null, this.ext)
 			};
 		}
 
@@ -193,7 +193,7 @@
 	}
 
 	FileSystem.prototype.clearCredentials = function (target) {
-		Object.keys(fstab).forEach(function (name) {
+		Object.keys(this.fstab).forEach(function (name) {
 			var fs = this.fstab[name];
 			if (!fs || !fs.instance || typeof fs.instance.clearCredentials != 'function') return;
 			if (typeof target == 'string') {

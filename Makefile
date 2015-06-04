@@ -1,21 +1,21 @@
 # application macros
 # ========================================
 
-SHELL = /bin/sh
+SHELL := /bin/sh
 
 CHROME := chromium-browser
 OPERA := opera
 FIREFOX := firefox
 CYGPATH := echo
 
-ZIP = zip -qr9
+ZIP := zip -qr9
 UNZIP := unzip
 
 RSYNC := rsync
 RSYNC_OPT = -rptLv --delete \
-		--exclude '*.sw?' --exclude '*.bak' --exclude '*~' --exclude '*.sh' \
-		--exclude '.*' --exclude 'oldlib/' \
-		--exclude '$(CRYPT_SRC_FILE)*'
+	--exclude '*.sw?' --exclude '*.bak' --exclude '*~' --exclude '*.sh' \
+	--exclude '.*' \
+	--exclude '$(CRYPT_SRC_FILE)*'
 
 -include app.mk
 
@@ -58,7 +58,7 @@ FIREFOX_UPDATE_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist
 # derived macros
 # ========================================
 
-VERSION = $(shell echo -n `git describe --tags --abbrev=0|sed -e 's/[^0-9.]//g'`.`git rev-list --count HEAD`)
+VERSION := $(shell echo -n `git describe --tags --abbrev=0|sed -e 's/[^0-9.]//g'`.`git rev-list --count HEAD`)
 BINKEYS_PATH = $(CHROME_SRC_PATH)/$(CRYPT_DST_FILE)
 
 CHROME_TARGET_PATH = $(DIST_DIR)/$(PRODUCT).$(CHROME_SUFFIX)
@@ -108,8 +108,8 @@ $(BINKEYS_PATH): $(CHROME_SRC_PATH)/$(CRYPT_KEY_FILE) $(CHROME_SRC_PATH)/$(CRYPT
 
 FORCE:
 
-.PHONY: all clean \
-	runfx \
+.PHONY: all clean message \
+	dbgfx \
 	FORCE
 
 #
@@ -118,7 +118,7 @@ FORCE:
 #
 
 # akahukuplus.crx
-$(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEY_PATH)
+$(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEYS_PATH)
 #	copy all of sources to embryo dir
 	$(RSYNC) $(RSYNC_OPT) \
 		$(CHROME_SRC_PATH)/ $(CHROME_EMBRYO_SRC_PATH)
@@ -221,7 +221,7 @@ $(OPERA_MTIME_PATH): FORCE
 #
 
 # akahukuplus.nex
-$(BLINKOPERA_TARGET_PATH): $(BLINKOPERA_MTIME_PATH) $(BINKEY_PATH)
+$(BLINKOPERA_TARGET_PATH): $(BLINKOPERA_MTIME_PATH) $(BINKEYS_PATH)
 #	copy all of sources to embryo dir
 	$(RSYNC) $(RSYNC_OPT) \
 		$(BLINKOPERA_SRC_PATH)/ $(BLINKOPERA_EMBRYO_SRC_PATH)
@@ -269,7 +269,7 @@ $(BLINKOPERA_MTIME_PATH): FORCE
 #
 
 # wasavi.xpi
-$(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH) $(BINKEY_PATH)
+$(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH) $(BINKEYS_PATH)
 #	copy all of sources to embryo dir
 	$(RSYNC) $(RSYNC_OPT) \
 		$(FIREFOX_SRC_PATH)/ $(FIREFOX_EMBRYO_SRC_PATH)
@@ -353,7 +353,7 @@ $(FIREFOX_MTIME_PATH): FORCE
 # ========================================
 #
 
-binkeys: $(BINKEY_PATH)
+binkeys: $(BINKEYS_PATH)
 
 
 
@@ -387,7 +387,8 @@ message: FORCE
 # ========================================
 #
 
-runfx: FORCE
-	cd $(FIREFOX_SRC_PATH) && cfx run -p $(abspath $(FIREFOX_TEST_PROFILE_PATH))
+dbgfx: FORCE
+#	cd $(FIREFOX_SRC_PATH) && cfx run -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --binary-args http://dat.2chan.net/b/futaba.htm
+	cd $(FIREFOX_SRC_PATH) && cfx run -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --binary-args http://dat.2chan.net/b/res/70888767.htm
 
 # end

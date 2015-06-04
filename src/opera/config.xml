@@ -14,8 +14,8 @@
 	<access origin="http://www.nijibox2.com/"/>
 	<access origin="http://www.nijibox5.com/"/>
 	<access origin="http://www.nijibox6.com/"/>
-
 	<access origin="https://twitter.com/" subdomains="true"/>
+
 	<access origin="https://dropbox.com/" subdomains="true"/>
 	<access origin="https://google.com/" subdomains="true"/>
 	<access origin="https://googleapis.com/" subdomains="true"/>

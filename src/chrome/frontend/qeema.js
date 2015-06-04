@@ -50,10 +50,14 @@
 		112: 'f1', 113:  'f2', 114:  'f3', 115:  'f4',
 		116: 'f5', 117:  'f6', 118:  'f7', 119:  'f8',
 		120: 'f9', 121: 'f10', 122: 'f11', 123: 'f12',
-		145: 'scrolllock'
+		145: 'scrolllock',
+
+		8192: 'presto_contenteditable_changed'
 	};
 	var PRESTO_FUNCTION_KEYCODES = WEBKIT_FUNCTION_KEYCODES;
 	var GECKO_FUNCTION_KEYCODES = WEBKIT_FUNCTION_KEYCODES;
+
+	//
 	var WEBKIT_CTRL_MAP = {
 		32:  0,  65:  1,  66:  2,  67:  3,  68:  4,  69:  5,  70:  6,  71:  7,  72:  8,  73:  9,
 		74: 10,  75: 11,  76: 12,  77: 13,  78: 14,  79: 15,  80: 16,  81: 17,  82: 18,  83: 19,
@@ -67,6 +71,19 @@
 	var PRESTO_CTRL_MAP = WEBKIT_CTRL_MAP;
 	var GECKO_CTRL_MAP = null;
 
+	//
+	var WEBKIT_CODE_TO_CHAR_MAP = {
+		8: 8,
+		9: 9,
+		13: 13,
+		27: 27,
+		32: 32,
+		46: 127
+	};
+	var PRESTO_CODE_TO_CHAR_MAP = WEBKIT_CODE_TO_CHAR_MAP;
+	var GECKO_CODE_TO_CHAR_MAP = WEBKIT_CODE_TO_CHAR_MAP;
+
+	//
 	var FUNCTION_KEY_ALIASES = {
 		'bs':       'backspace',
 		'nl':       'enter',
@@ -93,27 +110,56 @@
 		this.ctrl = ctrl;
 		this.alt = alt;
 		this.isSpecial = isSpecial;
+		this.isCompositioned = false;
 		this.isCompositionedFirst = false;
 		this.isCompositionedLast = false;
 	}
 	VirtualInputEvent.prototype.preventDefault = function () {
-		if (this.nativeEvent) {
+		if (this.nativeEvent && !this.nativeEvent.defaultPrevented) {
 			this.nativeEvent.preventDefault();
-			this.nativeEvent = null;
 		}
 	};
+	VirtualInputEvent.prototype.code2letter = function (c, useSpecial) {
+		if (typeof c != 'number') {
+			return '';
+		}
+		if (c >= 0) {
+			return String.fromCharCode(c);
+		}
+		if (useSpecial && -c in functionKeyCodes) {
+			return '<' + functionKeyCodes[-c] + '>';
+		}
+		return '';
+	};
+	VirtualInputEvent.prototype.toInternalString = function () {
+		var c = this.code;
+		if (typeof c != 'number') {
+			return '';
+		}
+		if (this.isSpecial && c < 0) {
+			return '\ue000' + '<' + this.key + '>';
+		}
+		return String.fromCharCode(c);
+	};
 
-	function DelayedTraceItem (keydownEvent) {
-		this.keydownEvent = keydownEvent;
-		this.inputEvents = [];
-		this.value = '';
-		this.pos = keydownEvent && 'selectionStart' in keydownEvent.target ?
-			keydownEvent.target.selectionStart : undefined;
+	function CompositionResult (e) {
+		this.prefix = '';
+		this.composition = '';
+		if (e) {
+			this.before = editable.value(e.target);
+			this.position = editable.selectionStart(e.target);
+		}
 	}
+	CompositionResult.prototype.run = function (e) {
+		var t = e.target;
+		var v = editable.value(t);
+		editable.delete(t, this.position, v.length - this.before.length);
+		editable.setSelectionRange(t, this.position);
+		pushCompositionedString(e, this.prefix + this.composition);
+	};
 	// }}}
 
 	// {{{1 variables
-	var target;
 	var listeners = {
 		input: [],
 		compositionstart: [],
@@ -129,32 +175,211 @@
 	);
 	var functionKeyCodes = null;
 	var ctrlMap = null;
+	var codeToCharMap = null;
 	var consumed;
 	var lastReceivedEvent = '';
-	var lastFiredEvent = '';
 	var dequeue = [];
 	var lockCount = 0;
 	var isSweeping = false;
 	var enableLog = false;
-	var enableLogBasic = false;
-	var enableLogComposition = false;
-	var enableLogInput = false;
+	var logs = {
+		basic: false,
+		composition: false,
+		input: false
+	};
+	var handlePasteEvent = true;
 
 	// for general composition
-	var lastValue = '';
 	var isInComposition = false;
-	var isPreserved = false;
 	var compositionResult = null;
+	var compositionFinishTimer;
+
+	// for composition on WebKit
+	var lastValue = '';
 
 	// for composition on Presto
-	var cop = {
-		keydownCode: -1,
-		compositionStartPos: -1,
-		lastCompositionLength: -1,
-		inputEventInvokedCount: 0,
-		keydownStack: [],
-		keyupStack: [],
+	var cop2 = {
+		before: '',
+		preEvents: []
 	};
+	// }}}
+
+	// {{{1 utils for content editable elements
+	var editable = Object.freeze({
+		isSimpleEdit: function (el) {
+			return 'selectionStart' in el
+				&& 'selectionEnd' in el
+				&& 'value' in el;
+		},
+		isComplexEdit: function (el) {
+			return el.isContentEditable;
+		},
+		getRoot: function (el) {
+			var p;
+			while (el) {
+				if (!el.isContentEditable) {
+					break;
+				}
+				p = el;
+				el = el.parentNode;
+			}
+			return p;
+		},
+		value: function (el, value) {
+			if (arguments.length == 1) {
+				if (this.isSimpleEdit(el)) {
+					return el.value;
+				}
+				else if (this.isComplexEdit(el)) {
+					return this.getRoot(el).textContent;
+				}
+				return undefined;
+			}
+			else {
+				if (this.isSimpleEdit(el)) {
+					el.value = value;
+				}
+				else if (this.isComplexEdit(el)) {
+					this.getRoot(el).textContent = value;
+				}
+			}
+		},
+		insert: function (el, pos, value) {
+			if (this.isSimpleEdit(el)) {
+				el.value = el.value.substring(0, pos) +
+						   value +
+						   el.value.substring(pos);
+			}
+			else if (this.isComplexEdit(el)) {
+				var r = this.setSelectionRange(el, pos);
+				r.insertNode(document.createTextNode(value));
+				el.normalize();
+			}
+		},
+		delete: function (el, pos, length) {
+			if (this.isSimpleEdit(el)) {
+				el.value = el.value.substring(0, pos) +
+						   el.value.substring(pos + length);
+			}
+			else if (this.isComplexEdit(el)) {
+				var r = this.setSelectionRange(el, pos, pos + length);
+				r.deleteContents();
+				el.normalize();
+			}
+		},
+		selectionStart: function (el) {
+			if (this.isSimpleEdit(el)) {
+				return el.selectionStart;
+			}
+			else if (this.isComplexEdit(el)) {
+				var caretRange = window.getSelection().getRangeAt(0);
+				var r = document.createRange();
+
+				r.setStartBefore(el.firstChild);
+				r.setEnd(caretRange.startContainer, caretRange.startOffset);
+				return r.toString().length;
+			}
+			return undefined;
+		},
+		selectionEnd: function (el) {
+			if (this.isSimpleEdit(el)) {
+				return el.selectionEnd;
+			}
+			else if (this.isComplexEdit(el)) {
+				var caretRange = window.getSelection().getRangeAt(0);
+				var r = document.createRange();
+
+				r.setStartBefore(el.firstChild);
+				r.setEnd(caretRange.endContainer, caretRange.endOffset);
+				return r.toString().length;
+			}
+			return undefined;
+		},
+		setSelectionRange: function (el, start, end) {
+			if (arguments.length == 2) {
+				return this.doSetSelectionPos(el, start);
+			}
+			else if (arguments.length > 2) {
+				return this.doSetSelectionRange(el, start, end);
+			}
+		},
+		doSetSelectionPos: function (el, value) {
+			if (this.isSimpleEdit(el)) {
+				el.selectionStart = value;
+				el.selectionEnd = value;
+			}
+			else if (this.isComplexEdit(el)) {
+				el = this.getRoot(el);
+
+				var iter = document.createNodeIterator(
+					el, window.NodeFilter.SHOW_TEXT, null, false);
+				var r = document.createRange();
+				var total = 0;
+				var node, nodep;
+				while ((node = iter.nextNode())) {
+					var next = total + node.nodeValue.length;
+					if (total <= value && value < next) {
+						r.setStart(node, value - total);
+						r.setEnd(node, value - total);
+						break;
+					}
+					nodep = node;
+					total = next;
+				}
+
+				if (!node && nodep && value >= total) {
+					r.setStartAfter(nodep);
+					r.setEndAfter(nodep);
+				}
+
+				var s = window.getSelection();
+				s.removeAllRanges();
+				s.addRange(r);
+				return r;
+			}
+		},
+		doSetSelectionRange: function (el, start, end) {
+			if (this.isSimpleEdit(el)) {
+				el.selectionStart = start;
+				el.selectionEnd = end;
+			}
+			else if (this.isComplexEdit(el)) {
+				el = this.getRoot(el);
+
+				var iter = document.createNodeIterator(
+					el, window.NodeFilter.SHOW_TEXT, null, false);
+				var r = document.createRange();
+				var total = 0;
+				var node, nodep;
+				while ((node = iter.nextNode())) {
+					var next = total + node.nodeValue.length;
+					if (total <= start && start < next) {
+						r.setStart(node, start - total);
+					}
+					if (total <= end && end < next) {
+						r.setEnd(node, end - total);
+					}
+					nodep = node;
+					total = next;
+				}
+
+				if (nodep) {
+					if (start >= total) {
+						r.setStartAfter(nodep);
+					}
+
+					if (end >= total) {
+						r.setEndAfter(nodep);
+					}
+				}
+
+				var s = window.getSelection();
+				s.removeAllRanges();
+				s.addRange(r);
+				return r;
+			}
+		}
+	});
 	// }}}
 
 	// {{{1 privates
@@ -172,12 +397,10 @@
 
 	function getKeydownListener () {
 		if (global.chrome || global.opera) return keydown;
-		if (global.gecko) return null;
 	}
 
 	function getKeyupListener () {
 		if (global.opera) return keyupPresto;
-		if (global.gecko) return keyup;
 	}
 
 	function getInputListener () {
@@ -192,6 +415,12 @@
 		if (global.gecko) return GECKO_CTRL_MAP;
 	}
 
+	function getCodeToCharMap () {
+		if (global.chrome) return WEBKIT_CODE_TO_CHAR_MAP;
+		if (global.opera) return PRESTO_CODE_TO_CHAR_MAP;
+		if (global.gecko) return GECKO_CODE_TO_CHAR_MAP;
+	}
+
 	function getListenersSet () {
 		return {
 			keydown: getKeydownListener(),
@@ -200,7 +429,8 @@
 			compositionstart: compositionstart,
 			compositionupdate: compositionupdate,
 			compositionend: compositionend,
-			input: getInputListener()
+			input: getInputListener(),
+			paste: paste
 		};
 	}
 
@@ -242,36 +472,149 @@
 		return -1;
 	}
 
-	function getIncreasedString (before, current) {
-		var pos = getIncreasePosition(before, current);
-		return pos >= 0 ?
-			current.substr(pos, current.length - before.length) :
-			'';
-	}
+	function fire (eventName, e) {
+		var l = listeners[eventName];
+		var prevented = false;
+		for (var i = 0, goal = l.length; i < goal; i++) {
+			if (l[i](e) === false && eventName == 'input') {
+				e.preventDefault();
+				if (consumed) {
+					consumed.defaultPrevented = true;
+				}
+				prevented = true;
+			}
+		}
 
-	function pushInputEvent (e) {
-		if (lockCount > 0 && e.code == 3) {
-			fire('input', e);
+		if (prevented) {
+			//removeCompositionCanceledChar(e);
+			return false;
 		}
 		else {
-			dequeue.push(e);
-			sweep();
+			insertCompositionedChar(e);
+			return true;
 		}
 	}
 
-	function pushCompositInputEvent (data) {
-		if (lastFiredEvent == 'compositionupdate'
-		&& !fireCompositEnd(data)) {
-			return;
+	function fireComposition (eventNameFragment, data) {
+		var e = {data: data};
+		var l = listeners['composition' + eventNameFragment];
+		var prevented = false;
+		for (var i = 0, goal = l.length; i < goal; i++) {
+			if (l[i](e) === false) {
+				prevented = true;
+			}
+		}
+		return !prevented;
+	}
+
+	function fireCompositionStart (data) {
+		return fireComposition('start', data);
+	}
+
+	function fireCompositionUpdate (data) {
+		return fireComposition('update', data);
+	}
+
+	function fireCompositionEnd (data) {
+		return fireComposition('end', data);
+	}
+
+	function isEditable (e) {
+		var t = e.target || e.nativeEvent && e.nativeEvent.target;
+		if (t) {
+			return editable.isSimpleEdit(t) || editable.isComplexEdit(t);
+		}
+		return false;
+	}
+
+	function isPasteKeyStroke (code, e) {
+		return code == -45 && e.shiftKey && !e.ctrlKey && !e.altKey;
+	}
+
+	function insertCompositionedChar (e) {
+		if (!(e instanceof VirtualInputEvent)) return;
+		if (e.code < 0) return;
+		if (!e.isCompositioned) return;
+		if (!isEditable(e)) return;
+
+		var t = e.nativeEvent.target;
+		if (t.readOnly) return;
+
+		var v = editable.value(t);
+		var ss = editable.selectionStart(t);
+		var se = editable.selectionEnd(t);
+
+		if (ss > se) {
+			var tmp = ss;
+			ss = se;
+			se = tmp;
 		}
 
+		if (ss != se) {
+			editable.delete(t, ss, se - ss);
+		}
+
+		editable.insert(t, ss, String.fromCharCode(e.code));
+		editable.setSelectionRange(t, ss + 1);
+	}
+
+	function removeCompositionCanceledChar (e) {
+		if (!(e instanceof VirtualInputEvent)) return;
+		if (e.code < 0) return;
+		if (!e.isCompositioned) return;
+		if (!isEditable(e)) return;
+
+		var t = e.nativeEvent.target;
+		if (t.readOnly) return;
+
+		var v = editable.value(t);
+		var p = e.position;
+		var ss = editable.selectionStart(t);
+		var se = editable.selectionEnd(t);
+
+		if (p >= 0 && p < v.length) {
+			setElementValue(v.substring(0, p) + v.substring(p + 1));
+		}
+		if (ss > p && ss > 0) {
+			ss = ss - 1;
+		}
+		if (se > p && se > 0) {
+			se = se - 1;
+		}
+
+		setSelectionRange(t, ss, se);
+
+		for (var i = 0; i < dequeue.length; i++) {
+			var next = dequeue[i];
+			if (!next.nativeEvent) break;
+			if (next.nativeEvent.target != t) break;
+			if (!('position' in next)) break;
+
+			next.position--;
+		}
+	}
+
+	function registerCompositionFinish (e) {
+		compositionFinishTimer = setTimeout(function () {
+			enableLog && logs.composition && logit(
+				'[compositionResult invoker]'
+			);
+
+			compositionFinishTimer = null;
+			compositionResult.run(e);
+			compositionResult = null;
+		}, 1);
+	}
+
+	function pushCompositionedString (e, data) {
 		for (var i = 0, goal = data.length; i < goal; i++) {
 			var ev = new VirtualInputEvent(
-				null,
+				e,
 				data.charCodeAt(i), data.charAt(i), data.charAt(i),
 				false, false, false,
 				false
 			);
+			ev.isCompositioned = true;
 			ev.isCompositionedFirst = i == 0;
 			ev.isCompositionedLast = i == goal - 1;
 			dequeue.push(ev);
@@ -279,70 +622,97 @@
 
 		sweep();
 	}
-
-	function fire (eventName, e) {
-		lastFiredEvent = eventName;
-		var l = listeners[eventName];
-		for (var i = 0, goal = l.length; i < goal; i++) {
-			if (l[i](e) === false) {
-				e.preventDefault();
-				if (consumed) {
-					consumed.defaultPrevented = true;
-				}
-			};
-		}
-	}
-
-	function fireCompositEnd (data) {
-		lastFiredEvent = 'compositionend';
-		var e = {data: data};
-		var l = listeners.compositionend;
-		for (var i = 0, goal = l.length; i < goal; i++) {
-			if (l[i](e) === false) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	function ensureTarget (e) {
-		return !target || target == e.target;
-	}
-
-	function clear (e) {
-		!isPreserved && init('');
-	}
 	// }}}
 
 	// {{{1 internal listeners
-	function keydown (e) {
-		lastReceivedEvent = e.type;
-		consumed = false;
+	function compositionstart (e) {
+		enableLog && logs.composition && logit(
+			'[compositionstart] "', e.data, '"'
+		);
 
-		var etype = '[ keydown' + (e.__delayedTrace ? ' (delayed)' : '') + ']';
-
-		if (window.opera) {
-			if (e.keyCode == 229 && !e.__delayedTrace) {
-				cop.keydownStack.push(new DelayedTraceItem(e));
-				enableLog && enableLogComposition && logit(
-					etype,
-					' *** stacked:', e.keyCode,
-					', length:', cop.keydownStack.length,
-					' ***'
-				);
-				return;
-			}
-			cop.keydownCode = e.keyCode;
-			cop.inputEventInvokedCount = 0;
+		if (compositionFinishTimer) {
+			clearTimeout(compositionFinishTimer);
+			compositionFinishTimer = null;
 		}
 
+		if (compositionResult) {
+			compositionResult.prefix += compositionResult.composition;
+		}
+		else {
+			compositionResult = new CompositionResult(e);
+		}
+
+		lastReceivedEvent = e.type;
+		isInComposition = true;
+		fireCompositionStart(e.data);
+	}
+
+	function compositionupdate (e) {
+		enableLog && logs.composition && logit(
+			'[compositionupdate] "', e.data, '"'
+		);
+
+		lastReceivedEvent = e.type;
+		fireCompositionUpdate(e.data);
+	}
+
+	function compositionend (e) {
+		enableLog && logs.composition && logit(
+			'[compositionend] "', e.data, '"'
+		);
+
+		lastReceivedEvent = e.type;
+		fireCompositionEnd(e.data);
+		if (compositionResult) {
+			compositionResult.composition = e.data;
+		}
+		isInComposition = false;
+	}
+
+	function keydown (e) {
 		if (e.shiftKey && e.keyCode == 16
 		||  e.ctrlKey && e.keyCode == 17
 		||  e.altKey && e.keyCode == 18) {
 			return;
 		}
 
-		enableLog && enableLogBasic && logit(
+		lastReceivedEvent = e.type;
+		consumed = false;
+		var etype = '[ keydown]';
+
+		if (window.chrome) {
+			lastValue = editable.value(e.target);
+		}
+
+		if (window.opera && e.keyCode == 229) {
+			var value;
+			if (!isInComposition) {
+				var ss = editable.selectionStart(e.target);
+				if (!e.repeat && ss > 0) {
+					value = editable.value(e.target);
+					value = value.substring(0, ss - 1) +
+							value.substring(ss);
+				}
+				else {
+					value = '';
+				}
+				cop2.before = value;
+			}
+
+			cop2.preEvents.push({
+				repeat: e.repeat,
+				inputEventCount: 0
+			});
+
+			enableLog && logs.composition && logit(
+				' *** preEvents pushed at keydown event ***',
+				value == undefined ? '' : (', original string initialized: "' + value + '"')
+			);
+
+			return;
+		}
+
+		enableLog && logs.basic && logit(
 			etype,
 			' keyCode:', e.keyCode,
 			', which:', e.which,
@@ -359,7 +729,7 @@
 			if (e.ctrlKey && !e.altKey && ctrlMap && e.keyCode in ctrlMap) {
 				charCode = ctrlMap[e.keyCode];
 				keyCode = 0;
-				enableLog && enableLogBasic && logit(
+				enableLog && logs.basic && logit(
 					etype, ' found ctrl-shortcut'
 				);
 			}
@@ -389,18 +759,17 @@
 
 		var etype = '[keypress' +
 			(e.type != 'keypress' ? ' (' + e.type + ' delegation)' : '') +
-			(e.__delayedTrace ? ' (delayed)' : '') +
 			']';
 
 		if (e.type == 'keypress' && consumed) {
 			if (consumed.defaultPrevented) {
-				enableLog && enableLogBasic && logit(
+				enableLog && logs.basic && logit(
 					etype, ' ignoring consumed keypress and prevented default action.'
 				);
 				e.preventDefault();
 			}
 			else {
-				enableLog && enableLogBasic && logit(
+				enableLog && logs.basic && logit(
 					etype, ' ignoring consumed keypress.'
 				);
 			}
@@ -408,7 +777,7 @@
 			return;
 		}
 
-		enableLog && enableLogBasic && logit(
+		enableLog && logs.basic && logit(
 			etype,
 			' keyCode:', e.keyCode,
 			', which:', e.which,
@@ -429,18 +798,18 @@
 
 		// special keys which processed by keydown listener (for Webkit, Presto)
 		if (e.keyCode < 0) {
-			code = e.keyCode >= -32 ? -e.keyCode : e.keyCode;
+			code = codeToCharMap[-e.keyCode] || e.keyCode;
 			getModifiers(c, e);
-			char = '';
+			char = code < 0 ? '' : String.fromCharCode(code);
 			stroke = functionKeyCodes[-e.keyCode];
 			isSpecial = true;
 		}
 
 		// special keys (for Gecko)
 		else if (e.charCode == 0) {
-			code = e.keyCode < 32 ? e.keyCode : -e.keyCode;
+			code = codeToCharMap[e.keyCode] || -e.keyCode;
 			getModifiers(c, e);
-			char = '';
+			char = code < 0 ? '' : String.fromCharCode(code);
 			stroke = functionKeyCodes[e.keyCode];
 			isSpecial = true;
 		}
@@ -457,6 +826,15 @@
 		// others...
 		else {
 			code = e.charCode;
+
+			// very very special behavior for Opera 12.16 on Linux:
+			// translate invalid plus sign (+) to equal sign (=).
+			// TODO: It is bad idea to patch strange browser behavior
+			// by the following code.
+			if (window.opera && window.navigator.platform == 'Linux'
+			&& !shiftKey && !ctrlKey && !altKey && code == 43) {
+				code = 61;
+			}
 
 			// ctrl code directly
 			if (code >= 0 && code <= 31) {
@@ -484,12 +862,22 @@
 		}
 
 		if (stroke == undefined) return;
+		if (isPasteKeyStroke(code, e)) return;
 
 		c.push(stroke);
-		pushInputEvent(new VirtualInputEvent(
+
+		var ev = new VirtualInputEvent(
 			e,
 			code, char, c.join('-'),
-			shiftKey, ctrlKey, altKey, isSpecial));
+			shiftKey, ctrlKey, altKey, isSpecial);
+
+		if (lockCount > 0 && code == 3) {
+			fire('input', ev);
+		}
+		else {
+			dequeue.push(ev);
+			sweep();
+		}
 	}
 
 	function keyup (e) {
@@ -499,10 +887,8 @@
 			return;
 		}
 
-		var etype = '[  keyup' + (e.__delayedTrace ? ' (delayed)' : '') + ']';
-
-		enableLog && enableLogBasic && logit(
-			etype,
+		enableLog && logs.basic && logit(
+			'[  keyup]',
 			' keyCode:', e.keyCode,
 			', which:', e.which,
 			', charCode:', e.charCode,
@@ -513,347 +899,236 @@
 	}
 
 	function keyupPresto (e) {
-		var etype = '[   keyup' + (e.__delayedTrace ? ' (delayed)' : '') + ']';
-
-		/*
-		 * preparing
-		 */
-
-		if (cop.keydownStack.length) {
-			cop.keydownStack = cop.keydownStack.filter(function (item) {return !item.keydownEvent.repeat});
-			if (cop.keyupStack.length != cop.keydownStack.length - 1 && !e.__delayedTrace) {
-				cop.keyupStack.push(e);
-
-				enableLog && enableLogComposition && logit(
-					etype,
-					' *** stacked: ', e.keyCode,
-					', ', cop.keydownStack.length,
-					' ***'
-				);
-
-				return;
-			}
-
-			/*
-			 * process all of stacked events
-			 */
-
-			if (!e.__delayedTrace) {
-				if (!isInComposition) {
-					cop.compositionStartPos = cop.keydownStack[0].pos - 1;
-					cop.lastCompositionLength = 0;
-				}
-
-				enableLog && enableLogComposition && logit(
-					etype,
-					' ***',
-					' delayed tracing phase 1 start.',
-					' keyupStack.length:', cop.keyupStack.length,
-					' position:', (cop.keyupStack[0] || {pos:'?'}).pos,
-					' ***'
-				);
-
-				while (cop.keyupStack.length) {
-					var delayedKeydown = cop.keydownStack.shift();
-					delayedKeydown.keydownEvent.__delayedTrace = true;
-					keydown(delayedKeydown.keydownEvent);
-
-					for (var i = 0, goal = delayedKeydown.inputEvents.length; i < goal; i++) {
-						delayedKeydown.inputEvents[i].__delayedTrace = true;
-						inputPresto(delayedKeydown.inputEvents[i]);
-					}
-
-					var delayedKeyup = cop.keyupStack.shift();
-					delayedKeyup.__delayedValue = delayedKeydown.value;
-					delayedKeyup.__delayedTrace = true;
-					keyupPresto(delayedKeyup);
-				}
-
-				enableLog && enableLogComposition && logit(
-					etype, ' *** delayed tracing phase 1 end ***'
-				);
-
-				if (cop.keydownStack.length != 1 || cop.keyupStack.length != 0) {
-					return;
-				}
-
-				enableLog && enableLogComposition && logit(
-					etype,
-					' ***',
-					' delayed tracing phase 2 start.',
-					' keydownStack.length:', cop.keydownStack.length,
-					' position:', (cop.keydownStack[0] || {pos:'?'}).pos,
-					' ***'
-				);
-
-				var delayedKeydown = cop.keydownStack.shift();
-				delayedKeydown.keydownEvent.__delayedTrace = true;
-				keydown(delayedKeydown.keydownEvent);
-
-				for (var i = 0, goal = delayedKeydown.inputEvents.length; i < goal; i++) {
-					delayedKeydown.inputEvents[i].__delayedTrace = true;
-					inputPresto(delayedKeydown.inputEvents[i]);
-				}
-
-				enableLog && enableLogComposition && logit(
-					etype, ' *** delayed tracing phase 2 end ***'
-				);
-
-			}
-		}
-
-		/*
-		 * keyup main
-		 */
-
-		if (e.keyCode == 16 || e.keyCode == 17 || e.keyCode == 18) {
+		// {{{2
+		if (e.shiftKey && e.keyCode == 16
+		||  e.ctrlKey && e.keyCode == 17
+		||  e.altKey && e.keyCode == 18) {
 			return;
 		}
 
-		enableLog && logit(
+		var etype = '[   keyup]';
+
+		if (cop2.preEvents.length && editable.isSimpleEdit(e.target)) {
+			var current = editable.value(e.target);
+			var item = cop2.preEvents.shift();
+			var incPos = getIncreasePosition(cop2.before, current);
+			var composition = current.substr(
+				incPos, current.length - cop2.before.length);
+
+			while (cop2.preEvents.length && cop2.preEvents[0].repeat) {
+				cop2.preEvents.shift();
+			}
+
+			enableLog && logs.composition && logit([
+				etype,
+				'          keyCode: ' + e.keyCode,
+				'           before: "' + cop2.before + '"',
+				'          current: "' + current + '"',
+				'      composition: "' + composition + '"',
+				'  inputEventCount: ' + item.inputEventCount,
+				'           incPos: ' + incPos
+			].join('\n'));
+
+			if (isInComposition) {
+				/*
+				 * 1. implicit fix:
+				 * [keydown]	keyCode: 229, which: 229
+				 * [input]		value:"...X" (X is the character which raised fixation)
+				 * [input]		value:"...X" (X is the character which raised fixation)
+				 * [input]		value:"...X" (X is the character which raised fixation)
+				 * [keyup]		keyCode: Y, which: Y
+				 *
+				 * 2. explicit fix:
+				 * [keydown]	keyCode: 229, which: 229
+				 * [input]		value:"..."
+				 * [input]		value:"..."
+				 * [keyup]		keyCode: 13, which: 13
+				 *
+				 * 3. selecting a candidate
+				 * [keydown]	keyCode: 229, which: 229
+				 * [input]		value:"..."
+				 * [keyup]		keyCode: Y, which: Y
+				 *
+				 * 4. escaping a composition
+				 * [keydown]	keyCode: 229, which: 229
+				 * [keyup]		keyCode: 27, which: 27
+				 *
+				 */
+
+				// implicit fix
+				if (item.inputEventCount == 3) {
+					// close current composition session
+					e.data = composition.substr(0, composition.length - 1);
+					compositionend(e);
+
+					// open new composition session
+					cop2.before = cop2.before.substring(0, incPos) +
+								  composition.substr(0, composition.length - 1) +
+								  cop2.before.substring(incPos + composition.length);
+
+					e.data = '';
+					compositionstart(e);
+					compositionResult.prefix = '';
+
+					e.data = composition.substr(-1);
+					compositionupdate(e);
+				}
+
+				// explicit fix
+				// canceling
+				// composition extinction
+				else if (item.inputEventCount == 2
+				|| e.keyCode == 13
+				|| e.keyCode == 27
+				|| cop2.before == current) {
+					e.data = composition;
+					compositionend(e);
+
+					var incPos2 = getIncreasePosition(
+						compositionResult.before, current);
+					if (incPos2 >= 0) {
+						compositionResult.composition = current.substr(
+							incPos2,
+							current.length - compositionResult.before.length);
+						registerCompositionFinish(e);
+					}
+				}
+
+				// composition update
+				else {
+					e.data = composition;
+					compositionupdate(e);
+				}
+			}
+			
+			// new composition session
+			else {
+				e.data = '';
+				compositionstart(e);
+				compositionResult.before = cop2.before;
+				compositionResult.position--;
+
+				e.data = composition;
+				compositionupdate(e);
+			}
+		}
+
+		else if (cop2.preEvents.length && editable.isComplexEdit(e.target)) {
+			if (e.keyCode == 13) {
+				cop2.preEvents.length = 0;
+				dequeue.push(new VirtualInputEvent(
+					null,
+					-8192, PRESTO_FUNCTION_KEYCODES['8192'], PRESTO_FUNCTION_KEYCODES['8192'],
+					false, false, false,
+					true
+				));
+				sweep();
+			}
+		}
+
+		enableLog && logs.basic && logit(
 			etype,
 			' keyCode:', e.keyCode,
 			', which:', e.which,
-			', __v:"', e.__delayedValue, '"',
-			', v:"', e.target.value, '"'
+			', charCode:', e.charCode,
+			', shift:', e.shiftKey,
+			', ctrl:', e.ctrlKey,
+			', alt:', e.altKey
 		);
-
-		if (cop.keydownCode == 229 || isInComposition) {
-			/*
-			 * 1. implicit fix:
-			 * [keydown]	keyCode: 229, which: 229
-			 * [input]		value:"...X" (X is the character which raised fixation)
-			 * [input]		value:"...X" (X is the character which raised fixation)
-			 * [input]		value:"...X" (X is the character which raised fixation)
-			 * [keyup]		keyCode: Y, which: Y
-			 *
-			 * 2. explicit fix:
-			 * [keydown]	keyCode: 229, which: 229
-			 * [input]		value:"..."
-			 * [input]		value:"..."
-			 * [keyup]		keyCode: 13, which: 13
-			 *
-			 * 3. selecting a candidate
-			 * [keydown]	keyCode: 229, which: 229
-			 * [input]		value:"..."
-			 * [keyup]		keyCode: Y, which: Y
-			 *
-			 * 4. escaping a composition
-			 * [keydown]	keyCode: 229, which: 229
-			 * [keyup]		keyCode: 27, which: 27
-			 *
-			 */
-			var value = e.__delayedValue || e.target.value;
-			var composition;
-
-			if (isInComposition && cop.inputEventInvokedCount == 3) {
-				composition = value.substr(
-					cop.compositionStartPos,
-					cop.lastCompositionLength);
-				pushCompositInputEvent(composition);
-
-				enableLog && enableLogComposition && logit(
-					etype, ' composition end(1) with:"', composition, '"'
-				);
-
-				clear(e);
-				cop.compositionStartPos += cop.lastCompositionLength;
-				cop.lastCompositionLength = value.length - lastValue.length;
-				fire('compositionstart', {data:''});
-				enableLog && enableLogComposition && logit(
-					etype, ' composition start(1)'
-				);
-			}
-			else if (isInComposition && cop.inputEventInvokedCount == 2) {
-				isInComposition = false;
-				composition = value.substr(
-					cop.compositionStartPos,
-					cop.lastCompositionLength + value.length - lastValue.length);
-				pushCompositInputEvent(composition);
-
-				enableLog && enableLogComposition && logit(
-					etype, ' composition end(2) with:"', composition, '"'
-				);
-
-				clear(e);
-				value = e.target.value;
-			}
-			else if (
-				isInComposition &&
-				(e.keyCode == 27 && cop.inputEventInvokedCount == 0)
-			) {
-				isInComposition = false;
-				fireCompositEnd('');
-
-				enableLog && enableLogComposition && logit(
-					etype, ' composition end(3)'
-				);
-
-				clear(e);
-				value = e.target.value;
-			}
-			else if (value != lastValue) {
-				if (!isInComposition) {
-					isInComposition = true;
-					fire('compositionstart', {data:''});
-
-					enableLog && enableLogComposition && logit(
-						etype, ' composition start(2)'
-					);
-				}
-
-				var increment = value.length - lastValue.length;
-				cop.lastCompositionLength += increment;
-
-				if (cop.lastCompositionLength > 0) {
-					composition = value.substr(
-						cop.compositionStartPos,
-						cop.lastCompositionLength);
-					fire('compositionupdate', {data:composition});
-				}
-				else {
-					isInComposition = false;
-					fireCompositEnd('');
-
-					enableLog && enableLogComposition && logit(
-						etype, ' composition end(4)'
-					);
-
-					clear(e);
-					value = e.target.value;
-				}
-			}
-			cop.inputEventInvokedCount = 0;
-			cop.keydownCode = -1;
-			lastValue = value;
-		}
+		// }}}
 	}
 
 	function inputWebkit (e) {
-		if (!ensureTarget(e)) return;
+		var etype = '[   input]';
+		var current = editable.value(e.target);
 
-		var etype = '[   input' + (e.__delayedTrace ? ' (delayed)' : '') + ']';
-
-		enableLog && enableLogInput && logit(
-			etype, ' value:"', e.target.value, '"'
+		enableLog && logs.input && logit(
+			etype, ' value:"', editable.value(e.target), '"'
 		);
 
 		switch (lastReceivedEvent) {
 		case 'keydown':
-			var s = getIncreasedString(lastValue, e.target.value);
-			if (s != '') {
-				fire('compositionstart', {data:''});
-				fire('compositionupdate', {data:s});
-				pushCompositInputEvent(s);
+			var pos = getIncreasePosition(lastValue, current);
+			if (pos >= 0) {
+				var s = current.substr(pos, current.length - lastValue.length);
+				if (s != '') {
+					fireCompositionStart('');
+					fireCompositionUpdate(s);
+					fireCompositionEnd(s);
+
+					var cr = new CompositionResult;
+					cr.composition = s;
+					cr.before = lastValue;
+					cr.position = pos;
+					cr.run(e);
+				}
 			}
-			clear(e);
 			break;
 
 		case 'compositionend':
-			pushCompositInputEvent(compositionResult);
-			compositionResult = null;
-			clear(e);
+			registerCompositionFinish(e);
 			break;
 		}
 
-		lastValue = e.target.value;
 		lastReceivedEvent = e.type;
 	}
 
 	function inputPresto (e) {
-		var etype = '[   input' + (e.__delayedTrace ? ' (delayed)' : '') + ']';
+		var etype = '[   input]';
 
-		if (cop.keydownStack.length && !e.__delayedTrace) {
-			var last = cop.keydownStack[cop.keydownStack.length - 1];
-			if (!last.keydownEvent.repeat) {
-				last.inputEvents.push(e);
-				last.value = e.target.value;
-			}
+		enableLog && logs.input && logit(
+			etype, ' value:"', editable.value(e.target), '"'
+		);
 
-			enableLog && enableLogInput && logit(
-				etype, ' *** stacked: "', e.target.value + '"',
-				', length:' + cop.keydownStack.length,
-				' ***'
-			);
-
-			return;
+		if (cop2.preEvents.length) {
+			var last = cop2.preEvents[cop2.preEvents.length - 1];
+			last.inputEventCount++;
 		}
 
-		if (!ensureTarget(e)) return;
-
 		lastReceivedEvent = e.type;
-		cop.inputEventInvokedCount++;
-
-		enableLog && enableLogInput && logit(
-			etype, ' value:"', e.target.value + '"',
-			', activeElement:',
-			[
-				document.activeElement.nodeName,
-				document.activeElement.id,
-				document.activeElement.style.display
-			].join('/'),
-			', inputEventInvokedCount: ', cop.inputEventInvokedCount
-		);
 	}
 
 	function inputGecko (e) {
-		if (!ensureTarget(e)) return;
+		var etype = '[   input]';
 
-		var etype = '[   input' + (e.__delayedTrace ? ' (delayed)' : '') + ']';
-
-		enableLog && enableLogInput && logit(
-			etype, ' value:"', e.target.value, '"'
+		enableLog && logs.input && logit(
+			etype, ' value:"', editable.value(e.target), '"'
 		);
 
 		if (lastReceivedEvent == 'compositionend') {
-			pushCompositInputEvent(compositionResult);
-			clear(e);
-			compositionResult = null;
+			registerCompositionFinish(e);
 		}
+
 		lastReceivedEvent = e.type;
 	}
 
-	function compositionstart (e) {
-		if (!ensureTarget(e)) return;
+	function paste (e) {
+		if (!isEditable(e)) return;
 
-		enableLog && enableLogComposition && logit(
-			'[compositionstart] "', e.data, '"'
-		);
+		e.preventDefault();
 
-		lastReceivedEvent = e.type;
-		isInComposition = true;
-		fire('compositionstart', {data:e.data});
-	}
+		if (!handlePasteEvent) return;
 
-	function compositionupdate (e) {
-		if (!ensureTarget(e)) return;
-
-		enableLog && enableLogComposition && logit(
-			'[compositionupdate] "', e.data, '"'
-		);
-
-		lastReceivedEvent = e.type;
-		fire('compositionupdate', {data:e.data});
-	}
-
-	function compositionend (e) {
-		if (!ensureTarget(e)) return;
-
-		enableLog && enableLogComposition && logit(
-			'[compositionend] "', e.data, '"'
-		);
-
-		lastReceivedEvent = e.type;
-		compositionResult = e.data;
-		isInComposition = false;
+		pushCompositionedString(e, e.clipboardData.getData('text/plain'));
 	}
 	// }}}
 
 	// {{{1 publics
-	function install () {
+	function install (opts) {
+		opts || (opts = {});
+		[
+			'log', 'logBasic', 'logComposition', 'logInput',
+			'handlePasteEvent'
+		].forEach(function (p) {
+			if (p in opts) {
+				this[p] = opts[p];
+			}
+		}, this);
+
 		functionKeyCodes = getFunctionKeyCodes();
 		if (functionKeyCodes) {
 			ctrlMap = getCtrlMap();
+			codeToCharMap = getCodeToCharMap();
 
 			var listenersSet = getListenersSet();
 			for (var i in listenersSet) {
@@ -918,35 +1193,6 @@
 		return this;
 	}
 
-	// composition initializer
-	function init (aleading) {
-		if (!target) return;
-		if (typeof aleading == 'object'
-		&& 'value' in aleading
-		&& 'selectionStart' in aleading) {
-			var element = aleading;
-			lastValue = aleading = element.value.substring(
-				0, element.selectionStart);
-			if (target != element && !isPreserved) {
-				target.value = aleading;
-			}
-		}
-		else {
-			lastValue = target.value = aleading || '';
-			if (!isPreserved) {
-				target.value = lastValue;
-			}
-		}
-
-		isInComposition = false;
-		compositionResult = null;
-
-		cop.keydownCode = -1;
-		cop.compositionStartPos = -1;
-		cop.lastCompositionLength = -1;
-		cop.inputEventInvokedCount = 0;
-	}
-
 	// code utils
 	function code2letter (c, useSpecial) {
 		if (typeof c != 'number') {
@@ -994,10 +1240,6 @@
 		);
 	}
 
-	function nopObjectFromCode () {
-		return nopObject;
-	}
-
 	function insertFnKeyHeader (s) {
 		return s.replace(/(\u0016)?(<[^>]+>|#\d{1,2})/g, function ($0, $1) {
 			return $1 == '\u0016' ? $0 : '\ue000' + $0;
@@ -1036,13 +1278,23 @@
 			for (var i in functionKeyCodes) {
 				if (functionKeyCodes[i] == name) {
 					return {
-						code:-i,
+						code:codeToCharMap[i] || -i,
 						name:name,
 						shift:shift,
 						ctrl:ctrl,
 						alt:alt
 					};
 				}
+			}
+
+			if (/^[@a-z\[\\\]_]$/.test(name) && ctrl && !shift && !alt) {
+				return {
+					code:name.charCodeAt(0) & 0x1f,
+					name:name,
+					shift:shift,
+					ctrl:ctrl,
+					alt:alt
+				};
 			}
 
 			return null;
@@ -1094,8 +1346,12 @@
 		};
 	}
 
+	function isInputEvent (e) {
+		return e instanceof VirtualInputEvent;
+	}
+
 	// dequeue manipulators
-	function createSequences (s) {
+	function createSequences (s, asComposition) {
 		var result = [];
 		for (var i = 0, goal = s.length; i < goal; i++) {
 			var parseResult;
@@ -1106,9 +1362,22 @@
 			else {
 				parseResult = parseKeyDesc(s.substring(i));
 			}
-			parseResult.prop && result.push(parseResult.prop);
+
+			if (parseResult.prop) {
+				if (asComposition) {
+					parseResult.prop.isCompositioned = true;
+				}
+				result.push(parseResult.prop);
+			}
+
 			i += parseResult.consumed - 1;
 		}
+
+		if (asComposition && result.length) {
+			result[0].isCompositionedFirst = true;
+			result[result.length - 1].isCompositionedLast = true;
+		}
+
 		return result;
 	}
 
@@ -1123,12 +1392,7 @@
 			}
 			else if (typeof s == 'object') {
 				if ('value' in s && s.asComposition) {
-					s = createSequences(s.value);
-					if (s.length) {
-						s[0].isCompositionedFirst = true;
-						s[s.length - 1].isCompositionedLast = true;
-					}
-					items.push.apply(items, s);
+					items.push.apply(items, createSequences(s.value, true));
 				}
 				else {
 					items.push(s);
@@ -1272,14 +1536,13 @@
 		addListener: {value:addListener},
 		removeListener: {value:removeListener},
 
-		init: {value:init},
-
-		code2letter: {value:code2letter},
-		toInternalString: {value:toInternalString},
 		objectFromCode: {value:objectFromCode},
-		nopObjectFromCode: {value:nopObjectFromCode},
+		nopObject: {value:nopObject},
 		insertFnKeyHeader: {value:insertFnKeyHeader},
 		parseKeyDesc: {value:parseKeyDesc},
+		isInputEvent: {value:isInputEvent},
+
+		editable: {value:editable},
 
 		createSequences: {value:createSequences},
 		setDequeue: {value:setDequeue},
@@ -1297,38 +1560,33 @@
 		addManifest: {value:addManifest},
 		regalizeManifest: {value:regalizeManifest},
 
-		preserve: {
-			get: function () {return isPreserved},
-			set: function (v) {isPreserved = !!v}
-		},
-		target: {
-			get: function () {return target},
-			set: function (v) {
-				target = v;
-				init(v.value);
-			}
-		},
 		isInComposition: {
 			get: function () {return isInComposition}
 		},
 		isLocked: {
 			get: function () {return lockCount > 0}
 		},
+
 		log: {
 			get: function () {return enableLog},
 			set: function (v) {enableLog = !!v}
 		},
 		logBasic: {
-			get: function () {return enableLogBasic},
-			set: function (v) {enableLogBasic = !!v}
+			get: function () {return logs.basic},
+			set: function (v) {logs.basic = !!v}
 		},
 		logComposition: {
-			get: function () {return enableLogComposition},
-			set: function (v) {enableLogComposition = !!v}
+			get: function () {return logs.composition},
+			set: function (v) {logs.composition = !!v}
 		},
 		logInput: {
-			get: function () {return enableLogInput},
-			set: function (v) {enableLogInput = !!v}
+			get: function () {return logs.input},
+			set: function (v) {logs.input = !!v}
+		},
+
+		handlePasteEvent: {
+			get: function () {return handlePasteEvent},
+			set: function (v) {handlePasteEvent = !!v}
 		}
 	});
 })(this);

@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2014 akahuku, akahuku@gmail.com
+ * Copyright 2012-2015 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -70,7 +70,11 @@
 				localStorage.removeItem(key);
 			}
 			else {
-				localStorage.setItem(key, StorageWrapper.prototype.toInternal(value));
+				value = StorageWrapper.prototype.toInternal(value);
+				var current = localStorage.getItem(key);
+				if (current === null || value != current) {
+					localStorage.setItem(key, value);
+				}
 			}
 		}},
 		clear: {value: function () {
@@ -97,7 +101,11 @@
 				delete this.ss.storage[key];
 			}
 			else {
-				this.ss.storage[key] = StorageWrapper.prototype.toInternal(value);
+				value = StorageWrapper.prototype.toInternal(value);
+				var current = this.ss.storage[key];
+				if (current === undefined || value != current) {
+					this.ss.storage[key] = value;
+				}
 			}
 		}},
 		clear: {value: function () {

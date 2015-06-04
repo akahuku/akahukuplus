@@ -8,19 +8,15 @@
 	'use strict';
 
 	var to_sjis_main;
-	var to_sjis_sub;
-
 	var substChar = '?'.charCodeAt(0);
 
 	(function (table) {
 		if (!table) return;
 		to_sjis_main = table.to_sjis_main;
-		to_sjis_sub = table.to_sjis_sub;
 	})(require('./EncodeTableSjis'));
 
 	function toSjisCore (s) {
 		var main = to_sjis_main;
-		var sub = to_sjis_sub;
 		var push = Array.prototype.push;
 		var result = [];
 
@@ -28,40 +24,7 @@
 			var cp = s.charCodeAt(i);
 			var key = cp.toString(16);
 
-			if (key in sub) {
-				var subMatched = false;
-
-				for (var j = 0; j < sub[key].length; j++) {
-					var seq = sub[key][j];
-					if (i >= goal - seq.length) {
-						continue;
-					}
-
-					var tmp = [key];
-
-					for (var k = 1; k < seq.length && s.charCodeAt(i + k) == seq[k]; k++) {
-						tmp.push(seq[k]);
-					}
-
-					if (tmp.length != seq.length) {
-						continue;
-					}
-
-					tmp = tmp.map(function (n) {return n.toString(16)}).join(',');
-
-					if (tmp in main) {
-						subMatched = true;
-						push.apply(result, main[tmp]);
-						i += seq.length - 1;
-						break;
-					}
-				}
-
-				if (subMatched) {
-					continue;
-				}
-			}
-
+			// surrogate pair
 			if (cp >= 0xd800 && cp <= 0xdb7f) {
 				if (i >= goal - 1) {
 					result.push(substChar);
@@ -128,7 +91,7 @@
 	exports.SjisUtils = {
 		get substChar () {return substChar},
 		set substChar (v) {substChar = ('' + v).charCodeAt(0)},
-		toSjis: to_sjis_main && to_sjis_sub ? toSjis : nop
+		toSjis: to_sjis_main ? toSjis : nop
 	};
 
 })();
@@ -139,37 +102,80 @@
 
 (function () {
 	function test (expected, pattern) {
+		expected = expected.reduce(function (a, b) {return a.concat(b)}, []);
 		var actual = require('./SjisUtils').SjisUtils.toSjis(pattern);
-		if (!actual || actual.length != expected.length) {
-			console.error('*** TEST FAILED ***');
+		var buffer = ['*** TEST FAILED IN SJISUTILS ***', 'pattern: "' + pattern + '"'];
+		var errored = false;
+		if (!actual) {
+			buffer.push('toSjis returned invalid value');
+			console.error(buffer.join('\n'));
 			return;
 		}
 
-		var buffer = [];
-		var errored = false;
-		for (var i = 0; i < actual.length; i++) {
-			var ch = actual[i];
-			var t = '0x' + ch.toString(16) + '\t' + ch;
-			if (ch >= 0x20 && ch < 0x7f) {
-				t += '\t"' + String.fromCharCode(ch) + '"';
+		// EXPECTED    ACTUAL
+		// ==========  ==========
+		// 000(0x00)   000(0x00)
+		buffer.push(
+			'EXPECTED    ACTUAL    ',
+			'==========  =========='
+		);
+		for (var i = 0, goal = Math.max(actual.length, expected.length); i < goal; i++) {
+			var line = '';
+			if (i < expected.length) {
+				line += ('   ' + expected[i]).substr(-3);
+				line += '(0x' + ('00' + expected[i].toString(16)).substr(-2) + ')';
+				if (expected[i] >= 32 && expected[i] <= 127) {
+					line += String.fromCharCode(expected[i]);
+				}
+				else {
+					line += ' ';
+				}
 			}
-			buffer.push(t);
+			else {
+				line += '          ';
+			}
 
-			if (actual[i] !== expected[i]) {
-				buffer.push('*** TEST FAILED ***');
-				errored = true;
-				break;
+			line += '  ';
+
+			if (i < actual.length) {
+				line += ('   ' + actual[i]).substr(-3);
+				line += '(0x' + ('00' + actual[i].toString(16)).substr(-2) + ')';
+				if (actual[i] >= 32 && actual[i] <= 127) {
+					line += String.fromCharCode(actual[i]);
+				}
+				else {
+					line += ' ';
+				}
 			}
+			else {
+				line += '          ';
+			}
+
+			if (expected[i] != actual[i]) {
+				line += '  *** Unmatched! ***';
+				errored = true;
+			}
+
+			buffer.push(line);
 		}
 
 		errored && console.error(buffer.join('\n'));
 	}
 
-	/*
-	 */
-	test([0x82, 0xb3, 0x82, 0xde, 0x82, 0xa2, 0x82, 0xe6, 0x81, 0x60], 'さむいよ～');
+	function s (s) {
+		return s.split('').map(function (a) {return a.charCodeAt(0)});
+	}
 
 	/*
+	 * u+ff5e conversion
+	 */
+	test(
+		[0x82,0xb3, 0x82,0xde, 0x82,0xa2, 0x82,0xe6, 0x81,0x60],
+		'さむいよ～');
+
+	/*
+	 * u+301c conversion
+	 *
 	 * 0x82    130
 	 * 0xb1    177
 	 * 0x82    130
@@ -183,75 +189,88 @@
 	 * 0x81    129
 	 * 0x60     96
 	 */
-	test([130, 177, 130, 241, 130, 201, 130, 191, 130, 205, 129, 96], 'こんにちは～');
+	test(
+		[130,177, 130,241, 130,201, 130,191, 130,205, 129,96],
+		'こんにちは〜');
 
 	/*
-	 * 0x82    130
-	 * 0xf5    245
-	 * 0x82    130
-	 * 0xc1    193
 	 * 0x82    130
 	 * 0xa9    169
+	 *
+	 * "&#12442"
+	 *
 	 * 0x82    130
 	 * 0xc1    193
+	 *
+	 * 0x82    130
+	 * 0xa9    169
+	 *
+	 * 0x82    130
+	 * 0xc1    193
+	 *
 	 * 0x82    130
 	 * 0xa9    169
 	 */
-	test([130, 245, 130, 193, 130, 169, 130, 193, 130, 169], '\u304b\u309aっかっか');
+	test(
+		[130,169, s('&#12442;'), 130,193, 130,169, 130,193, 130,169],
+		'\u304b\u309aっかっか'); // か゚っかっか
 
 	/*
-	 * 0x86    134
-	 * 0x63     99    "c"
-	 * 0x85    133
-	 * 0x7b    123    "{"
+	 * "&#230;&#768;&#230;"
 	 */
-	test([134, 99, 133, 123], '\u00e6\u0300\u00e6');
+	test(
+		s('&#230;&#768;&#230;'),
+		'\u00e6\u0300\u00e6'); //æ̀æ
 
 	/*
-	 * 0x86    134
-	 * 0x57     87    "W"
-	 * 0x86    134
-	 * 0x67    103    "g"
-	 * 0x86    134
-	 * 0x68    104    "h"
-	 * 0x86    134
-	 * 0x57     87    "W"
+	 * "&#596;&#596;&#768;&#596;&#769;&#596;"
 	 */
-	test([134, 87, 134, 103, 134, 104, 134, 87], '\u0254\u0254\u0300\u0254\u0301\u0254');
+	test(
+		[s('&#596;&#596;&#768;&#596;&#769;&#596;')],
+		'\u0254\u0254\u0300\u0254\u0301\u0254'); // ɔɔ̀ɔ́ɔ
 
 	/*
-	 * 0x87    135
-	 * 0xa0    160
-	 * 0x3f     63    "?"
-	 * 0x3f     63    "?"
+	 * valid surrogate pair and invalid surrogate pair
+	 * ===============================================
+	 *
+	 * expected:
+	 *
+	 * "&#131083;??"
 	 */
-	test([135, 160, 63, 63], '\ud840\udc0b\ud840\ud840');
+	test(
+		s('&#131083;??'),
+		'\ud840\udc0b\ud840\ud840');
 
 	/*
-	 * 0x61     97    "a"
-	 * 0x73    115    "s"
-	 * 0x63     99    "c"
-	 * 0x69    105    "i"
-	 * 0x69    105    "i"
-	 * 0x20     32    " "
-	 * 0x74    116    "t"
-	 * 0x65    101    "e"
-	 * 0x78    120    "x"
-	 * 0x74    116    "t"
-	 * 0x2e     46    "."
+	 * ascii text
 	 */
-	test([97, 115, 99, 105, 105, 32, 116, 101, 120, 116, 46], 'ascii text.');
+	test(
+		s('ascii text.'),
+		'ascii text.');
 
 	/*
-	 * 0x26     38    "&"
-	 * 0x23     35    "#"
-	 * 0x33     51    "3"
-	 * 0x30     48    "0"
-	 * 0x36     54    "6"
-	 * 0x31     49    "1"
-	 * 0x3b     59    ";"
+	 * out of sjis range
+	 * =================
+	 *
+	 * expected:
+	 *
+	 * "&#3061;"
 	 */
-	test([38, 35, 51, 48, 54, 49, 59], '\u0bf5');
+	test(
+		s('&#3061;'),
+		'\u0bf5'); // ௵
+
+	/*
+	 * out of sjis range, Latin-1 Supplement
+	 * =====================================
+	 *
+	 * expected:
+	 *
+	 * "&#192;&#193;"
+	 */
+	test(
+		s('&#192;&#193;'),
+		'\u00c0\u00c1');
 })();
 
 // vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker :

@@ -23,28 +23,25 @@
 			callback(cache.get(id));
 			return;
 		}
-
-		var xhr = new XMLHttpRequest;
-		xhr.open('GET', baseUrl + 'jsonp/_/' + id + '/complete/' + id);
-		xhr.onload = function () {
-			var data;
-			try {
-				data = JSON.parse(xhr.responseText.replace(/^_\(|\);$/g, ''));
-				data.base = data.url.match(/[^\/]+$/)[0];
-				data.thumbnail = baseUrl + 'misc/' + id + '.thumb.jpg';
+		
+		this.ext.request(
+			baseUrl + 'jsonp/_/' + id + '/complete/' + id,
+			function (data, status) {
+				try {
+					data = JSON.parse(data.replace(/^_\(|\);$/g, ''));
+					data.base = data.url.match(/[^\/]+$/)[0];
+					data.thumbnail = baseUrl + 'misc/' + id + '.thumb.jpg';
+				}
+				catch (e) {
+					data = null;
+				}
+				callback(cache.set(id, TTL_MSECS, data));
+			},
+			function () {
+				cache.set(id, TTL_MSECS, null);
+				callback(cache.get(id));
 			}
-			catch (e) {
-				data = null;
-			}
-			callback(cache.set(id, TTL_MSECS, data));
-			xhr = xhr.onload = xhr.onerror = null;
-		};
-		xhr.onerror = function () {
-			cache.set(id, TTL_MSECS, null);
-			callback(cache.get(id));
-			xhr = xhr.onload = xhr.onerror = null;
-		};
-		xhr.send();
+		);
 	}
 
 	function completeUpLink (id, baseUrl, callback) {
@@ -104,6 +101,7 @@
 	}
 
 	CompleteUpfiles.prototype.run = function run (id, callback) {
+console.log('CompleteUpfile: got id ' + id);
 		var re = /^(s[apsuq]|fu|f)\d+$/.exec(id);
 
 		if (!re || !re[1]) {

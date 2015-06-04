@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2014 akahuku, akahuku@gmail.com
+ * Copyright 2012-2015 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -203,6 +203,7 @@
 
 	function FileSystem (extension, options) {
 		this.extension = extension;
+		options || (options = {});
 
 		var self = this;
 		var accessToken = '';
@@ -1791,7 +1792,7 @@
 		case 'onedrive':
 			return new FileSystemOneDrive(ext, options);
 		default:
-			return new FileSystem;
+			return new FileSystem(ext, options);
 		}
 	}
 

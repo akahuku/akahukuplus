@@ -45,13 +45,31 @@ if localedir != '' then
 		message = JSON.load(File.read("#{localedir}/#{e}/messages.json"))
 		localeCode = e.gsub(/_/, '-').downcase
 
-		element = xml.root.add_element("name")
-		element.text = message["#{product}_name"]['message']
-		element.add_attribute("xml:lang", localeCode)
+		[
+			{
+				"message_suffix" => "name",
+				"element_name" => "name"
+			},
+			{
+				"message_suffix" => "desc",
+				"element_name" => "description"
+			}
+		].each do |item|
+			key1 = "#{product}_#{item["message_suffix"]}"
+			key2 = "message"
 
-		element = xml.root.add_element("description")
-		element.text = message["#{product}_desc"]['message']
-		element.add_attribute("xml:lang", localeCode)
+			if !message.key?(key1) then
+				raise "#{key1} not found"
+			end
+
+			if !message[key1].key?(key2) then
+				raise "#{key1} - '#{key2}' not found"
+			end
+
+			element = xml.root.add_element(item["element_name"])
+			element.text = message[key1][key2]
+			element.add_attribute("xml:lang", localeCode)
+		end
 	}
 end
 

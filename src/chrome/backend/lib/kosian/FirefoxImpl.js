@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2014 akahuku, akahuku@gmail.com
+ * Copyright 2012-2015 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -301,7 +301,7 @@
 			var excluded = this.__isMatch(this.__kosian_excludes, url);
 			var result = included && !excluded;
 
-			//console.log('testing ' + this.__kosian_name + ' for ' + url + ': included: ' + included + ', excluded: ' + excluded + ', result: ' + result);
+//console.log('testing ' + this.__kosian_name + ' for ' + url + ': included: ' + included + ', excluded: ' + excluded + ', result: ' + result);
 
 			return this.__kosian_cache[url] = result;
 		},
@@ -385,11 +385,8 @@
 		contentScriptOptions.extensionId = self.id;
 		(options.contentScripts || []).forEach(function (spec) {
 			PageMod({
-				include: new PseudoRegexRule(
-					spec.name,
-					spec.matches,
-					spec.exclude_matches
-				),
+				include: spec.matches,
+				exclude: spec.exclude_matches,
 				contentScriptWhen: spec.run_at || 'end',
 				contentScriptFile: spec.js.map(function (file) {
 					return self.data.url(file);

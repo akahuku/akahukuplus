@@ -399,11 +399,15 @@ function boot () {
 					startTransition();
 				}
 				else {
+					window.stop;
+					startTransition();
+					/*
 					window.addEventListener('load', function (e) {
 						this.removeEventListener(e.type, arguments.callee, false);
 						startTransition();
 						startTransition = null;
 					}, false);
+					 */
 				}
 			}
 			catch (e) {
@@ -447,7 +451,9 @@ function applyDataBindings (xml) {
 				result = xml.evaluate(re[2], xml, null,
 					window.XPathResult.FIRST_ORDERED_NODE_TYPE, result);
 				if (!result || !result.singleNodeValue) continue;
-				$t(nodes[i], result.singleNodeValue.textContent);
+				$t(nodes[i],
+					result.singleNodeValue.value
+					|| result.singleNodeValue.textContent);
 			}
 			catch (e) {
 				console.error(
@@ -1710,7 +1716,7 @@ function createConfigurator () {
 		},
 		banner_enabled: {
 			type:'bool',
-			value:true,
+			value:false,
 			name:'バナーを表示する'
 		}
 	};
@@ -6019,9 +6025,11 @@ function extractIncompleteFiles () {
 	function getHandler (node) {
 		return function (data) {
 			if (data) {
-				empty(node);
-				node.href = data.url;
-				node.appendChild(document.createTextNode(data.base));
+				if (data.url) {
+					empty(node);
+					node.href = data.url;
+					node.appendChild(document.createTextNode(data.base));
+				}
 
 				if (/\.(?:jpg|gif|png)$/.test(data.url)) {
 					node.classList.add('lightbox');
@@ -6044,7 +6052,10 @@ function extractIncompleteFiles () {
 
 	for (var i = 0; i < files.length && i < 10; i++) {
 		var id = files[i].getAttribute('data-basename');
-		id && sendToBackend('complete', {url:files[i].href, id:id}, getHandler(files[i]));
+		id && sendToBackend(
+			'complete',
+			{url:files[i].href, id:id},
+			getHandler(files[i]));
 		files[i].classList.remove('incomplete');
 	}
 

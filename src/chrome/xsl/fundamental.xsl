@@ -188,7 +188,7 @@ hr {
 	transition-property:left;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 	background-color:#ffe;
 }
 
@@ -335,7 +335,7 @@ hr {
 	transition-property:box-shadow;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 .topic-wrap .link-futaba img:hover,
@@ -357,7 +357,7 @@ hr {
 	transition-property:box-shadow;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 .topic-wrap .link-siokara:hover,
@@ -385,7 +385,7 @@ hr {
 	transition-property:box-shadow;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 #content > article > .image img:hover {
@@ -559,7 +559,7 @@ hr {
 	transition-property:box-shadow;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 .reply-image img:hover {
@@ -654,7 +654,7 @@ hr {
 	transition-property:max-height;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 	box-sizing:border-box;
 }
 
@@ -827,7 +827,7 @@ hr {
 	transition-property:opacity;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 .post-image-thumbnail-wrap.run {
@@ -856,7 +856,7 @@ hr {
 	transition-property:width,opacity;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 #ad-aside-wrap div {
@@ -879,7 +879,7 @@ hr {
 	transition-property:left;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 #ad-aside-wrap div.size-large:hover {
@@ -900,7 +900,7 @@ hr {
 	transition-property:right;
 	transition-duration:.4s;
 	transition-timing-function:cubic-bezier(0, 1, 1, 1);
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 #panel-aside-wrap.run {
@@ -936,7 +936,7 @@ hr {
 	box-shadow:0 -1px 3px rgba(0,0,0,.25);
 	font-size:x-small;
 	line-height:1;
-	text-decoration;none;
+	text-decoration:none;
 }
 
 #panel-aside-wrap .panel-tab-wrap > a.active {
@@ -966,7 +966,7 @@ hr {
  */
 
 #panel-aside-wrap #panel-content-mark h2 {
-	marglin:0 0 4px 0;
+	margin:0 0 4px 0;
 	padding: 0 0 4px 0;
 	border-bottom:1px solid silver;
 	line-height:1;
@@ -1098,7 +1098,7 @@ hr {
 	transition-property:background-color;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 .lightbox-wrap .dimmer.run {
@@ -1111,7 +1111,7 @@ hr {
 	transition-property:left,top,width,height;
 	transition-duration:.5s;
 	transition-timing-function:ease-out;
-	transition-delay:0;
+	transition-delay:0s;
 	background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAAXNSR0IArs4c6QAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9kFEAkjBaAOh8kAAAArSURBVCjPY3zw4AEDNiAvL49VnImBRDCqgRjA+P//f6wSDx8+HA0l+mkAAJ4dCLzVvF8ZAAAAAElFTkSuQmCC) left top repeat fixed #888;
 
 }
@@ -1183,7 +1183,7 @@ hr {
 	transition-property:background-color;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 .dialog-wrap .dimmer.run {
@@ -1201,7 +1201,7 @@ hr {
 	transition-property:opacity;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 .dialog-wrap .dialog-content-wrap.run {
@@ -1278,7 +1278,7 @@ hr {
 	transition-property:background-color;
 	transition-duration:.2s;
 	transition-timing-function:ease-in;
-	transition-delay:0;
+	transition-delay:0s;
 }
 
 .dialog-wrap .dialog-content-footer > a + a {
@@ -1377,7 +1377,7 @@ hr {
 	transition-property:opacity;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0;
+	transition-delay:0s;
 	opacity:1;
 }
 
@@ -1429,7 +1429,7 @@ img.catalog-popup {
 	transition-property:left,top,width,height;
 	transition-duration:.25s;
 	transition-timing-function:ease-out;
-	transition-delay:0;
+	transition-delay:0s;
 	z-index:100;
 }
 
@@ -1445,7 +1445,7 @@ div.catalog-popup {
 	transition-property:opacity;
 	transition-duration:.5s;
 	transition-timing-function:ease-out;
-	transition-delay:0;
+	transition-delay:0s;
 	opacity:0;
 	z-index:100;
 }
