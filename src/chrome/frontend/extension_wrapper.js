@@ -11,7 +11,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2014 akahuku, akahuku@gmail.com
+ * Copyright 2012-2015 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,8 +63,7 @@
 		get externalUrl () {return externalFrameURL},
 		get externalSecureUrl () {return externalSecureFrameURL},
 		get isInternal () {
-			return this.eq(window.location.href, this.internalUrl)
-				|| /^data:text\/html;charset=UTF-8;base64,/.test(window.location.href);
+			return this.eq(window.location.href, this.internalUrl);
 		},
 		get isExternal () {
 			return this.eq(window.location.href, this.externalUrl)
@@ -297,7 +296,7 @@
 			var extensionId = chrome.runtime.id;
 			return new UrlInfo(
 				'chrome-extension://' + extensionId + '/options.html',
-				'chrome-extension://' + extensionId + '/wasavi_frame.html'
+				'chrome-extension://' + extensionId + '/wasavi.html'
 			);
 		};
 	}

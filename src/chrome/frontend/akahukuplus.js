@@ -395,19 +395,17 @@ function boot () {
 					}, WAIT_AFTER_INIT_TRANSITION);
 					$('content').classList.remove('init');
 				};
-				if (document.readyState == 'complete') {
+				if (document.readyState == 'complete'
+				|| document.readyState == 'interactive') {
 					startTransition();
+					startTransition = null;
 				}
 				else {
-					window.stop;
-					startTransition();
-					/*
 					window.addEventListener('load', function (e) {
 						this.removeEventListener(e.type, arguments.callee, false);
 						startTransition();
 						startTransition = null;
 					}, false);
-					 */
 				}
 			}
 			catch (e) {

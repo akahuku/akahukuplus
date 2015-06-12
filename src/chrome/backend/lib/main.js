@@ -42,7 +42,7 @@
 			{
 				name: 'akahukuplus',
 				matches: [
-					/^http:\/\/[^.]+\.2chan\.net\/[^\/]+\/(?:futaba|(?:res\/)?\d+)\.html?\b/
+					/^http:\/\/[^.]+\.2chan\.net\/[^\/]+\/(?:futaba|(?:res\/)?\d+)\.html?\b.*(#[^#]*)?$/
 				],
 				exclude_matches: [
 					'http://dec.2chan.net/up/*',

@@ -388,7 +388,6 @@ message: FORCE
 #
 
 dbgfx: FORCE
-#	cd $(FIREFOX_SRC_PATH) && cfx run -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --binary-args http://dat.2chan.net/b/futaba.htm
-	cd $(FIREFOX_SRC_PATH) && cfx run -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --binary-args http://dat.2chan.net/b/res/70888767.htm
+	cd $(FIREFOX_SRC_PATH) && cfx run -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --binary-args http://dat.2chan.net/b/futaba.htm
 
 # end
