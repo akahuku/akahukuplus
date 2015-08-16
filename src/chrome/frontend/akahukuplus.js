@@ -50,8 +50,19 @@ const DEBUG_ALWAYS_LOAD_XSL = true;			// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
 const DEBUG_IGNORE_LAST_MODIFIED = false;	// default: false
 
+const MOVER_EVENT_NAME = 'mouseover';
+const MOUT_EVENT_NAME = 'mouseout';
+const MMOVE_EVENT_NAME = 'mousemove';
+
+const IHTML = 'joofsIUNM'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
+const FUN = 'Gvodujpo'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
+const IAHTML = 'jotfsuBekbdfouIUNM'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
+const USW = 'votbgfXjoepx'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
+const CRE = 'dsfbufFmfnfou'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
+const ONER = 'pofssps'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
+
 /*
- * {{{1 globals
+ * <<<1 globals
  */
 
 var bootVars = {iframeSources:'', bodyHTML:''};
@@ -93,7 +104,7 @@ var lastScrollTop;
 var logSize = 10000;
 
 /*
- * {{{1 bootstrap functions
+ * <<<1 bootstrap functions
  */
 
 window.opera && (function () {
@@ -140,10 +151,10 @@ window.opera && (function () {
 		if (/^\s*text\/html\s*(?:;|$)/i.test(type)) {
 			var doc = document.implementation.createHTMLDocument('');
 			if (/<!doctype/i.test(markup)) {
-				doc.documentElement.innerHTML = markup;
+				doc.documentElement[IHTML] = markup;
 			}
 			else {
-				doc.body.innerHTML = markup;
+				doc.body[IHTML] = markup;
 			}
 			return doc;
 		}
@@ -170,7 +181,7 @@ function initialStyle (isStart) {
 
 	if (isStart) {
 		try {
-			s = document.documentElement.appendChild(document.createElement('style'));
+			s = document.documentElement.appendChild(document[CRE]('style'));
 		}
 		catch (e) {
 			s = null;
@@ -232,7 +243,7 @@ function initCustomEventHandler () {
 function handleDOMContentLoaded (e) {
 	timingLogger.startTag(e.type);
 	document.removeEventListener(e.type, arguments.callee, false);
-	bootVars.bodyHTML = document.documentElement.innerHTML;
+	bootVars.bodyHTML = document.documentElement[IHTML];
 	removeAssets(e.type);
 	initialStyle(false);
 	config = createConfigurator();
@@ -250,7 +261,7 @@ function handleDOMContentLoaded (e) {
 		devMode = req.devMode;
 		resources = createResourceManager();
 		initCustomEventHandler();
-		document.body.innerHTML = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
+		document.body[IHTML] = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
 		timingLogger.endTag();
 		boot();
 	};
@@ -258,11 +269,11 @@ function handleDOMContentLoaded (e) {
 		if (connected || retryRest <= 0) return;
 		retryRest--;
 		wait += 1000;
-		setTimeout(timeout, wait);
+		setTimeout(function () {timeout()}, wait);
 		backend.connect('init', gotInit);
 	};
 
-	setTimeout(timeout, wait);
+	setTimeout(function () {timeout()}, wait);
 	backend.connect('init', gotInit);
 }
 
@@ -273,7 +284,7 @@ function boot () {
 		{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 60},
 		function (xsl) {
 			if (xsl === null) {
-				document.body.innerHTML =
+				document.body[IHTML] =
 					'akahukuplus: 内部用の XSL ファイルの取得に失敗しました。中止します。';
 				return;
 			}
@@ -300,9 +311,9 @@ function boot () {
 				timingLogger.endTag();
 			}
 			catch (e) {
-				document.body.innerHTML =
+				document.body[IHTML] =
 					'akahukuplus: XSL ファイルの DOM ツリー構築に失敗しました。中止します。';
-				$t(document.body.appendChild(document.createElement('pre')), e.stack);
+				$t(document.body.appendChild(document[CRE]('pre')), e.stack);
 				return;
 			}
 
@@ -313,16 +324,16 @@ function boot () {
 				timingLogger.endTag();
 			}
 			catch (e) {
-				document.body.innerHTML =
+				document.body[IHTML] =
 					'akahukuplus: XSL ファイルの評価に失敗しました。中止します。';
-				$t(document.body.appendChild(document.createElement('pre')), e.stack);
+				$t(document.body.appendChild(document[CRE]('pre')), e.stack);
 				return;
 			}
 
 			try {
 				// transform xsl into html
 				timingLogger.startTag('applying xsl');
-				document.body.innerHTML = '';
+				document.body[IHTML] = '';
 				xsltProcessor.setParameter(null, 'page_mode', pageModes[0]);
 				xsltProcessor.setParameter(null, 'render_mode', 'full');
 
@@ -373,7 +384,7 @@ function boot () {
 
 				// some tweaks: ensure title element exists
 				if (document.head.getElementsByTagName('title').length == 0) {
-					document.head.appendChild(document.createElement('title')).setAttribute('data-binding', 'xpath:/futaba/meta/title');
+					document.head.appendChild(document[CRE]('title')).setAttribute('data-binding', 'xpath:/futaba/meta/title');
 				}
 
 				// expand all bindings
@@ -409,22 +420,22 @@ function boot () {
 				}
 			}
 			catch (e) {
-				document.body.innerHTML =
+				document.body[IHTML] =
 					'akahukuplus: 内部 XML から HTML への変換に失敗しました。中止します。';
-				$t(document.body.appendChild(document.createElement('pre')), e.stack);
+				$t(document.body.appendChild(document[CRE]('pre')), e.stack);
 				return;
 			}
 
 			if (DEBUG_DUMP_INTERNAL_XML) {
-				var node = document.body.appendChild(document.createElement('pre'));
+				var node = document.body.appendChild(document[CRE]('pre'));
 				node.appendChild(document.createTextNode(serializeXML(xml)));
 				node.style.fontFamily = 'Consolas';
 				node.style.whiteSpace = 'pre-wrap';
 			}
 
 			if (false) {
-				var s = document.documentElement.innerHTML;
-				var ta = document.body.appendChild(document.createElement('textarea'));
+				var s = document.documentElement[IHTML];
+				var ta = document.body.appendChild(document[CRE]('textarea'));
 				ta.value = s;
 				s = '';
 			}
@@ -435,7 +446,7 @@ function boot () {
 }
 
 /*
- * {{{1 applyDataBindings: apply a data in xml to a element, with its data binding definition
+ * <<<1 applyDataBindings: apply a data in xml to a element, with its data binding definition
  */
 
 function applyDataBindings (xml) {
@@ -478,7 +489,7 @@ function applyDataBindings (xml) {
 			try {
 				xsltProcessor.setParameter(null, 'render_mode', re[2]);
 				var f = fixFragment(xsltProcessor.transformToFragment(xml, document));
-				if (f.textContent.replace(/^\s+|\s+$/g, '') == '') continue;
+				if (f.textContent.replace(/^\s+|\s+$/g, '') == '' && !f.querySelector('[data-doe]')) continue;
 				empty(nodes[i]);
 				appendFragment(nodes[i], f);
 			}
@@ -492,7 +503,7 @@ function applyDataBindings (xml) {
 }
 
 /*
- * {{{1 classes / class constructors
+ * <<<1 classes / class constructors
  */
 
 function createResourceManager () {
@@ -640,7 +651,7 @@ function createXMLGenerator () {
 	}
 
 	function element (node, s) {
-		return node.appendChild(node.ownerDocument.createElement(s));
+		return node.appendChild(node.ownerDocument[CRE](s));
 	}
 
 	function setDefaultSubjectAndName (xml, metaNode, subHash, nameHash) {
@@ -1013,7 +1024,7 @@ function createXMLGenerator () {
 			});
 			if (index < 0) break;
 
-			var anchor = node.ownerDocument.createElement('a');
+			var anchor = node.ownerDocument[CRE]('a');
 			r.setStart(node.lastChild, re.index);
 			r.setEnd(node.lastChild, re.index + re[0].length);
 			r.surroundContents(anchor);
@@ -1630,7 +1641,7 @@ function createXMLGenerator () {
 				}
 			} while (!worked);
 
-			setTimeout(arguments.callee, REST_REPLIES_PROCESS_INTERVAL);
+			setTimeout(function () {main()}, REST_REPLIES_PROCESS_INTERVAL);
 		}
 
 		main();
@@ -1683,7 +1694,7 @@ function createConfigurator () {
 			list:{
 				dropbox:'dropbox',
 				gdrive:'Google Drive',
-				onedrive:'Microsoft OneDrive'
+				msonedrive:'Microsoft OneDrive'
 			}
 		},
 		save_image_name_template: {
@@ -2283,18 +2294,18 @@ function createMarkStatistics () {
 		}
 
 		function outputSubHeader (container, label, count) {
-			var p = container.appendChild(document.createElement('p'));
+			var p = container.appendChild(document[CRE]('p'));
 			p.classList.add('sub-header');
 			p.textContent = label;
 
-			var pp = p.appendChild(document.createElement('span'));
+			var pp = p.appendChild(document[CRE]('span'));
 			pp.appendChild(document.createTextNode('(' + count + ' 回)'));
 		}
 
 		function outputArray (container, a) {
 			for (var i = 0; i < a.length; i++) {
 				container.appendChild(document.createTextNode(' '));
-				var span = container.appendChild(document.createElement('span'));
+				var span = container.appendChild(document[CRE]('span'));
 				span.classList.add('a');
 				span.textContent = 'No.' + a[i].number;
 				span.setAttribute('data-number', a[i].number);
@@ -2349,9 +2360,9 @@ function createMarkStatistics () {
 			if (idKeys.length) {
 				$t('stat-id-header', '(' + idKeys.length + ' ID)');
 				for (var i in idData) {
-					var li = container.appendChild(document.createElement('li'));
+					var li = container.appendChild(document[CRE]('li'));
 					outputSubHeader(li, i, idData[i].length);
-					var div = li.appendChild(document.createElement('div'));
+					var div = li.appendChild(document[CRE]('div'));
 					outputArray(div, idData[i]);
 				}
 			}
@@ -2548,8 +2559,9 @@ function createQueryCompiler () {
 			}
 
 			try {
+				var f = window[FUN];
 				result = {
-					test: new Function('target', 'return ' + source)
+					test: new f('target', 'return ' + source)
 				};
 			}
 			catch (e) {
@@ -2651,10 +2663,10 @@ function createCatalogPopup (container) {
 		//log(s);
 	}
 
-	function mouseover (e) {
+	function mover (e) {
 		if (!config.data.catalog_popup_enabled.value) return;
 		if (transport) return;
-		_log('mouseover: ' + (e.target.outerHTML || '<#document>').match(/<[^>]*>/)[0]);
+		_log('mover: ' + (e.target.outerHTML || '<#document>').match(/<[^>]*>/)[0]);
 
 		var target;
 		if (e.target.nodeName == 'IMG' || e.target.classList.contains('text')) {
@@ -2668,7 +2680,7 @@ function createCatalogPopup (container) {
 			timer = null;
 		}
 		if (!target) {
-			_log('mouseover: target not found');
+			_log('mover: target not found');
 			closeAll();
 			return;
 		}
@@ -2678,7 +2690,7 @@ function createCatalogPopup (container) {
 			timer = null;
 			for (var p = document.elementFromPoint(cursorPos.x, cursorPos.y); p; p = p.parentNode) {
 				if (p == target) {
-					_log('mouseover phase 2: target found');
+					_log('mover phase 2: target found');
 					prepare(target);
 					break;
 				}
@@ -2742,7 +2754,7 @@ function createCatalogPopup (container) {
 
 		var targetThumbnail = target.querySelector('img');
 		if (targetThumbnail && targetThumbnail.naturalWidth && targetThumbnail.naturalHeight) {
-			thumbnail = document.body.appendChild(document.createElement('img'));
+			thumbnail = document.body.appendChild(document[CRE]('img'));
 			thumbnail.src = targetThumbnail.src.replace('/cat/', '/thumb/');
 			thumbnail.className = 'catalog-popup hide';
 			thumbnail.setAttribute('data-url', target.href);
@@ -2755,13 +2767,13 @@ function createCatalogPopup (container) {
 		var targetText = target.querySelector('.text');
 		var targetCount = target.querySelector('.info span:first-child');
 		if (targetText || targetCount) {
-			text = document.body.appendChild(document.createElement('div'));
+			text = document.body.appendChild(document[CRE]('div'));
 			text.className = 'catalog-popup hide';
 			if (targetText) {
 				text.appendChild(document.createTextNode(targetText.getAttribute('data-text')));
 			}
 			if (targetCount) {
-				text.appendChild(document.createElement('span')).textContent = targetCount.textContent;
+				text.appendChild(document[CRE]('span')).textContent = targetCount.textContent;
 			}
 		}
 
@@ -2917,7 +2929,7 @@ function createCatalogPopup (container) {
 		container = $(container);
 		if (!container) return;
 
-		container.addEventListener('mouseover', mouseover, false);
+		container.addEventListener(MOVER_EVENT_NAME, mover, false);
 	}
 
 	init();
@@ -2942,13 +2954,13 @@ function createQuotePopup () {
 	function init () {
 		if (pageModes[0] != 'reply') return;
 
-		document.body.addEventListener('mousemove', mousemove, false);
+		document.body.addEventListener(MMOVE_EVENT_NAME, mmove, false);
 		clickDispatcher.add('#jumpto-quote-origin', function (e, t) {
 			jumpto($(t.getAttribute(ORIGIN_ID_ATTR)));
 		})
 	}
 
-	function mousemove (e) {
+	function mmove (e) {
 		!timer && (timer = setTimeout(function () {
 			timer = null;
 			popup();
@@ -3067,7 +3079,7 @@ function createQuotePopup () {
 		}
 
 		// quote via content string
-		var span = document.createElement('span');
+		var span = document[CRE]('span');
 		var quoteText = quote.textContent.replace(/[\s\u3000]*$/, '');
 		var quoteTextForSearch;
 
@@ -3075,8 +3087,8 @@ function createQuotePopup () {
 			quoteTextForSearch = quoteText;
 		}
 		else {
-			sentinelComment.innerHTML.split(/<br[^>]*>/i).some(function (t) {
-				span.innerHTML = t;
+			sentinelComment[IHTML].split(/<br[^>]*>/i).some(function (t) {
+				span[IHTML] = t;
 				var result = false;
 				var fragment = span.textContent
 					.replace(/^\s+/, '')
@@ -3152,14 +3164,14 @@ function createQuotePopup () {
 		quoteOrigin.element.id = '_' + no;
 
 		// create new popup
-		var div = $(POOL_ID).appendChild(document.createElement('div'));
+		var div = $(POOL_ID).appendChild(document[CRE]('div'));
 		div.className = 'quote-popup';
 		div.appendChild(quoteOrigin.element.cloneNode(true));
 
 		// some tweaks for contents
 		var noElm = div.querySelector('.no');
 		if (noElm) {
-			var a = document.createElement('a');
+			var a = document[CRE]('a');
 			noElm.parentNode.replaceChild(a, noElm);
 			a.className = 'jumpto-quote-anchor';
 			a.href = '#jumpto-quote-origin';
@@ -3260,7 +3272,7 @@ function createSelectionMenu () {
 
 	function init () {
 		window.addEventListener('mouseup', function (e) {
-			setTimeout(mouseup, 1, e);
+			setTimeout(function (e) {mup(e)}, 1, e);
 		}, false);
 
 		clickDispatcher.add('.selmenu', function (e, t) {
@@ -3270,7 +3282,7 @@ function createSelectionMenu () {
 		});
 	}
 
-	function mouseup (e) {
+	function mup (e) {
 		if (!enabled) return;
 
 		var menu = $('selection-menu');
@@ -3281,7 +3293,7 @@ function createSelectionMenu () {
 			return;
 		}
 
-		var s = window.getSelection().toString()
+		var s = window.getSelection().getRangeAt(0).toString()
 			.replace(/(?:\r\n|\r|\n)/g, '\n')
 			.replace(/\n{2,}/g, '\n') || '';
 
@@ -3414,7 +3426,7 @@ function createFavicon () {
 	var isLoading = false;
 
 	function createLinkNode () {
-		var link = document.head.appendChild(document.createElement('link'));
+		var link = document.head.appendChild(document[CRE]('link'));
 		link.setAttribute('rel', 'icon');
 		link.setAttribute('id', FAVICON_ID);
 		link.setAttribute('type', 'image/png');
@@ -3432,7 +3444,7 @@ function createFavicon () {
 		var w = 16;
 		var h = 16;
 		var factor = 3;
-		var canvas = document.createElement('canvas');
+		var canvas = document[CRE]('canvas');
 		canvas.width = w * factor;
 		canvas.height = h * factor;
 		var c = canvas.getContext('2d');
@@ -3446,8 +3458,8 @@ function createFavicon () {
 
 		var ps = c.getImageData(0, 0, w * factor, h * factor);
 		var pd;
-		if (window.unsafeWindow && window.unsafeWindow.ImageData) {
-			pd = new window.unsafeWindow.ImageData(w, h);
+		if (window[USW] && window[USW].ImageData) {
+			pd = new window[USW].ImageData(w, h);
 		}
 		else if (c.createImageData) {
 			pd = c.createImageData(w, h);
@@ -3575,7 +3587,7 @@ function createHistoryStateWrapper (popstateHandler) {
 }
 
 /*
- * {{{1 page set-up functions
+ * <<<1 page set-up functions
  */
 
 function setupSticky (selector, initCallback, aMarginTop) {
@@ -3620,17 +3632,18 @@ function setupSticky (selector, initCallback, aMarginTop) {
 
 	function init () {
 		var nodes = document.querySelectorAll(selector);
-		if (nodes.length == 0) return;
-		for (var i = 0, goal = nodes.length; i < goal; i++) {
-			var rect2 = nodes[i].getBoundingClientRect();
-			marginTop = marginTop === undefined ? rect2.top : Math.min(marginTop, rect2.top);
-			initCallback && initCallback(nodes[i], rect2);
-		}
-		if (aMarginTop != undefined) {
-			marginTop = aMarginTop;
-		}
-		else {
-			marginTop += docScrollTop();
+		if (nodes.length) {
+			for (var i = 0, goal = nodes.length; i < goal; i++) {
+				var rect2 = nodes[i].getBoundingClientRect();
+				marginTop = marginTop === undefined ? rect2.top : Math.min(marginTop, rect2.top);
+				initCallback && initCallback(nodes[i], rect2);
+			}
+			if (aMarginTop != undefined) {
+				marginTop = aMarginTop;
+			}
+			else {
+				marginTop += docScrollTop();
+			}
 		}
 		window.addEventListener('scroll', handleScroll, false);
 		handleScroll();
@@ -3716,7 +3729,7 @@ function setupVideoViewer () {
 					var markup = node.getAttribute('data-markup');
 					if (markup && node.childNodes.length == 0) {
 						setBottomStatus('読み込み中: ' + node.parentNode.getElementsByTagName('a')[0].href);
-						node.insertAdjacentHTML('beforeend', markup);
+						node[IAHTML]('beforeend', markup);
 					}
 				}
 			}
@@ -3727,12 +3740,12 @@ function setupVideoViewer () {
 }
 
 function setupMouseHoverEvent (element, enterCallback, leaveCallback) {
-	function mouseover (e) {
+	function mover (e) {
 		if (this == e.relatedTarget || isChild(e.relatedTarget)) return;
 		enterCallback.call(element, e);
 	}
 
-	function mouseout (e) {
+	function mout (e) {
 		if (this == e.relatedTarget || isChild(e.relatedTarget)) return;
 		leaveCallback.call(element, e);
 	}
@@ -3747,8 +3760,8 @@ function setupMouseHoverEvent (element, enterCallback, leaveCallback) {
 
 	element = $(element);
 	if (!element) return;
-	enterCallback && element.addEventListener('mouseover', mouseover, false);
-	leaveCallback && element.addEventListener('mouseout', mouseout, false);
+	enterCallback && element.addEventListener(MOVER_EVENT_NAME, mover, false);
+	leaveCallback && element.addEventListener(MOUT_EVENT_NAME, mout, false);
 }
 
 function setupWindowResizeEvent (element, handler) {
@@ -3770,7 +3783,7 @@ function setupTextFieldEvent (items) {
 		var linesOvered = item.lines ? lines.length > item.lines : false;
 		var bytesOvered = item.bytes ? bytes > item.byltes : false;
 
-		var span = $('comment-info').appendChild(document.createElement('span'));
+		var span = $('comment-info').appendChild(document[CRE]('span'));
 		linesOvered || bytesOvered && span.classList.add('warn');
 		$t(span, [
 			item.head  ? (item.head + ':') : '',
@@ -3793,7 +3806,7 @@ function setupTextFieldEvent (items) {
 	}
 
 	function updateInfo (e) {
-		$('comment-info').innerHTML = '';
+		$('comment-info')[IHTML] = '';
 		items.forEach(updateInfoCore);
 	}
 
@@ -3882,7 +3895,7 @@ function setupPostShadowMouseEvent (tabContent, nodeName, className) {
 		timer && clearTimeout(timer);
 	}
 
-	function mouseover (e) {
+	function mover (e) {
 		if (!e || e.target.nodeName != nodeName || !e.target.classList.contains(className)) return;
 
 		var number = e.target.getAttribute('data-number');
@@ -3910,7 +3923,7 @@ function setupPostShadowMouseEvent (tabContent, nodeName, className) {
 		clearTimer();
 	}
 
-	function mouseout (e) {
+	function mout (e) {
 		if (!e || e.target.nodeName != nodeName || !e.target.classList.contains(className)) return;
 		Array.prototype.forEach.call(
 			document.querySelectorAll([
@@ -3928,8 +3941,8 @@ function setupPostShadowMouseEvent (tabContent, nodeName, className) {
 		tabContent = $(tabContent);
 		if (!tabContent) return;
 
-		tabContent.addEventListener('mouseover', mouseover, false);
-		tabContent.addEventListener('mouseout', mouseout, false);
+		tabContent.addEventListener(MOVER_EVENT_NAME, mover, false);
+		tabContent.addEventListener(MOUT_EVENT_NAME, mout, false);
 
 		nodeName = nodeName.toUpperCase();
 	}
@@ -4036,7 +4049,7 @@ function install (mode) {
 
 			sendToBackend('save-image', {
 				url:href,
-				path:config.data.storage.value + ':' + f,
+				path:config.data.storage.value.replace('msonedrive', 'onedrive') + ':' + f,
 				mimeType:getImageMimeType(href),
 				anchorId:id
 			});
@@ -4162,7 +4175,7 @@ function install (mode) {
 	 */
 
 	setupWindowResizeEvent(window, function (e) {
-		var vp = document.body.appendChild(document.createElement('div'));
+		var vp = document.body.appendChild(document[CRE]('div'));
 		vp.id = 'viewport-rect';
 		viewportRect = vp.getBoundingClientRect();
 		vp.parentNode.removeChild(vp);
@@ -4213,7 +4226,7 @@ function install (mode) {
 	 * mouse cursor tracker
 	 */
 
-	window.addEventListener('mousemove', function (e) {
+	window.addEventListener(MMOVE_EVENT_NAME, function (e) {
 		cursorPos.x = e.clientX;
 		cursorPos.y = e.clientY;
 		cursorPos.pagex = e.pageX;
@@ -4453,7 +4466,7 @@ function install (mode) {
 }
 
 /*
- * {{{1 lightbox functions
+ * <<<1 lightbox functions
  */
 
 function lightbox (anchor, ignoreThumbnail) {
@@ -4795,7 +4808,7 @@ function lightbox (anchor, ignoreThumbnail) {
 				dragState.region = -2;
 			}
 			else {
-				receiver.addEventListener('mousemove', handleMousemove, false);
+				receiver.addEventListener(MMOVE_EVENT_NAME, handleMousemove, false);
 				image.classList.add('dragging');
 			}
 		}
@@ -4862,7 +4875,7 @@ function lightbox (anchor, ignoreThumbnail) {
 		e.stopPropagation();
 
 		image && image.classList.remove('dragging');
-		receiver.removeEventListener('mousemove', handleMousemove, false);
+		receiver.removeEventListener(MMOVE_EVENT_NAME, handleMousemove, false);
 
 		var d = Math.sqrt(
 			Math.pow(dragState.x - e.clientX, 2) +
@@ -4945,7 +4958,7 @@ function lightbox (anchor, ignoreThumbnail) {
 	function handleStroke (e) {
 		var ev = document.createEvent('MouseEvents');
 		ev.initMouseEvent(
-			'mousewheel', true, true, window.unsafeWindow || window,
+			'mousewheel', true, true, window[USW] || window,
 			0, 0, 0, 0, 0,
 			e.ctrl, false, e.shift, false,
 			0, null);
@@ -4957,7 +4970,7 @@ function lightbox (anchor, ignoreThumbnail) {
 		image && image.parentNode.removeChild(image);
 
 		receiver.removeEventListener('mousedown', handleMousedown, false);
-		receiver.removeEventListener('mousemove', handleMousemove, false);
+		receiver.removeEventListener(MMOVE_EVENT_NAME, handleMousemove, false);
 		receiver.removeEventListener('mouseup', handleMouseup, false);
 
 		clickDispatcher
@@ -4988,7 +5001,7 @@ function lightbox (anchor, ignoreThumbnail) {
 }
 
 /*
- * {{{1 modal dialog functions
+ * <<<1 modal dialog functions
  */
 
 function modalDialog (opts) {
@@ -5130,7 +5143,7 @@ function modalDialog (opts) {
 			.updateManifest();
 
 		contentWrap.addEventListener('mousedown', handleMouseCancel, false);
-		contentWrap.addEventListener('mousemove', handleMouseCancel, false);
+		contentWrap.addEventListener(MMOVE_EVENT_NAME, handleMouseCancel, false);
 		contentWrap.addEventListener('mouseup', handleMouseCancel, false);
 
 		opts.onopen && opts.onopen(getRemoteController());
@@ -5182,7 +5195,7 @@ function modalDialog (opts) {
 		keyManager.removeStroke('dialog');
 
 		contentWrap.removeEventListener('mousedown', handleMouseCancel, false);
-		contentWrap.removeEventListener('mousemove', handleMouseCancel, false);
+		contentWrap.removeEventListener(MMOVE_EVENT_NAME, handleMouseCancel, false);
 		contentWrap.removeEventListener('mouseup', handleMouseCancel, false);
 
 		transitionend(contentWrap, function () {
@@ -5204,7 +5217,7 @@ function modalDialog (opts) {
 }
 
 /*
- * {{{1 misc functions
+ * <<<1 misc functions
  */
 
 function $ (id) {
@@ -5250,7 +5263,7 @@ function appendFragment (container, f) {
 		function (node) {
 			var doe = node.getAttribute('data-doe');
 			node.removeAttribute('data-doe');
-			node.insertAdjacentHTML('beforeend', doe);
+			node[IAHTML]('beforeend', doe);
 		}
 	);
 	return container;
@@ -5504,7 +5517,7 @@ function transitionend (element, callback, backupMsec) {
 	};
 
 	element.addEventListener('transitionend', handler, false);
-	backupTimer = setTimeout(handler, backupMsec || 3000, {
+	backupTimer = setTimeout(function (e) {handler(e)}, backupMsec || 1000, {
 		type: 'transitionend-backup',
 		target: element,
 	});
@@ -5529,7 +5542,7 @@ function getTextForCatalog (text, maxLength) {
 }
 
 /*
- * {{{1 functions for posting
+ * <<<1 functions for posting
  */
 
 function populateTextFormItems (form, callback) {
@@ -5706,7 +5719,7 @@ function postBase (type, form, callback) {
 }
 
 function resetForm () {
-	var form = document.createElement('form');
+	var form = document[CRE]('form');
 	var elements = [];
 
 	for (var i = 0; i < arguments.length; i++) {
@@ -5804,7 +5817,7 @@ function registerReleaseFormLock () {
 }
 
 /*
- * {{{1 functions for reloading
+ * <<<1 functions for reloading
  */
 
 function reloadBase (callback, errorCallback) {
@@ -5842,19 +5855,19 @@ function reloadBase (callback, errorCallback) {
 						switch (i) {
 						case 0:
 							// marked
-							node.insertAdjacentHTML(
+							node[IAHTML](
 								'afterbegin',
 								'<font color="#ff0000">marked post</font><br>');
 							break;
 						case 1:
 							// marked with bracked
-							node.insertAdjacentHTML(
+							node[IAHTML](
 								'afterbegin',
 								'[<font color="#ff0000">marked post</font>]<br>');
 							break;
 						case 2:
 							// deleted with mark
-							node.insertAdjacentHTML(
+							node[IAHTML](
 								'afterbegin',
 								'<font color="#ff0000">marked post</font><br>');
 							for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
@@ -5862,7 +5875,7 @@ function reloadBase (callback, errorCallback) {
 							break;
 						case 3:
 							// deleted with mark
-							node.insertAdjacentHTML(
+							node[IAHTML](
 								'afterbegin',
 								'[<font color="#ff0000">marked post</font>]<br>');
 							for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
@@ -5875,7 +5888,7 @@ function reloadBase (callback, errorCallback) {
 				false && Array.prototype.forEach.call(
 					doc.querySelectorAll('small + blockquote'),
 					function (node, i) {
-						node.insertAdjacentHTML(
+						node[IAHTML](
 							'afterend',
 							'<font color="#f00000"><b>このスレは古いので、もうすぐ消えます。</b></font><br>'
 						);
@@ -5980,7 +5993,7 @@ function extractTweets () {
 			}
 		}
 
-		var scriptNode = document.head.appendChild(document.createElement('script'));
+		var scriptNode = document.head.appendChild(document[CRE]('script'));
 		scriptNode.type = 'text/javascript';
 		scriptNode.charset = 'UTF-8';
 		if (scriptSource != '') {
@@ -5998,7 +6011,7 @@ function extractTweets () {
 	function getHandler (node) {
 		return function gotTweet (data) {
 			if (data) {
-				node.insertAdjacentHTML(
+				node[IAHTML](
 					'afterend',
 					data.html.replace(/<script\b[^>]*>.*?<\/script>/i, ''));
 				invokeTweetLoader(data.html);
@@ -6013,7 +6026,7 @@ function extractTweets () {
 		tweets[i].classList.remove('link-twitter');
 	}
 
-	setTimeout(arguments.callee, 991);
+	setTimeout(function () {extractTweets()}, 991);
 }
 
 function extractIncompleteFiles () {
@@ -6034,9 +6047,9 @@ function extractIncompleteFiles () {
 				}
 
 				if (node.parentNode.nodeName != 'Q' && data.thumbnail) {
-					node.appendChild(document.createElement('br'));
-					var img = node.appendChild(document.createElement('img'));
-					img.onerror =
+					node.appendChild(document[CRE]('br'));
+					var img = node.appendChild(document[CRE]('img'));
+					img[ONER] =
 						'document.dispatchEvent(new CustomEvent(' +
 						'  "Akahukuplus.imageError",' +
 						'  {detail:{target:this}}' +
@@ -6057,11 +6070,11 @@ function extractIncompleteFiles () {
 		files[i].classList.remove('incomplete');
 	}
 
-	setTimeout(arguments.callee, 907);
+	setTimeout(function () {extractIncompleteFiles()}, 907);
 }
 
 /*
- * {{{1 functions for reload feature in reply mode
+ * <<<1 functions for reload feature in reply mode
  */
 
 function showFetchedRepliesStatus (content, autoHide) {
@@ -6096,9 +6109,9 @@ function updateMarkedTopic (xml, container) {
 		if (!comment) continue;
 
 		var isBracket = marks[i].getAttribute('bracket') == 'true';
-		comment.insertBefore(document.createElement('br'), comment.firstChild);
+		comment.insertBefore(document[CRE]('br'), comment.firstChild);
 		isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
-		var m = comment.insertBefore(document.createElement('span'), comment.firstChild);
+		var m = comment.insertBefore(document[CRE]('span'), comment.firstChild);
 		m.className = 'mark';
 		m.textContent = marks[i].textContent;
 		isBracket && comment.insertBefore(document.createTextNode('['), comment.firstChild);
@@ -6120,10 +6133,10 @@ function updateTopicID (xml, container) {
 		var postno = node.querySelector('.postno');
 		if (!postno) continue;
 
-		var span = postno.parentNode.insertBefore((document.createElement('span')), postno);
+		var span = postno.parentNode.insertBefore((document[CRE]('span')), postno);
 		span.className = 'user-id';
 		span.textContent = 'ID:' + ids[i].textContent;
-		postno.parentNode.insertBefore(document.createElement('span'), postno);
+		postno.parentNode.insertBefore(document[CRE]('span'), postno);
 		postno.parentNode.insertBefore(document.createTextNode(' |'), postno);
 
 		result = true;
@@ -6168,9 +6181,9 @@ function updateMarkedReplies (xml, container, start, end) {
 		if (!comment) continue;
 
 		var isBracket = marks[i].getAttribute('bracket') == 'true';
-		comment.insertBefore(document.createElement('br'), comment.firstChild);
+		comment.insertBefore(document[CRE]('br'), comment.firstChild);
 		isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
-		var m = comment.insertBefore(document.createElement('span'), comment.firstChild);
+		var m = comment.insertBefore(document[CRE]('span'), comment.firstChild);
 		m.className = 'mark';
 		m.textContent = marks[i].textContent;
 		isBracket && comment.insertBefore(document.createTextNode('['), comment.firstChild);
@@ -6190,12 +6203,12 @@ function updateReplyIDs (xml, container, start, end) {
 		var node = container.querySelector(parentSelector + ' > [data-number="' + number + '"]');
 		if (!node || node.querySelector('.user-id')) continue;
 
-		var div = node.appendChild(document.createElement('div'));
+		var div = node.appendChild(document[CRE]('div'));
 		div.appendChild(document.createTextNode('──'));
-		var span = div.appendChild(document.createElement('span'));
+		var span = div.appendChild(document[CRE]('span'));
 		div.className = span.className = 'user-id';
 		span.textContent = 'ID:' + ids[i].textContent;
-		div.appendChild(document.createElement('span'));
+		div.appendChild(document[CRE]('span'));
 
 		result = true;
 	}
@@ -6268,7 +6281,7 @@ function getRule (container) {
 function createRule (container) {
 	var rule = getRule(container);
 	if (!rule) {
-		rule = container.appendChild(document.createElement('div'));
+		rule = container.appendChild(document[CRE]('div'));
 		rule.className = 'rule';
 	}
 	return rule;
@@ -6410,12 +6423,12 @@ function scrollToNewReplies () {
 	var timeLimit = startTime + RELOAD_AUTO_SCROLL_CONSUME;
 	var log = [];
 
-	setTimeout(function () {
+	setTimeout(function handleScroll () {
 		if (Date.now() < timeLimit) {
 			window.scrollTo(
 				0,
 				scrollTop + Math.floor(diff * ((Date.now() - startTime) / RELOAD_AUTO_SCROLL_CONSUME)));
-			setTimeout(arguments.callee, 10);
+			setTimeout(function () {handleScroll()}, 10);
 		}
 		else {
 			window.scrollTo(0, scrollTop + diff);
@@ -6424,7 +6437,7 @@ function scrollToNewReplies () {
 }
 
 /*
- * {{{1 functions which handles a thumbnail for posting image
+ * <<<1 functions which handles a thumbnail for posting image
  */
 
 function setPostThumbnailVisibility (visible) {
@@ -6487,7 +6500,7 @@ function setPostThumbnail (file) {
 
 	var fr = new FileReader;
 	fr.onload = function () {
-		var img = document.createElement('img');
+		var img = document[CRE]('img');
 		img.onload = function () {
 			var containerWidth = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
 			var containerHeight = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
@@ -6495,7 +6508,7 @@ function setPostThumbnail (file) {
 				img.naturalWidth, img.naturalHeight,
 				containerWidth, containerHeight);
 
-			var canvas = document.createElement('canvas');
+			var canvas = document[CRE]('canvas');
 			canvas.width = size.width;
 			canvas.height = size.height;
 
@@ -6529,7 +6542,7 @@ function setPostThumbnail (file) {
 }
 
 /*
- * {{{1 panel tab handling functions
+ * <<<1 panel tab handling functions
  */
 
 function showPanel (callback) {
@@ -6604,7 +6617,7 @@ function activatePanelTab (tab) {
 }
 
 /*
- * {{{1 application commands
+ * <<<1 application commands
  */
 
 var commands = {
@@ -6637,7 +6650,7 @@ var commands = {
 	},
 	invokeMousewheelEvent: function () {
 		var ev = document.createEvent('MouseEvents');
-		var view = window.unsafeWindow || window;
+		var view = window[USW] || window;
 		ev.initMouseEvent('mousewheel', true, true, view,
 			0, 0, 0, 0, 0,
 			false, false, false, false,
@@ -6732,7 +6745,7 @@ var commands = {
 				try {
 					var fragment = (function () {
 						timingLogger.startTag('generate');
-						var xml = xmlGenerator.run(doc.documentElement.innerHTML).xml;
+						var xml = xmlGenerator.run(doc.documentElement[IHTML]).xml;
 						timingLogger.endTag();
 
 						timingLogger.startTag('applying data bindings');
@@ -6839,7 +6852,7 @@ var commands = {
 				timingLogger.startTag('generate internal xml');
 				try {
 					timingLogger.startTag('generate');
-					var result = xmlGenerator.run(doc.documentElement.innerHTML, null, 0);
+					var result = xmlGenerator.run(doc.documentElement[IHTML], null, 0);
 					timingLogger.endTag();
 
 					timingLogger.startTag('applying data bindings');
@@ -7006,14 +7019,14 @@ var commands = {
 							return;
 						}
 						else {
-							anchor = wrap.insertBefore(document.createElement('a'), insertee);
+							anchor = wrap.insertBefore(document[CRE]('a'), insertee);
 							anchor.id = 'c-' + sortType.key + '-' + id;
 							anchor.setAttribute('data-number', id);
 						}
 						anchor.style.width = anchorWidth + 'px';
 
 						// image
-						var pad = anchor.appendChild(document.createElement('div'));
+						var pad = anchor.appendChild(document[CRE]('div'));
 
 						['href', 'target'].forEach(function (atr) {
 							var value = node.getAttribute(atr);
@@ -7023,7 +7036,7 @@ var commands = {
 
 						from = node.querySelector('img');
 						if (from) {
-							to = anchor.appendChild(document.createElement('img'));
+							to = anchor.appendChild(document[CRE]('img'));
 							['data-src', 'width', 'height', 'alt'].forEach(function (atr) {
 								var value = from.getAttribute(atr);
 								if (value == null) return;
@@ -7058,17 +7071,17 @@ var commands = {
 						// text
 						from = node.parentNode.querySelector('small');
 						if (from) {
-							to = anchor.appendChild(document.createElement('div'));
+							to = anchor.appendChild(document[CRE]('div'));
 							to.className = 'text';
 							to.textContent = getTextForCatalog(
 								from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!'), 4);
 							to.setAttribute('data-text', from.textContent);
 						}
 
-						to = anchor.appendChild(document.createElement('div'));
+						to = anchor.appendChild(document[CRE]('div'));
 						to.className = 'info';
-						to.appendChild(document.createElement('span')).textContent = repliesCount;
-						to.appendChild(document.createElement('span')).textContent = newIndicator;
+						to.appendChild(document[CRE]('span')).textContent = repliesCount;
+						to.appendChild(document[CRE]('span')).textContent = newIndicator;
 
 						// finish
 						anchor.className = newClass;
@@ -7251,15 +7264,15 @@ var commands = {
 			buttons: 'ok, cancel',
 			oninit: function (dialog) {
 				var xml = document.implementation.createDocument(null, 'dialog', null);
-				var checksNode = xml.documentElement.appendChild(xml.createElement('checks'));
+				var checksNode = xml.documentElement.appendChild(xml[CRE]('checks'));
 				Array.prototype.forEach.call(
 					document.querySelectorAll('article input[type="checkbox"]:checked'),
 					function (node) {
-						checksNode.appendChild(xml.createElement('check')).textContent =
+						checksNode.appendChild(xml[CRE]('check')).textContent =
 							getPostNumber(node);
 					}
 				);
-				xml.documentElement.appendChild(xml.createElement('delete-key')).textContent =
+				xml.documentElement.appendChild(xml[CRE]('delete-key')).textContent =
 					getCookie('pwdc')
 				dialog.initFromXML(xml, 'delete-dialog');
 			},
@@ -7328,12 +7341,12 @@ var commands = {
 			buttons: 'ok, cancel',
 			oninit: function (dialog) {
 				var xml = document.implementation.createDocument(null, 'dialog', null);
-				var itemsNode = xml.documentElement.appendChild(xml.createElement('items'));
+				var itemsNode = xml.documentElement.appendChild(xml[CRE]('items'));
 				itemsNode.setAttribute('prefix', 'config-item.');
 
 				var data = config.data;
 				for (var i in data) {
-					var item = itemsNode.appendChild(xml.createElement('item'));
+					var item = itemsNode.appendChild(xml[CRE]('item'));
 					item.setAttribute('internal', i);
 					item.setAttribute('name', data[i].name);
 					item.setAttribute('value', data[i].value);
@@ -7344,7 +7357,7 @@ var commands = {
 
 					if ('list' in data[i]) {
 						for (var j in data[i].list) {
-							var li = item.appendChild(xml.createElement('li'));
+							var li = item.appendChild(xml[CRE]('li'));
 							li.textContent = data[i].list[j];
 							li.setAttribute('value', j);
 							j == data[i].value && li.setAttribute('selected', 'true');
@@ -7759,7 +7772,7 @@ var commands = {
 				text = text.join('\t');
 
 				if (tester.test(text)) {
-					var div = result.appendChild(document.createElement('div'));
+					var div = result.appendChild(document[CRE]('div'));
 					div.textContent = text;
 					div.className = 'a';
 					div.setAttribute('data-number',
@@ -7774,7 +7787,7 @@ var commands = {
 };
 
 /*
- * {{{1 bootstrap
+ * <<<1 bootstrap
  */
 
 if (document.title != '404 File Not Found') {
@@ -7785,4 +7798,4 @@ if (document.title != '404 File Not Found') {
 	document.addEventListener('DOMContentLoaded', handleDOMContentLoaded, false);
 }
 
-// vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker :
+// vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker fmr=<<<,>>> :

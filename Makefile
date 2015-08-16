@@ -388,6 +388,6 @@ message: FORCE
 #
 
 dbgfx: FORCE
-	cd $(FIREFOX_SRC_PATH) && cfx run -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --binary-args http://dat.2chan.net/b/futaba.htm
+	cd $(FIREFOX_SRC_PATH) && LANG=C cfx run -v -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --binary-args="--UILocale en-US http://dat.2chan.net/b/futaba.htm"
 
 # end

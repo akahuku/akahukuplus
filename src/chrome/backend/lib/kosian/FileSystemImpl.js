@@ -187,7 +187,13 @@
 
 		function write (task) {
 			if (!writeTimer) {
-				writeTimer = u.setTimeout(handleWriteTimer, 1000 * delaySecs);
+				var ds = delaySecs;
+				if (task.options
+				&& 'delaySecs' in task.options
+				&& typeof task.options.delaySecs == 'number') {
+					ds = Math.max(0.1, task.options.delaySecs);
+				}
+				writeTimer = u.setTimeout(handleWriteTimer, 1000 * ds);
 			}
 			writeBuffer[task.path] = task;
 			fs.response(task, {state:'buffered', path:task.path});

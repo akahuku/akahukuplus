@@ -7,7 +7,7 @@
 (function (global) {
 	'use strict';
 
-	/* {{{1 variables */
+	/* <<<1 variables */
 	var ext = require('./kosian/Kosian').Kosian(global, {
 		appName: 'akahukuplus',
 		openBaseUrlPattern: /^https?:\/\/[^.]+\.2chan\.net(?::\d+)?\/[^\/]+\//,
@@ -33,7 +33,7 @@
 	var completeUpfiles = require('./CompleteUpfiles').CompleteUpfiles();
 	var saveImage = require('./SaveImage').SaveImage();
 
-	/* {{{1 functions */
+	/* <<<1 functions */
 	function getContentScriptsSpec () {
 		var self = require('sdk/self');
 		if (!self) return null;
@@ -58,7 +58,7 @@
 		];
 	}
 
-	/** {{{2 request handlers */
+	/** <<<2 request handlers */
 	function handleGetResource (path, asDataURL, callback) {
 		var html5FileEnabled = global.Blob && global.FileReader;
 		var opts = {noCache:true};
@@ -103,7 +103,7 @@
 		return true;
 	}
 
-	/** {{{2 request handler entry */
+	/** <<<2 request handler entry */
 	ext.receive(function (command, data, sender, respond) {
 
 		function res (arg) {
@@ -170,4 +170,4 @@
 
 })(this);
 
-// vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker :
+// vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker fmr=<<<,>>> :

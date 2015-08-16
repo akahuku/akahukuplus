@@ -31,6 +31,8 @@
 	StorageWrapper.prototype = Object.create(Object.prototype, {
 		getItem: {value: function (key) {}},
 		setItem: {value: function (key, value) {}},
+		keys: {value: function () {}},
+		exists: {value: function (key) {}},
 		clear: {value: function () {}},
 		toExternal: {value: function (value) {
 			if (typeof value == 'string') {
@@ -77,6 +79,12 @@
 				}
 			}
 		}},
+		keys: {value: function () {
+			return Object.keys(localStorage);
+		}},
+		exists: {value: function (key) {
+			return key in localStorage;
+		}},
 		clear: {value: function () {
 			localStorage.clear();
 		}}
@@ -107,6 +115,12 @@
 					this.ss.storage[key] = value;
 				}
 			}
+		}},
+		keys: {value: function () {
+			return Object.keys(this.ss.storage);
+		}},
+		exists: {value: function (key) {
+			return key in this.ss.storage;
 		}},
 		clear: {value: function () {
 			Object.keys(this.ss.storage).forEach(function (key) {

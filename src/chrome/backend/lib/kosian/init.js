@@ -69,6 +69,9 @@
 				}
 				onload();
 			}
+			else if (!top) {
+				onload();
+			}
 			else {
 				var s = document.createElement('script');
 				s.src = 'lib/' + top;
