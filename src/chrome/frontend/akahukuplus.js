@@ -2549,7 +2549,7 @@ function createQueryCompiler () {
 
 			try {
 				source = or(next());
-				log(source);
+				//log(source);
 			}
 			catch (e) {
 				result = {
@@ -3293,10 +3293,13 @@ function createSelectionMenu () {
 			return;
 		}
 
-		var s = window.getSelection().getRangeAt(0).toString()
-			.replace(/(?:\r\n|\r|\n)/g, '\n')
-			.replace(/\n{2,}/g, '\n') || '';
-
+		var s = '';
+		var sel = window.getSelection();
+		if (sel.rangeCount) {
+			s = sel.getRangeAt(0).toString()
+				.replace(/(?:\r\n|\r|\n)/g, '\n')
+				.replace(/\n{2,}/g, '\n') || '';
+		}
 		if (s != '') {
 			text = s;
 			show(menu);
@@ -3884,11 +3887,12 @@ function setupPostShadowMouseEvent (tabContent, nodeName, className) {
 	var timer;
 
 	function registerTimer (scrollTop) {
-		return;
+		/*
 		clearTimer();
 		timer = setTimeout(function (scrollTop) {
 			window.scrollTo(0, scrollTop);
 		}, 1000, scrollTop);
+		 */
 	}
 
 	function clearTimer () {
@@ -4128,7 +4132,7 @@ function install (mode) {
 	keyManager = createKeyManager();
 	keyManager
 		.addStroke('command', 'r', commands.reload)
-		.addStroke('command', ['space', 'S-space'], commands.scrollPage, true)
+		.addStroke('command', [' ', '<S-space>'], commands.scrollPage, true)
 		.addStroke('command', 'z', commands.summaryBack)
 		.addStroke('command', '.', commands.summaryNext)
 		.addStroke('command', '?', commands.openHelpDialog)
@@ -4141,16 +4145,16 @@ function install (mode) {
 
 		.addStroke('command', 'i', commands.activatePostForm)
 
-		.addStroke('command.edit', ['esc', 'C-['], commands.deactivatePostForm)
-		.addStroke('command.edit', 'C-s', commands.toggleSage)
-		.addStroke('command.edit', 'S-enter', commands.post)
+		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)
+		.addStroke('command.edit', '\u0013', commands.toggleSage)
+		.addStroke('command.edit', '<S-enter>', commands.post)
 		//.addStroke('command.edit', 'm-a', commands.cursorTopOfLine)
 		//.addStroke('command.edit', 'm-e', commands.cursorBottomOfLine)
 		//.addStroke('command.edit', 'C-p', commands.cursorPrev)
 		//.addStroke('command.edit', 'C-n', commands.cursorNext)
 		//.addStroke('command.edit', 'C-b', commands.cursorBack)
 		//.addStroke('command.edit', 'C-f', commands.cursorForward)
-		.addStroke('command.edit', 'enter', function (e, t) {
+		.addStroke('command.edit', '\u000d', function (e, t) {
 			switch (t.id) {
 			case 'search-text':
 				commands.search(e, t);
@@ -4698,9 +4702,9 @@ function lightbox (anchor, ignoreThumbnail) {
 
 		keyManager
 			.addStroke('lightbox', ['1', '2', 'w', 'h'], handleZoomModeKey)
-			.addStroke('lightbox', ['esc', 'C-['], leave)
+			.addStroke('lightbox', '\u001b', leave)
 			.addStroke('lightbox', 's', handleSearch)
-			.addStroke('lightbox', ['space', 'S-space'], handleStroke, true)
+			.addStroke('lightbox', [' ', '<S-space>'], handleStroke, true)
 			.updateManifest();
 
 		// disable auto selection menu
@@ -5138,8 +5142,8 @@ function modalDialog (opts) {
 			.add('#cancel-dialog', handleCancel);
 
 		keyManager
-			.addStroke('dialog', ['esc', 'C-['], handleCancel)
-			.addStroke('dialog', 'enter', handleOk)
+			.addStroke('dialog', '\u001b', handleCancel)
+			.addStroke('dialog', '\u000d', handleOk)
 			.updateManifest();
 
 		contentWrap.addEventListener('mousedown', handleMouseCancel, false);
