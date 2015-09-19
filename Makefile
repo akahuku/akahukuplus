@@ -1,6 +1,8 @@
 # application macros
 # ========================================
 
+VERSION := $(shell echo -n `git describe --tags --abbrev=0|sed -e 's/[^0-9.]//g'`.`git rev-list --count HEAD`)
+
 SHELL := /bin/sh
 
 CHROME := chromium-browser
@@ -12,12 +14,6 @@ ZIP := zip -qr9
 UNZIP := unzip
 
 RSYNC := rsync
-RSYNC_OPT = -rptLv --delete \
-	--exclude '*.sw?' --exclude '*.bak' --exclude '*~' --exclude '*.sh' \
-	--exclude '.*' \
-	--exclude '$(CRYPT_SRC_FILE)*'
-
--include app.mk
 
 # basic macros
 # ========================================
@@ -26,6 +22,11 @@ PRODUCT = akahukuplus
 DIST_DIR = dist
 SRC_DIR = src
 EMBRYO_DIR = .embryo
+
+RSYNC_OPT = -rptLv --delete \
+	--exclude '*.sw?' --exclude '*.bak' --exclude '*~' --exclude '*.sh' \
+	--exclude '.*' \
+	--exclude '$(CRYPT_SRC_FILE)*'
 
 CRYPT_KEY_FILE = LICENSE
 CRYPT_SRC_FILE = consumer_keys.json
@@ -58,7 +59,6 @@ FIREFOX_UPDATE_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist
 # derived macros
 # ========================================
 
-VERSION := $(shell echo -n `git describe --tags --abbrev=0|sed -e 's/[^0-9.]//g'`.`git rev-list --count HEAD`)
 BINKEYS_PATH = $(CHROME_SRC_PATH)/$(CRYPT_DST_FILE)
 
 CHROME_TARGET_PATH = $(DIST_DIR)/$(PRODUCT).$(CHROME_SUFFIX)
@@ -88,6 +88,13 @@ SED_SCRIPT_DEBUG_OFF = -e 's/\(const\s\+DEBUG_ALWAYS_LOAD_XSL\s*=\s*\)true/\1fal
 	-e 's/\(const\s\+DEBUG_DUMP_INTERNAL_XML\s*=\s*\)true/\1false/' \
 	-e 's/\(const\s\+DEBUG_HIDE_BANNERS\s*=\s*\)true/\1false/' \
 	-e 's/\(const\s\+DEBUG_IGNORE_LAST_MODIFIED\s*=\s*\)true/\1false/'
+
+# local override of macros
+# ========================================
+
+-include app.mk
+
+
 
 # basic rules
 # ========================================
@@ -272,6 +279,11 @@ $(BLINKOPERA_MTIME_PATH): FORCE
 $(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH) $(BINKEYS_PATH)
 #	copy all of sources to embryo dir
 	$(RSYNC) $(RSYNC_OPT) \
+		--exclude 'lib/init.js' \
+		--exclude 'lib/es6-promise.min.js' \
+		--exclude 'lib/kosian/init.js' \
+		--exclude 'lib/kosian/OperaImpl.js' \
+		--exclude 'lib/kosian/ChromeImpl.js' \
 		$(FIREFOX_SRC_PATH)/ $(FIREFOX_EMBRYO_SRC_PATH)
 
 #	update akahukuplus.js
@@ -291,51 +303,29 @@ $(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH) $(BINKEYS_PATH)
 		--ver $(VERSION)
 
 #	build xpi
-	cfx xpi \
-		--pkgdir=$(FIREFOX_EMBRYO_SRC_PATH) \
-		--update-link=$(FIREFOX_EXT_LOCATION) \
-		--update-url=$(FIREFOX_UPDATE_LOCATION)
+	cd $(FIREFOX_EMBRYO_SRC_PATH) && jpm xpi && mv *.$(FIREFOX_SUFFIX) ../../$@
 
-#	prepare to amo versions
-	mv $(PRODUCT).$(FIREFOX_SUFFIX) $@
-	mv $(PRODUCT).update.rdf $(DIST_DIR)/update.rdf
-#	cp $@ $(DIST_DIR)/$(PRODUCT)_amo.$(FIREFOX_SUFFIX)
-#	cp $@ $(DIST_DIR)/$(PRODUCT)_amo_beta.$(FIREFOX_SUFFIX)
+#	build update.rdf
+	tool/update-update-rdf.rb \
+		--package $(FIREFOX_EMBRYO_SRC_PATH)/package.json \
+		--template $(SRC_DIR)/template-update.rdf \
+		> $(DIST_DIR)/update.rdf
 
-#	github version
+#	extract install.rdf
 	$(UNZIP) -p $@ install.rdf > $(FIREFOX_EMBRYO_SRC_PATH)/install.rdf
+
+#	update install.rdf
 	tool/update-firefox-manifest.rb \
 		--indir $(FIREFOX_EMBRYO_SRC_PATH) \
 		--outdir $(FIREFOX_EMBRYO_SRC_PATH) \
 		--localedir $(SRC_DIR)/chrome/_locales \
 		--ver $(VERSION)
-	cp $(FIREFOX_EMBRYO_SRC_PATH)/install.rdf $(FIREFOX_EMBRYO_SRC_PATH)/install_github.rdf
+
+#	delete old install.rdf in xpi
 	$(ZIP) -d $(DIST_DIR)/$(PRODUCT).$(FIREFOX_SUFFIX) install.rdf
+
+#	re-zip new install.rdf
 	cd $(FIREFOX_EMBRYO_SRC_PATH) && $(ZIP) -u ../../$(DIST_DIR)/$(PRODUCT).$(FIREFOX_SUFFIX) install.rdf
-
-#	amo version
-#	$(UNZIP) -p $@ install.rdf > $(FIREFOX_EMBRYO_SRC_PATH)/install.rdf
-#	tool/update-firefox-manifest.rb \
-#		--indir $(FIREFOX_EMBRYO_SRC_PATH) \
-#		--outdir $(FIREFOX_EMBRYO_SRC_PATH) \
-#		--localedir $(SRC_DIR)/chrome/_locales \
-#		--ver $(VERSION) \
-#		--strip-update-url
-#	cp $(FIREFOX_EMBRYO_SRC_PATH)/install.rdf $(FIREFOX_EMBRYO_SRC_PATH)/install_amo.rdf
-#	$(ZIP) -d $(DIST_DIR)/$(PRODUCT)_amo.$(FIREFOX_SUFFIX) install.rdf
-#	cd $(FIREFOX_EMBRYO_SRC_PATH) && $(ZIP) -u ../../$(DIST_DIR)/$(PRODUCT)_amo.$(FIREFOX_SUFFIX) install.rdf
-
-#	amo(beta) version
-#	$(UNZIP) -p $@ install.rdf > $(FIREFOX_EMBRYO_SRC_PATH)/install.rdf
-#	tool/update-firefox-manifest.rb \
-#		--indir $(FIREFOX_EMBRYO_SRC_PATH) \
-#		--outdir $(FIREFOX_EMBRYO_SRC_PATH) \
-#		--localedir $(SRC_DIR)/chrome/_locales \
-#		--ver $(VERSION)beta \
-#		--strip-update-url
-#	cp $(FIREFOX_EMBRYO_SRC_PATH)/install.rdf $(FIREFOX_EMBRYO_SRC_PATH)/install_amo_beta.rdf
-#	$(ZIP) -d $(DIST_DIR)/$(PRODUCT)_amo_beta.$(FIREFOX_SUFFIX) install.rdf
-#	cd $(FIREFOX_EMBRYO_SRC_PATH) && $(ZIP) -u ../../$(DIST_DIR)/$(PRODUCT)_amo_beta.$(FIREFOX_SUFFIX) install.rdf
 
 	@echo ///
 	@echo /// created: $@, version $(VERSION)
@@ -388,6 +378,6 @@ message: FORCE
 #
 
 dbgfx: FORCE
-	cd $(FIREFOX_SRC_PATH) && LANG=C cfx run -v -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --binary-args="--UILocale en-US http://dat.2chan.net/b/futaba.htm"
+	cd $(FIREFOX_SRC_PATH) && jpm run -b `which firefox` -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --no-copy --binary-args="http://dat.2chan.net/b/futaba.htm"
 
 # end

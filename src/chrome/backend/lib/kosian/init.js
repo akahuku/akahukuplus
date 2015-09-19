@@ -89,16 +89,39 @@
 				loader(onload);
 			}
 			else {
-				/*var a = ['*** all scripts has been loaded ***'];
+				/*
+				var a = ['*** all scripts has been loaded ***'];
 				for (var i in modules) {
 					a.push('module path: ' + i);
 					for (var j in modules[i]) {
 						a.push('\t' + j);
 					}
 				}
-				console.log(a.join('\n'));*/
+				console.log(a.join('\n'));
+				 */
 			}
 		});
+	}
+
+	function getBasePath () {
+		var pattern = /((?:chrome-extension|widget):.*\.js)/;
+		var stack = (new Error).stack.split('\n');
+		var self, target;
+		while (stack.length) {
+			target = pattern.exec(stack[0]);
+			if (target) {
+				target = target[1];
+				if (self) {
+					if (target != self) break;
+				}
+				else {
+					self = target;
+				}
+			}
+			stack.shift();
+			target = null;
+		}
+		return target ? target.replace(/[^\/]+$/, '') : '';
 	}
 
 	function require (path) {
@@ -106,11 +129,22 @@
 			return modules[pathCache[path]];
 		}
 
+		var base = getBasePath();
 		var anchor = document.createElement('a');
-		anchor.href = 'lib/' + path + '.js';
+		anchor.href = base + path + '.js';
 
 		var canonical = anchor.href;
 		pathCache[path] = canonical;
+
+		if (!modules[canonical] && /^\./.test(path)) {
+			console.error([
+				'*** error in require ***',
+				' argument path: "' + path + '"',
+				'     base path: "' + base + '"',
+				'canonical path: "' + canonical + '"',
+				'    stackframe: ' + (new Error).stack
+			].join('\n'));
+		}
 
 		return modules[canonical];
 	}

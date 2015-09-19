@@ -23,7 +23,7 @@
 	'use strict';
 
 	function Sound () {
-		this.ext = require('kosian/Kosian').Kosian();
+		this.ext = require('./Kosian').Kosian();
 		this.pool = {};
 	}
 

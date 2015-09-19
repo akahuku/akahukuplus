@@ -36,18 +36,30 @@ xml.elements["//em:version"].text = ver
 if localedir != '' then
 	productName = xml.elements["/RDF/Description/em:name"].text
 
+	# delete localized element already exists
+	xml.delete_element("/RDF/Description/em:localized")
+
+	# create localized elements
 	Dir.entries(localedir)
 	.select{|e| e != "." && e != ".." && File.directory?("#{localedir}/#{e}")}
 	.each{|e|
 		message = JSON.load(File.read("#{localedir}/#{e}/messages.json"))
 		localeCode = e.gsub(/_/, '-')
 
-		localized = xml.elements["//Description[1]"].add_element("em:localized")
+		localized = xml.elements["/RDF/Description"].add_element("em:localized")
 		desc = localized.add_element("Description")
 		desc.add_element("em:locale").text = localeCode
 		desc.add_element("em:name").text = message["#{productName}_name"]['message']
 		desc.add_element("em:description").text = message["#{productName}_desc"]['message']
+		desc.add_element("em:creator").text = xml.elements["/RDF/Description/em:creator"].text
+		desc.add_element("em:homepageURL").text = xml.elements["/RDF/Description/em:homepageURL"].text
 	}
+
+	# delete unlocalized elements
+	#xml.delete_element("/RDF/Description/em:name")
+	#xml.delete_element("/RDF/Description/em:description")
+	#xml.delete_element("/RDF/Description/em:creator")
+	#xml.delete_element("/RDF/Description/em:homepageURL")
 end
 
 # strip some attributes

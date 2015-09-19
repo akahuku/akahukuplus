@@ -28,7 +28,7 @@
 
 	var authorizeRetryMax = 3;
 	var writeDelaySecsDefault = 10;
-	var u = require('kosian/Utils').Utils;
+	var u = require('./Utils').Utils;
 	var _ = u._;
 
 	/*

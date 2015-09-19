@@ -49,16 +49,16 @@
 				instance.logMode = false;
 				instance.cryptKeyPath = '';
 				instance.openBaseURLPattern = null;
-				instance.utils = require('kosian/Utils').Utils;
-				instance.storage = require('kosian/StorageWrapper').StorageWrapper(global);
-				instance.tabWatcher = require('kosian/TabWatcher').TabWatcher(global, instance.emit);
-				instance.resourceLoader = require('kosian/ResourceLoader').ResourceLoader(global, {
+				instance.utils = require('./Utils').Utils;
+				instance.storage = require('./StorageWrapper').StorageWrapper(global);
+				instance.tabWatcher = require('./TabWatcher').TabWatcher(global, instance.emit);
+				instance.resourceLoader = require('./ResourceLoader').ResourceLoader(global, {
 					transportGetter: instance.createTransport,
 					emitter: instance.emit
 				});
-				instance.fileSystem = require('kosian/FileSystem').FileSystem(instance, options.fstab);
-				instance.clipboard = require('kosian/Clipboard').Clipboard(global);
-				instance.sound = require('kosian/Sound').Sound();
+				instance.fileSystem = require('./FileSystem').FileSystem(instance, options.fstab);
+				instance.clipboard = require('./Clipboard').Clipboard(global);
+				instance.sound = require('./Sound').Sound();
 
 				instance.setOptions(options);
 			}
@@ -121,7 +121,7 @@
 		setWriteDelaySecs: {value: function (secs) {
 			secs = Number(secs);
 			if (isNaN(secs) || secs < 0) return;
-			require('kosian/FileSystemImpl').FileSystemImpl.setWriteDelaySecs(secs);
+			require('./FileSystemImpl').FileSystemImpl.setWriteDelaySecs(secs);
 		}},
 
 		getBaseUrl: {value: function (selfUrl) {
@@ -436,7 +436,7 @@
 	exports.Kosian = Kosian;
 
 	if (require('sdk/self')) {
-		require('kosian/FirefoxImpl');
+		require('./FirefoxImpl');
 	}
 })();
 

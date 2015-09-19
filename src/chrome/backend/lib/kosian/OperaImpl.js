@@ -25,7 +25,7 @@
 	var NOTIFY_TIMER_INTERVAL = 1000 * 1;
 	var COLLECT_TIMER_INTERVAL = 1000 * 60 * 3;
 
-	var base = require('kosian/Kosian').Kosian;
+	var base = require('./Kosian').Kosian;
 
 	function receive (callback) {
 		this.receiver = callback;

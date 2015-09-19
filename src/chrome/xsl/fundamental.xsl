@@ -291,6 +291,13 @@ hr {
 	text-align:right;
 }
 
+.topic-wrap .emoji,
+.reply-wrap .emoji {
+	margin-left:4px;
+	margin-right:4px;
+	vertical-align:middle;
+}
+
 .topic-wrap .mark,
 .reply-wrap .mark {
 	color:#f00;
@@ -377,6 +384,10 @@ hr {
 	text-align:center;
 	line-height:1.25;
 	white-space:nowrap;
+}
+
+#content > article > .image a {
+	outline:none;
 }
 
 #content > article > .image img {
@@ -551,6 +562,10 @@ hr {
 	text-align:center;
 	line-height:1.25;
 	white-space:nowrap;
+}
+
+.reply-image a {
+	outline:none;
 }
 
 .reply-image img {
@@ -1976,6 +1991,10 @@ div.catalog-popup span {
 <xsl:when test="@lead and @trail"><xsl:value-of select="@lead"/><span class="repdigit"><xsl:value-of select="@trail"/></span></xsl:when>
 <xsl:otherwise><xsl:value-of select="."/></xsl:otherwise>
 </xsl:choose>
+</xsl:template>
+
+<xsl:template match="comment//emoji">
+<img class="emoji" src="https://twemoji.maxcdn.com/36x36/{@codepoint}.png"/>
 </xsl:template>
 
 <xsl:template match="comment//mark">

@@ -46,7 +46,7 @@ const CATALOG_POPUP_DELAY = 500;
 const CATALOG_POPUP_TEXT_WIDTH = 150;
 const CATALOG_POPUP_THUMBNAIL_ZOOM_FACTOR = 4;
 
-const DEBUG_ALWAYS_LOAD_XSL = true;			// default: false
+const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
 const DEBUG_IGNORE_LAST_MODIFIED = false;	// default: false
 
@@ -54,12 +54,12 @@ const MOVER_EVENT_NAME = 'mouseover';
 const MOUT_EVENT_NAME = 'mouseout';
 const MMOVE_EVENT_NAME = 'mousemove';
 
-const IHTML = 'joofsIUNM'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
-const FUN = 'Gvodujpo'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
-const IAHTML = 'jotfsuBekbdfouIUNM'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
-const USW = 'votbgfXjoepx'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
-const CRE = 'dsfbufFmfnfou'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
-const ONER = 'pofssps'.split('').map(function(s){return String.fromCharCode(s.charCodeAt(0) - 1)}).join('');
+const IHTML = d('joofsIUNM');
+const FUN = d('Gvodujpo');
+const IAHTML = d('jotfsuBekbdfouIUNM');
+const USW = d('votbgfXjoepx');
+const CRE = d('dsfbufFmfnfou');
+const ONER = d('pofssps');
 
 /*
  * <<<1 globals
@@ -163,6 +163,14 @@ window.opera && (function () {
 		}
 	};
 }(window.DOMParser));
+
+function d (s) {
+	result = '';
+	for (var i = 0, goal = s.length; i < goal; i++) {
+		result += String.fromCharCode(s.charCodeAt(i) - 1);
+	}
+	return result;
+}
 
 function removeAssets (context) {
 	var nodes = document.querySelectorAll('script, link, style, iframe, object');
@@ -1011,27 +1019,64 @@ function createXMLGenerator () {
 		linkTargets[i].offset = i > 0 ? linkTargets[i - 1].offset + linkTargets[i - 1].backrefLength : 1;
 		return a.pattern;
 	}).join('|'));
+	var emojiPattern = /([\u00a9\u00ae\u2002\u2003\u2005\u203c\u2049\u2122\u2139\u2194-\u2199\u21a9\u21aa\u231a\u231b\u23e9-\u23ec\u23f0\u23f3\u24c2\u25aa\u25ab\u25b6\u25c0\u25fb-\u25fe\u2600\u2601\u260e\u2611\u2614\u2615\u261d\u263a\u2648-\u2653\u2660\u2663\u2665\u2666\u2668\u267b\u267f\u2693\u26a0\u26a1\u26aa\u26ab\u26bd\u26be\u26c4\u26c5\u26ce\u26d4\u26ea\u26f2\u26f3\u26f5\u26fa\u26fd\u2702\u2705\u2708-\u270c\u270f\u2712\u2714\u2716\u2728\u2733\u2734\u2744\u2747\u274c\u274e\u2753-\u2755\u2757\u2764\u2795-\u2797\u27a1\u27b0\u2934\u2935\u2b05-\u2b07\u2b1b\u2b1c\u2b50\u2b55\u3030\u303d\u3297\u3299]|\ud83c[\udc04\udccf\udd70\udd71\udd7e\udd7f\udd8e\udd91-\udd9a\ude01\ude02\ude1a\ude2f\ude32-\ude3a\ude50\ude51\udf00-\udf0c\udf0f\udf11\udf13-\udf15\udf19\udf1b\udf1f\udf20\udf30\udf31\udf34\udf35\udf37-\udf4a\udf4c-\udf4f\udf51-\udf7b\udf80-\udf93\udfa0-\udfc4\udfc6\udfc8\udfca\udfe0-\udfe3\udfe5-\udff0]|\ud83d[\udc0c-\udc0e\udc11\udc12\udc14\udc17-\udc29\udc2b-\udc3e\udc40\udc42-\udc64\udc66-\udc6b\udc6e-\udcac\udcae-\udcb5\udcb8-\udceb\udcee\udcf0-\udcf4\udcf6\udcf7\udcf9-\udcfc\udd03\udd0a-\udd14\udd16-\udd2b\udd2e-\udd3d\udd50-\udd5b\uddfb-\uddff\ude01-\ude06\ude09-\ude0d\ude0f\ude12-\ude14\ude16\ude18\ude1a\ude1c-\ude1e\ude20-\ude25\ude28-\ude2b\ude2d\ude30-\ude33\ude35\ude37-\ude40\ude45-\ude4f\ude80\ude83-\ude85\ude87\ude89\ude8c\ude8f\ude91-\ude93\ude95\ude97\ude99\ude9a\udea2\udea4\udea5\udea7-\udead\udeb2\udeb6\udeb9-\udebe\udec0])[\ufe0e\ufe0f]?/;
+
 	function linkify (node) {
 		var r = node.ownerDocument.createRange();
 		var re;
-		while (node.lastChild.nodeType == 3 && (re = linkTargetRegex.exec(node.lastChild.nodeValue))) {
-			var index = -1;
-			linkTargets.some(function (a, i) {
-				if (re[a.offset] != undefined && re[a.offset] != '') {
-					index = i;
-					return true;
-				}
-			});
-			if (index < 0) break;
+		while (node.lastChild.nodeType == 3) {
+			if ((re = linkTargetRegex.exec(node.lastChild.nodeValue))) {
+				var index = -1;
+				linkTargets.some(function (a, i) {
+					if (re[a.offset] != undefined && re[a.offset] != '') {
+						index = i;
+						return true;
+					}
+				});
+				if (index < 0) break;
 
-			var anchor = node.ownerDocument[CRE]('a');
-			r.setStart(node.lastChild, re.index);
-			r.setEnd(node.lastChild, re.index + re[0].length);
-			r.surroundContents(anchor);
-			anchor.textContent = anchor.textContent.replace(/\w{10}/g, '$&\u00ad');
-			anchor.setAttribute('class', linkTargets[index].className);
-			anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
+				var anchor = node.ownerDocument[CRE]('a');
+				r.setStart(node.lastChild, re.index);
+				r.setEnd(node.lastChild, re.index + re[0].length);
+				r.surroundContents(anchor);
+				anchor.setAttribute('class', linkTargets[index].className);
+				anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
+			}
+			else if ((re = emojiPattern.exec(node.lastChild.nodeValue))) {
+				var emoji = node.ownerDocument[CRE]('emoji');
+				r.setStart(node.lastChild, re.index);
+				r.setEnd(node.lastChild, re.index + re[0].length);
+				r.surroundContents(emoji);
+
+				var cp = toUCS32(re[1]);
+				if (cp >= 0) {
+					emoji.setAttribute('codepoint', cp.toString(16));
+				}
+			}
+			else {
+				node.lastChild.nodeValue = node.lastChild.nodeValue.replace(
+					/[a-zA-Z0-9\u3040-\u30ff\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]{20}/g,
+					'$&\u00ad');
+				break;
+			}
 		}
+	}
+
+	function toUCS32 (s) {
+		var result = -1;
+		switch (s.length) {
+		case 1:
+			result = s.charCodeAt(0);
+			break;
+		case 2:
+			var hcp = s.charCodeAt(0);
+			var lcp = s.charCodeAt(1);
+			result = ((hcp & 0x03c0) + 0x0040) << 10
+					| (hcp & 0x003f) << 10
+					| (lcp & 0x03ff);
+			break;
+		}
+		return result;
 	}
 
 	function pushComment (node, s) {

@@ -22,7 +22,7 @@
 (function (global) {
 	'use strict';
 
-	var u = require('kosian/Utils').Utils;
+	var u = require('./Utils').Utils;
 	var self_ = require('sdk/self');
 
 	function ResourceLoader (transportGetter, locationGetter, emitter) {

@@ -22,7 +22,7 @@
 (function () {
 	'use strict';
 
-	var base = require('kosian/Kosian').Kosian;
+	var base = require('./Kosian').Kosian;
 
 	function receive (callback) {
 		this.receiver = callback;

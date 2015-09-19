@@ -34,7 +34,7 @@
 	var tabs = require('sdk/tabs');
 	var l10n = require('sdk/l10n/locale');
 	var MatchPattern = require('sdk/util/match-pattern').MatchPattern;
-	var base = require('kosian/Kosian').Kosian;
+	var base = require('./Kosian').Kosian;
 
 	function findTabById (id) {
 		var result;
@@ -65,7 +65,16 @@
 		var existsTab = null;
 		var rightTabIndex = -1;
 
+		var currentWindow;
+		Array.prototype.slice.call(tabs).some(function (tab) {
+			if (tab.url == selfUrl) {
+				currentWindow = tab.window;
+				return true;
+			}
+		});
+
 		Array.prototype.slice.call(tabs)
+		.filter(function (tab) {return tab.window == currentWindow})
 		.sort(function (tab1, tab2) {return tab1.index - tab2.index})
 		.some(function (tab) {
 			if (tab.url == url) {

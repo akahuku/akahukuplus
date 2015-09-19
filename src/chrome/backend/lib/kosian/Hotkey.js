@@ -306,7 +306,7 @@
 	});
 
 	function create (useDefault) {
-		var ext = require('kosian/Kosian').Kosian();
+		var ext = require('./Kosian').Kosian();
 
 		if (!useDefault) {
 			if (global.chrome) {
