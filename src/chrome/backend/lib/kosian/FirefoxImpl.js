@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2015 akahuku, akahuku@gmail.com
+ * Copyright 2012-2016 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -388,7 +388,10 @@
 
 		Object.defineProperties(this, {
 			workers: {value: workers},
-			findTabById: {value: findTabById}
+			findTabById: {value: findTabById},
+			Cc: {value: Cc},
+			Ci: {value: Ci},
+			Cu: {value: Cu}
 		});
 
 		contentScriptOptions.extensionId = self.id;

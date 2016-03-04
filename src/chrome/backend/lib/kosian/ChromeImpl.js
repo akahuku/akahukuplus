@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2015 akahuku, akahuku@gmail.com
+ * Copyright 2012-2016 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,13 +86,13 @@
 
 	function closeTab (id) {
 		chrome.tabs.get(id, function (tab) {
-			tab && chrome.tabs.remove(id);
+			!chrome.runtime.lastError && tab && chrome.tabs.remove(id);
 		});
 	}
 
 	function focusTab (id) {
 		chrome.tabs.get(id, function (tab) {
-			tab && chrome.tabs.update(id, {active:true});
+			!chrome.runtime.lastError && tab && chrome.tabs.update(id, {active:true});
 		});
 	}
 
@@ -121,7 +121,9 @@
 	function getTabTitle (id, callback) {
 		var that = this;
 		chrome.tabs.get(id, function (tab) {
-			that.emit(callback, tab ? tab.title : null);
+			that.emit(
+				callback,
+				!chrome.runtime.lastError && tab ? tab.title : null);
 		});
 	}
 
@@ -260,7 +262,7 @@
 				ports[port.name].url = data.url;
 			}
 
-			that.receiver(req, data, port.name, function () {});
+			that.receiver(req, data, port.sender.tab.id, function () {});
 		}
 
 		// single message handlers
@@ -276,7 +278,12 @@
 				ports[req.internalId].url = data.url;
 			}
 
-			return !!that.receiver(req, data, sender.tab.id, res);
+			var id;
+			if (sender && 'tab' in sender && 'id' in sender.tab) {
+				id = sender.tab.id;
+			}
+
+			return !!that.receiver(req, data, id, res);
 		}
 
 		base.apply(this, arguments);

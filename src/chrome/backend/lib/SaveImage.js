@@ -15,21 +15,25 @@
 	}
 
 	SaveImage.prototype.run = function run (imageUrl, localPath, mimeType, anchorId, sender) {
-		this.ext.request(
+		var ext = this.ext;
+		ext.request(
 			imageUrl,
 			{
-				responseType:'blob',
-				bind:this
+				responseType:'blob'
 			},
 			function (data, status) {
-				this.ext.fileSystem.write(localPath, sender, data, {
+				ext.fileSystem.write(localPath, sender, data, {
 					mimeType:mimeType,
 					mkdir:'auto',
-					onresponse:function (data) {data.anchorId = anchorId}
+					onresponse:function (data) {
+						if (!data) return;
+						data.anchorId = anchorId;
+						ext.postMessage(sender, data);
+					}
 				});
 			},
 			function (data, status) {
-				this.ext.sendRequest(sender, {
+				ext.postMessage(sender, {
 					type:'fileio-write-response',
 					error:'cannot load (' + status + ')',
 					anchorId:anchorId

@@ -19,6 +19,7 @@
  */
 
 const FUTABA_CHARSET = 'Shift_JIS';
+const NOTFOUND_TITLE = '404 File Not Found';
 const WAIT_AFTER_INIT_TRANSITION = 1000;
 const WAIT_AFTER_RELOAD = 500;
 const WAIT_AFTER_POST = 500;
@@ -177,6 +178,7 @@ function removeAssets (context) {
 	for (var i = nodes.length - 1; i >= 0; i--) {
 		if (/^akahuku_/.test(nodes[i].id)) continue;
 		if (nodes[i].nodeName == 'IFRAME') {
+			if (!/^https?:/.test(nodes[i].src)) continue;
 			bootVars.iframeSources += nodes[i].outerHTML;
 		}
 		//console.log((context || '') + ': ' +  nodes[i].nodeName + ' removed');
@@ -249,6 +251,11 @@ function initCustomEventHandler () {
 }
 
 function handleDOMContentLoaded (e) {
+	if (document.title == NOTFOUND_TITLE) {
+		initialStyle();
+		return;
+	}
+
 	timingLogger.startTag(e.type);
 	document.removeEventListener(e.type, arguments.callee, false);
 	bootVars.bodyHTML = document.documentElement[IHTML];
@@ -1039,11 +1046,24 @@ function createXMLGenerator () {
 				r.setStart(node.lastChild, re.index);
 				r.setEnd(node.lastChild, re.index + re[0].length);
 				r.surroundContents(anchor);
+
+				try {
+					anchor.textContent = anchor.textContent.replace(
+						/(?:%[0-9a-f][0-9a-f])+/gi,
+						function ($0, $1) {
+							return decodeURIComponent($0);
+						}
+					);
+				}
+				catch (e) {}
+
 				anchor.setAttribute('class', linkTargets[index].className);
 				anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
 			}
 			else if ((re = emojiPattern.exec(node.lastChild.nodeValue))) {
 				var emoji = node.ownerDocument[CRE]('emoji');
+				emoji.setAttribute('alt', re[0]);
+
 				r.setStart(node.lastChild, re.index);
 				r.setEnd(node.lastChild, re.index + re[0].length);
 				r.surroundContents(emoji);
@@ -3341,9 +3361,10 @@ function createSelectionMenu () {
 		var s = '';
 		var sel = window.getSelection();
 		if (sel.rangeCount) {
-			s = sel.getRangeAt(0).toString()
+			s = rangeToString(sel.getRangeAt(0))
 				.replace(/(?:\r\n|\r|\n)/g, '\n')
-				.replace(/\n{2,}/g, '\n') || '';
+				.replace(/\n{2,}/g, '\n')
+				.replace(/\n+$/, '') || '';
 		}
 		if (s != '') {
 			text = s;
@@ -4078,7 +4099,7 @@ function install (mode) {
 			if (!wrap) return;
 			var comment = wrap.querySelector('.comment');
 			if (!comment) return;
-			selectionMenu.dispatch('quote', comment.textContent);
+			selectionMenu.dispatch('quote', nodeToString(comment));
 		})
 		.add('.save-image',  function (e, t) {
 			if (t.getAttribute('data-original-text')) return;
@@ -5588,6 +5609,37 @@ function getTextForCatalog (text, maxLength) {
 		score += s;
 	}
 	return result;
+}
+
+function nodeToString (container) {
+	var iterator = document.createNodeIterator(
+		container,
+		window.NodeFilter.SHOW_ELEMENT | window.NodeFilter.SHOW_TEXT,
+		null, false);
+
+	var result = [];
+	var currentNode;
+	while ((currentNode = iterator.nextNode())) {
+		switch (currentNode.nodeType) {
+		case 1:
+			if (currentNode.nodeName == 'IMG') {
+				result.push(currentNode.getAttribute('alt') || '');
+			}
+			break;
+
+		case 3:
+			result.push(currentNode.nodeValue);
+			break;
+		}
+	}
+
+	return result.join('');
+}
+
+function rangeToString (range) {
+	var container = document[CRE]('div');
+	container.appendChild(range.cloneContents());
+	return nodeToString(container);
 }
 
 /*
@@ -7839,7 +7891,7 @@ var commands = {
  * <<<1 bootstrap
  */
 
-if (document.title != '404 File Not Found') {
+if (document.title != NOTFOUND_TITLE) {
 	timingLogger = createTimingLogger();
 	timingLogger.startTag('booting akahukuplus');
 	initialStyle(true);

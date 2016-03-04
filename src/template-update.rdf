@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:em="http://www.mozilla.org/2004/em-rdf#">
-	<Description about="urn:mozilla:extension:jid1-ytdk6oePtVeu1A@jetpack">
+	<Description about="urn:mozilla:extension:{{id}}">
 		<em:updates>
 			<Seq>
 				<li>
 					<Description>
-						<em:version>3.1.204</em:version>
+						<em:version>{{version}}</em:version>
 						<em:targetApplication>
 							<Description>
 								<em:id>{ec8030f7-c20a-464f-9b0e-13a3a9e97384}</em:id>
-								<em:minVersion>38.0a1</em:minVersion>
-								<em:maxVersion>45.*</em:maxVersion>
+								<em:minVersion>{{engines.firefox.minVersion}}</em:minVersion>
+								<em:maxVersion>{{engines.firefox.maxVersion}}</em:maxVersion>
 								<em:updateLink>https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.xpi</em:updateLink>
 							</Description>
 						</em:targetApplication>
@@ -20,3 +20,4 @@
 		</em:updates>
 	</Description>
 </RDF>
+

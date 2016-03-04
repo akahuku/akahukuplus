@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2015 akahuku, akahuku@gmail.com
+ * Copyright 2012-2016 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,11 +74,11 @@
 
 		function pushAuthorizeTask (referencedTask) {
 			queue.unshift({
-				task:'authorize',
-				state:'initial-state',
-				retryCount:0,
-				tabId:referencedTask && referencedTask.tabId,
-				options:referencedTask && referencedTask.options
+				task: 'authorize',
+				state: 'initial-state',
+				retryCount: 0,
+				tabId: referencedTask && referencedTask.tabId,
+				options: referencedTask && referencedTask.options
 			});
 		}
 
@@ -120,7 +120,7 @@
 			var obj = fs.loadCredentials();
 
 			if (!obj) return;
-			if (keys.some(function (key) {return !(key in obj)})) return;
+			//if (keys.some(function (key) {return !(key in obj)})) return;
 
 			pushAuthorizeTask();
 			queue[0].state = 'pre-authorized';
@@ -134,27 +134,27 @@
 
 		fs.ls = function (path, tabId, options) {
 			run({
-				task:'ls',
-				tabId:tabId,
-				path:this.getInternalPath(path),
-				options:options || {}
+				task: 'ls',
+				tabId: tabId,
+				path: this.getInternalPath(path),
+				options: options || {}
 			});
 		};
 		fs.write = function (path, tabId, content, options) {
 			run({
-				task:'write',
-				tabId:tabId,
-				path:this.getInternalPath(path),
-				content:content,
-				options:options || {}
+				task: 'write',
+				tabId: tabId,
+				path: this.getInternalPath(path),
+				content: content,
+				options: options || {}
 			});
 		};
 		fs.read = function (path, tabId, options) {
 			run({
-				task:'read',
-				tabId:tabId,
-				path:this.getInternalPath(path),
-				options:options || {}
+				task: 'read',
+				tabId: tabId,
+				path: this.getInternalPath(path),
+				options: options || {}
 			});
 		};
 
@@ -196,7 +196,7 @@
 				writeTimer = u.setTimeout(handleWriteTimer, 1000 * ds);
 			}
 			writeBuffer[task.path] = task;
-			fs.response(task, {state:'buffered', path:task.path});
+			fs.response(task, {state: 'buffered', path: task.path});
 		}
 
 		delaySecs || (delaySecs = writeDelaySecsDefault);
@@ -266,6 +266,38 @@
 		};
 
 		this.authorizeOAuth2 = function (authOpts) {
+			/*
+			 * task: {
+			 *   task: 'authorize',
+			 *   state: 'initial-state',
+			 *   retryCount: 0,
+			 *   tabId: the tab id of related task
+			 *   options: the options of related task
+			 *
+			 *   // set at fetching-authorization-code
+			 *   csrfToken:
+			 *
+			 *   // set at got-code
+			 *   code:
+			 *
+			 *   // set at pre-authorized
+			 *   accessToken:
+			 *   tokenType:
+			 *   refreshToken:
+			 *   uid:
+			 * }
+			 *
+			 * authOpts: {
+			 *   consumerKey:
+			 *   consumerSecret:
+			 *   startUrl:
+			 *   callbackUrl:
+			 *   exchangeUrl:
+			 *   validateUrl:
+			 *   validateUserIdKey:
+			 *   scopes:
+			 * }
+			 */
 			return function authorize (task) {
 				if (task.task != 'authorize') {
 					return self.handleAuthError(
@@ -273,29 +305,32 @@
 						_('Not a authentication task: {0}', task.task));
 				}
 
+				console.log('Kosian#authorize: ' + task.state);
+
 				switch (task.state) {
 				case 'error':
 					self.responseError(task, {
-						app_filesystem_error:[task.message || _('Unknown file system error')]
+						app_filesystem_error: [task.message || _('Unknown file system error')]
 					});
 					self.taskQueue.run();
 					break;
 
 				case 'initial-state':
 					task.state = 'fetching-authorization-code';
-					self.response(task, {state:'authorizing', phase:'1/3'});
+					self.response(task, {state: 'authorizing', phase: '1/3'});
 
 					task.csrfToken = Math.floor(Math.random() * 0x80000000).toString(16);
 
 					var params = {
-						response_type:'code',
-						client_id:authOpts.consumerKey,
-						redirect_uri:authOpts.callbackUrl,
-						state:task.csrfToken
+						response_type: 'code',
+						client_id: authOpts.consumerKey,
+						redirect_uri: authOpts.callbackUrl,
+						state: task.csrfToken
 					};
 					if ('scopes' in authOpts) {
 						params.scope = authOpts.scopes.join(' ');
 					}
+
 					extension.openTabWithUrl(
 						u.getFullUrl(authOpts.startUrl, params),
 						null,
@@ -306,7 +341,10 @@
 									_('Invalid authentication state (fat): {0}', task.state));
 							}
 
+							// advance the state
 							task.state = 'waiting-tab-switch';
+
+							// watch browser tab
 							extension.tabWatcher.add(id, authOpts.callbackUrl, function (newUrl) {
 								if (task.state != 'waiting-tab-switch') {
 									return handleAuthError(
@@ -315,6 +353,10 @@
 								}
 
 								extension.closeTab(id);
+
+								if (task.tabId != null) {
+									extension.focusTab(task.tabId);
+								}
 
 								var q = u.queryToObject(newUrl);
 								if ('error' in q) {
@@ -327,12 +369,15 @@
 										task,
 										_('Invalid authorization response'));
 								}
+
+								// ensure csrfToken is valid
 								if (q.state != task.csrfToken) {
 									return handleAuthError(
 										task,
 										_('CSRF Token not matched'));
 								}
 
+								// advance the state
 								task.state = 'got-code';
 								task.code = q.code;
 								self.taskQueue.run();
@@ -346,31 +391,32 @@
 					var param;
 					if (task.state == 'got-code') {
 						param = {
-							code:task.code,
-							grant_type:'authorization_code',
-							client_id:authOpts.consumerKey,
-							client_secret:authOpts.consumerSecret,
-							redirect_uri:authOpts.callbackUrl
+							code: task.code,
+							grant_type: 'authorization_code',
+							client_id: authOpts.consumerKey,
+							client_secret: authOpts.consumerSecret,
+							redirect_uri: authOpts.callbackUrl
 						};
 					}
 					else {
 						param = {
-							refresh_token:task.refreshToken,
-							grant_type:'refresh_token',
-							client_id:authOpts.consumerKey,
-							client_secret:authOpts.consumerSecret
+							refresh_token: task.refreshToken,
+							grant_type: 'refresh_token',
+							client_id: authOpts.consumerKey,
+							client_secret: authOpts.consumerSecret
 						};
 					}
 
+					// advance the state
 					task.state = 'fetching-access-token';
-					self.response(task, {state:'authorizing', phase:'2/3'});
+					self.response(task, {state: 'authorizing', phase: '2/3'});
 
 					extension.request(
-						authOpts.refreshUrl || authOpts.exchangeUrl,
+						authOpts.exchangeUrl,
 						{
-							method:'POST',
-							content:param,
-							responseType:'json'
+							method: 'POST',
+							content: param,
+							responseType: 'json'
 						},
 						function (data, status) {
 							if (task.state != 'fetching-access-token') {
@@ -389,11 +435,23 @@
 									_('Invalid content response: ' + JSON.stringify(data)));
 							}
 
+							// advance the state
 							task.state = 'pre-authorized';
+
+							// store access token and token type
 							task.accessToken = data.access_token;
-							'refresh_token' in data && (task.refreshToken = data.refresh_token);
 							task.tokenType = data.token_type;
-							'uid' in data && (task.uid = data.uid);
+
+							// store refresh token if exists
+							if ('refresh_token' in data) {
+								task.refreshToken = data.refresh_token;
+							}
+
+							// store user id if exists
+							if (authOpts.validateUserIdKey in data) {
+								task.uid = data[authOpts.validateUserIdKey];
+							}
+
 							self.taskQueue.run();
 						},
 						function () {
@@ -403,15 +461,16 @@
 					break;
 
 				case 'pre-authorized':
+					// advance the state
 					task.state = 'fetching-account-info';
-					self.response(task, {state:'authorizing', phase:'3/3'});
+					self.response(task, {state: 'authorizing', phase: '3/3'});
 
 					extension.request(
 						authOpts.validateUrl,
 						{
-							accessToken:task.accessToken,
-							tokenType:task.tokenType,
-							responseType:'json'
+							accessToken: task.accessToken,
+							tokenType: task.tokenType,
+							responseType: 'json'
 						},
 						function (data, status) {
 							if (task.state != 'fetching-account-info') {
@@ -424,32 +483,49 @@
 									task,
 									_('Invalid status code #{0}', status));
 							}
-							if ('uid' in data && 'uid' in task && data.uid != task.uid) {
-								return handleAuthError(
-									task,
-									_('User unmatch.'));
+
+							// validate user ID
+							if ('uid' in task) {
+								if (!(authOpts.validateUserIdKey in data)
+								|| data[authOpts.validateUserIdKey] != task.uid) {
+									return handleAuthError(
+										task,
+										_('User unmatch.'));
+								}
 							}
 
+							// advance the state
 							task.state = 'authorized';
 							accessToken = task.accessToken;
 							refreshToken = task.refreshToken;
 							tokenType = task.tokenType;
-							uid = data.id;
+							uid = data[authOpts.validateUserIdKey];
 							locale = data.locale;
+
 							self.saveCredentials({
-								token:accessToken,
-								refresh:refreshToken,
-								type:tokenType,
-								uid:uid
+								token: accessToken,
+								refresh: refreshToken,
+								type: tokenType,
+								uid: uid
 							});
+
 							self.isAuthorized = true;
 							self.taskQueue.run();
 						},
 						function (data, status) {
 							if (handleError(task, status)) return;
-							handleAuthError(task, 'Failed to validate access token.', status);
+
+							handleAuthError(
+								task,
+								_('Failed to validate access token.'), status);
 						}
 					);
+					break;
+
+				default:
+					handleAuthError(
+						task,
+						_('Invalid authentication state: {0}', task.state));
 					break;
 				}
 			};
@@ -473,38 +549,35 @@
 	}
 
 	FileSystem.prototype = {
-		backend:'*null*',
-		needAuthentication:true,
-		isAuthorized:false,
-		write:function (path, content, tabId, options) {
-			this.response({task:'write', tabId:tabId, options:options}, {
-				error:'not implemented'
+		backend: '*null*',
+		needAuthentication: true,
+		isAuthorized: false,
+		write: function (path, content, tabId, options) {
+			this.response({task: 'write', tabId: tabId, options: options}, {
+				error: 'not implemented'
 			});
 		},
-		read:function (path, tabId) {
-			this.response({task:'read', tabId:tabId}, {
-				error:'not implemented'
+		read: function (path, tabId) {
+			this.response({task: 'read', tabId: tabId}, {
+				error: 'not implemented'
 			});
 		},
-		ls:function (path, tabId, options) {
+		ls: function (path, tabId, options) {
 			options && this.extension.emit(options.onload, {});
 		},
-		response:function (task, data) {
-			var name = task.options && typeof task.options.externalName == 'string' ?
-				task.options.externalName : task.task;
-
-			data.type = 'fileio-' + name + '-response';
-
-			if (task.options && task.options.onresponse) {
-				var result = this.extension.emit(task.options.onresponse, data);
-				if (result) return;
+		response: function (task, data) {
+			if (!task.options) {
+				return;
 			}
 
-			//var logMode = this.extension.setLogMode(true);
-			this.extension.postMessage(task.tabId, data);
-			//this.extension.setLogMode(logMode);
+			var options = task.options;
+			var name = typeof options.externalName == 'string' ?
+				options.externalName : task.task;
+
+			data.type = 'fileio-' + name + '-response';
+			this.extension.emit(options.onresponse, data, task);
 		},
-		responseError:function (task, data) {
+		responseError: function (task, data) {
 			var errorMessage = false;
 
 			switch (u.objectType(data)) {
@@ -546,23 +619,23 @@
 			this.extension.isDev && console.error(
 				this.extension.appName + ' background: file system error: ' + errorMessage.join(', '));
 
-			this.response(task, {error:errorMessage});
+			this.response(task, {error: errorMessage});
 			task.options && this.extension.emit(task.options.onerror, errorMessage);
 		},
-		getInternalPath:function (path) {
+		getInternalPath: function (path) {
 			var schema = this.backend + ':';
 			if (path.indexOf(schema) == 0) {
 				path = path.substring(schema.length);
 			}
 			return path;
 		},
-		getExternalPath:function (path) {
+		getExternalPath: function (path) {
 			if (path.charAt(0) != '/') {
 				path = '/' + path;
 			}
 			return this.backend + ':' + path;
 		},
-		getPathPrefix:function (fragments, root) {
+		getPathPrefix: function (fragments, root) {
 			var prefix = Array.prototype.slice.call(fragments);
 			var rootFragments = u.splitPath(root);
 			while (rootFragments.length) {
@@ -571,19 +644,19 @@
 			}
 			return prefix;
 		},
-		match:function (url) {
+		match: function (url) {
 			return url.indexOf(this.backend + ':') == 0;
 		},
 		get credentialKeyName () {
 			return 'filesystem.' + this.backend + '.tokens';
 		},
-		saveCredentials:function (data) {
+		saveCredentials: function (data) {
 			this.extension.storage.setItem(this.credentialKeyName, data);
 		},
-		loadCredentials:function () {
+		loadCredentials: function () {
 			return this.extension.storage.getItem(this.credentialKeyName);
 		},
-		clearCredentials:function () {
+		clearCredentials: function () {
 			this.extension.storage.setItem(this.credentialKeyName, undefined);
 		}
 	};
@@ -654,7 +727,7 @@
 
 		function ls (task) {
 			var path = u.getCanonicalPath(task.path);
-			var q = {locale:self.locale, list:'true'};
+			var q = {locale: self.locale, list: 'true'};
 			var key = path || '/';
 
 			if (key in lsCache) {
@@ -664,8 +737,8 @@
 			self.request(
 				API_BASE_URL + 'metadata/' + fileSystemRoot + path,
 				{
-					query:q,
-					responseType:'json'
+					query: q,
+					responseType: 'json'
 				},
 				function (data, status) {
 					if (status == 304) {
@@ -676,9 +749,9 @@
 						var hash = data.hash;
 						data = getListItems(data);
 						lsCache[key] = {
-							hash:hash,
-							data:data,
-							timestamp:Date.now()
+							hash: hash,
+							data: data,
+							timestamp: Date.now()
 						};
 					}
 
@@ -690,7 +763,7 @@
 							delete lsCache[p];
 						});
 
-					self.response(task, {data:data});
+					self.response(task, {data: data});
 					extension.emit(task.options.onload, data);
 				},
 				function (data, status) {
@@ -703,18 +776,18 @@
 		}
 
 		function read (task) {
-			self.response(task, {state:'reading', progress:0});
+			self.response(task, {state: 'reading', progress: 0, tag:0});
 
 			self.request(
 				API_CONTENT_URL + 'files/' + fileSystemRoot + u.getCanonicalPath(task.path),
 				{
-					beforesend:function (t) {
-						t.onprogress = t.onload = function (e) {
+					beforesend: function (t) {
+						t.onprogress = function (e) {
 							if (!e.lengthComputable) return;
-							self.response(task, {state:'reading', progress:e.loaded / e.total});
+							self.response(task, {state: 'reading', progress: e.loaded / e.total, tag:1});
 						};
 					},
-					responseType:task.options.responseType || 'text'
+					responseType: task.options.responseType || 'text'
 				},
 				function (data, status, xhr) {
 					try {
@@ -731,10 +804,10 @@
 						}*/
 
 						self.response(task, {
-							state:'complete',
-							status:status,
-							content:data,
-							meta:getListItem(meta)
+							state: 'complete',
+							status: status,
+							content: data,
+							meta: getListItem(meta)
 						});
 					}
 					finally {
@@ -745,9 +818,9 @@
 					if (handleError(task, status)) return;
 
 					self.response(task, {
-						state:'complete',
-						status:status || 404,
-						meta:{path:task.path}
+						state: 'complete',
+						status: status || 404,
+						meta: {path: task.path}
 					});
 
 					taskQueue.run();
@@ -756,31 +829,31 @@
 		}
 
 		function write (task) {
-			self.response(task, {state:'writing', progress:0});
+			self.response(task, {state: 'writing', progress: 0});
 
 			self.request(
 				API_CONTENT_URL + 'files_put/' + fileSystemRoot + u.getCanonicalPath(task.path),
 				{
-					method:'PUT',
-					headers:{
+					method: 'PUT',
+					headers: {
 						'Content-Type':task.options.mimeType || 'text/plain'
 					},
-					beforesend:function (t) {
+					beforesend: function (t) {
 						if (!t.upload) return;
-						t.upload.onprogress = t.upload.onload = function (e) {
+						t.upload.onprogress = function (e) {
 							if (!e.lengthComputable) return;
-							self.response(task, {state:'writing', progress:e.loaded / e.total});
+							self.response(task, {state: 'writing', progress: e.loaded / e.total});
 						};
 					},
-					query:{locale:self.locale},
-					content:task.content,
-					responseType:'json'
+					query: {locale: self.locale},
+					content: task.content,
+					responseType: 'json'
 				},
 				function (data, status) {
 					self.response(task, {
-						state:'complete',
-						status:status,
-						meta:getListItem(data)
+						state: 'complete',
+						status: status,
+						meta: getListItem(data)
 					});
 					taskQueue.run();
 				},
@@ -810,12 +883,13 @@
 		var self = this;
 		var writeBinder = new WriteBinder(this, write);
 		var authorize = this.authorizeOAuth2({
-			consumerKey:options.key,
-			consumerSecret:options.secret,
-			startUrl:'https://www.dropbox.com/1/oauth2/authorize',
-			callbackUrl:options.callback,
-			exchangeUrl:'https://api.dropbox.com/1/oauth2/token',
-			validateUrl:'https://api.dropbox.com/1/account/info'
+			consumerKey: options.key,
+			consumerSecret: options.secret,
+			startUrl: 'https://www.dropbox.com/1/oauth2/authorize',
+			callbackUrl: options.callback,
+			exchangeUrl: 'https://api.dropbox.com/1/oauth2/token',
+			validateUrl: 'https://api.dropbox.com/1/account/info',
+			validateUserIdKey: 'uid'
 		});
 		var taskQueue = this.taskQueue = new TaskQueue(this, authorize, ls, read, writeBinder.write);
 		var handleError = this.handleError;
@@ -895,7 +969,7 @@
 				self.request(
 					API_BASE_URL + 'files/root',
 					{
-						responseType:'json'
+						responseType: 'json'
 					},
 					function (data, status) {
 						success(fragments, [data], status);
@@ -915,8 +989,8 @@
 				self.request(
 					API_BASE_URL + 'files',
 					{
-						responseType:'json',
-						query:params
+						responseType: 'json',
+						query: params
 					},
 					function (data, status) {
 						var result = buildPathOrderedMetadata(fragments, data.items);
@@ -939,13 +1013,13 @@
 
 		function getChildren (folderId, success, failure) {
 			var params = {
-				q:'\'' + folderId + '\' in parents AND trashed=false'
+				q: '\'' + folderId + '\' in parents AND trashed=false'
 			};
 			self.request(
 				API_BASE_URL + 'files/',
 				{
-					responseType:'json',
-					query:params
+					responseType: 'json',
+					query: params
 				},
 				function (data, status) {
 					success(data.items, status);
@@ -964,7 +1038,7 @@
 				}
 
 				var query = {
-					q:'\'' + parentId + '\' in parents' +
+					q: '\'' + parentId + '\' in parents' +
 						' AND title=\'' + fragments[index] + '\'' +
 						' AND trashed=false'
 				};
@@ -972,8 +1046,8 @@
 				self.request(
 					API_BASE_URL + 'files/',
 					{
-						responseType:'json',
-						query:query
+						responseType: 'json',
+						query: query
 					},
 					function (data, status) {
 						if (data.items.length) {
@@ -983,18 +1057,18 @@
 						self.request(
 							API_BASE_URL + 'files',
 							{
-								method:'POST',
-								headers:{
+								method: 'POST',
+								headers: {
 									'Content-Type':'application/json'
 								},
-								content:JSON.stringify({
-									parents:[
-										{id:parentId}
+								content: JSON.stringify({
+									parents: [
+										{id: parentId}
 									],
-									mimeType:MIME_TYPE_FOLDER,
-									title:fragments[index]
+									mimeType: MIME_TYPE_FOLDER,
+									title: fragments[index]
 								}),
-								responseType:'json'
+								responseType: 'json'
 							},
 							function (data, status) {
 								loop(data.id, index + 1);
@@ -1101,7 +1175,7 @@
 								result.contents.push(getListItem(items[i], prefix));
 							}
 
-							self.response(task, {data:result});
+							self.response(task, {data: result});
 							extension.emit(task.options.onload, result);
 						},
 						function (data, status) {
@@ -1120,7 +1194,7 @@
 		}
 
 		function read (task) {
-			self.response(task, {state:'reading', progress:0});
+			self.response(task, {state: 'reading', progress: 0});
 
 			getMetadataFromPath(fileSystemRoot + task.path,
 				function (fragments, data, status) {
@@ -1129,9 +1203,9 @@
 					||  data && data.length < fragments.length /* new file on a sub directoru */
 					) {
 						self.response(task, {
-							state:'complete',
-							status:404,
-							meta:{path:task.path}
+							state: 'complete',
+							status: 404,
+							meta: {path: task.path}
 						});
 						taskQueue.run();
 						return;
@@ -1166,25 +1240,25 @@
 					self.request(
 						meta.downloadUrl,
 						{
-							beforesend:function (xhr) {
+							beforesend: function (xhr) {
 								xhr.onprogress = function (e) {
 									if (!e.lengthComputable) return;
 									self.response(task, {
-										state:'reading',
-										progress:e.loaded / e.total
+										state: 'reading',
+										progress: e.loaded / e.total
 									});
 								};
 							},
-							responseType:task.options.responseType || 'text'
+							responseType: task.options.responseType || 'text'
 						},
 						function (data, status) {
 							var prefix = self.getPathPrefix(fragments, fileSystemRoot);
 							prefix.pop();
 							self.response(task, {
-								state:'complete',
-								status:status,
-								content:data,
-								meta:getListItem(meta, prefix)
+								state: 'complete',
+								status: status,
+								content: data,
+								meta: getListItem(meta, prefix)
 							});
 							taskQueue.run();
 						},
@@ -1192,9 +1266,9 @@
 							if (handleError(task, status)) return;
 
 							self.response(task, {
-								state:'complete',
-								status:status || 404,
-								meta:{path:task.path}
+								state: 'complete',
+								status: status || 404,
+								meta: {path: task.path}
 							});
 							taskQueue.run();
 						}
@@ -1210,7 +1284,7 @@
 
 		function write (task) {
 			function writeCore () {
-				self.response(task, {state:'writing', progress:0});
+				self.response(task, {state: 'writing', progress: 0});
 
 				getMetadataFromPath(fileSystemRoot + task.path, function (fragments, data, status) {
 					var fileId = '';
@@ -1252,41 +1326,41 @@
 					}
 
 					var mp = new GDriveFileContent({
-						parents:[{kind:'drive#file', id:parentId}],
-						title:fragments[fragments.length - 1],
-						mimeType:mimeType
+						parents: [{kind: 'drive#file', id: parentId}],
+						title: fragments[fragments.length - 1],
+						mimeType: mimeType
 					}, task.content);
 
 					// save...
 					self.request(
 						API_UPLOAD_URL + 'files' + fileId,
 						{
-							method:method,
-							query:{uploadType:'multipart'},
-							content:mp.result,
-							beforesend:function (xhr) {
+							method: method,
+							query: {uploadType: 'multipart'},
+							content: mp.result,
+							beforesend: function (xhr) {
 								xhr.setRequestHeader(
 									'Content-Type',
 									'multipart/related;boundary="' + mp.boundary + '"');
 								/*xhr.setRequestHeader(
 									'Content-Length', mp.result.length);*/
-								xhr.upload.onprogress = xhr.upload.onload = function (e) {
+								xhr.upload.onprogress = function (e) {
 									if (!e.lengthComputable) return;
 									self.response(task, {
-										state:'writing',
-										progress:e.loaded / e.total
+										state: 'writing',
+										progress: e.loaded / e.total
 									});
 								};
 							},
-							responseType:'json'
+							responseType: 'json'
 						},
 						function (data, status) {
 							var prefix = self.getPathPrefix(fragments, fileSystemRoot);
 							prefix.pop();
 							self.response(task, {
-								state:'complete',
-								status:status,
-								meta:getListItem(data, prefix)
+								state: 'complete',
+								status: status,
+								meta: getListItem(data, prefix)
 							});
 							taskQueue.run();
 						},
@@ -1338,13 +1412,14 @@
 		var self = this;
 		var writeBinder = new WriteBinder(this, write);
 		var authorize = this.authorizeOAuth2({
-			consumerKey:options.key,
-			consumerSecret:options.secret,
-			startUrl:'https://accounts.google.com/o/oauth2/auth?approval_prompt=force&access_type=offline',
-			callbackUrl:options.callback,
-			exchangeUrl:'https://accounts.google.com/o/oauth2/token',
-			validateUrl:'https://www.googleapis.com/oauth2/v1/userinfo',
-			scopes:[
+			consumerKey: options.key,
+			consumerSecret: options.secret,
+			startUrl: 'https://accounts.google.com/o/oauth2/auth?approval_prompt=force&access_type=offline',
+			callbackUrl: options.callback,
+			exchangeUrl: 'https://accounts.google.com/o/oauth2/token',
+			validateUrl: 'https://www.googleapis.com/oauth2/v1/userinfo',
+			validateUserIdKey: 'id',
+			scopes: [
 				'https://www.googleapis.com/auth/drive',
 				'https://www.googleapis.com/auth/userinfo.profile'
 			]
@@ -1384,6 +1459,10 @@
 			public_documents: 'me/skydrive/public_documents'
 		};
 
+		function isFolder (type) {
+			return type == 'folder' || type == 'album';
+		}
+
 		function getRoot (fragments) {
 			return fragments[0] in specialRootMap ?
 				specialRootMap[fragments.shift()] : 'me/skydrive';
@@ -1414,7 +1493,7 @@
 				self.request(
 					API_BASE_URL + endPointFragment + '/files',
 					{
-						responseType:'json'
+						responseType: 'json'
 					},
 					function (data, status) {
 						if (!data.data) {
@@ -1432,7 +1511,7 @@
 								// valid path
 								success(fragments, result, status);
 							}
-							else if (f.type != 'folder') {
+							else if (!isFolder(f.type)) {
 								failure(fragments, null, status);
 							}
 							else {
@@ -1455,14 +1534,14 @@
 						self.request(
 							API_BASE_URL + endPointFragment,
 							{
-								method:'POST',
-								headers:{
+								method: 'POST',
+								headers: {
 									'Content-Type': 'application/json'
 								},
-								content:JSON.stringify({
-									name:fragments[index]
+								content: JSON.stringify({
+									name: fragments[index]
 								}),
-								responseType:'json'
+								responseType: 'json'
 							},
 							function (data, status) {
 								if (!data) {
@@ -1490,7 +1569,7 @@
 				size:       u.readableSize(item.size || 0),
 				bytes:      item.size || 0,
 				path:       u.joinPath(path, item.name),
-				is_dir:     item.type == 'folder',
+				is_dir:     isFolder(item.type),
 				is_deleted: false,
 				id:         item.id,
 				modified:   u.dateFromW3CDTF(item.updated_time),
@@ -1508,10 +1587,10 @@
 				var result = getListItem(dirData, prefix);
 				result.path = u.joinPath(prefix);
 
-				if (dirData.type == 'folder') {
+				if (isFolder(dirData.type)) {
 					self.request(
 						API_BASE_URL + endPointFragment + '/files',
-						{ responseType:'json' },
+						{ responseType: 'json' },
 						function (contentsData, status) {
 							result.contents = [];
 
@@ -1519,7 +1598,7 @@
 								result.contents.push(getListItem(contentsData.data[i], prefix));
 							}
 
-							self.response(task, {data:result});
+							self.response(task, {data: result});
 							extension.emit(task.options.onload, result);
 						},
 						function (data, status) {
@@ -1529,7 +1608,7 @@
 					);
 				}
 				else {
-					self.response(task, {data:result});
+					self.response(task, {data: result});
 					extension.emit(task.options.onload, result);
 				}
 			}
@@ -1550,7 +1629,7 @@
 					if (data.length == 0) {
 						self.request(
 							API_BASE_URL + '/me/skydrive',
-							{ responseType:'json' },
+							{ responseType: 'json' },
 							function (dirData, status) {
 								lsCore(dirData, '/me/skydrive', prefix);
 							},
@@ -1574,7 +1653,7 @@
 		}
 
 		function read (task) {
-			self.response(task, {state:'writing', progress:0});
+			self.response(task, {state: 'writing', progress: 0});
 			drillDown(
 				fileSystemRoot + task.path,
 				/^(?:auto|force)$/.test(task.options.mkdir),
@@ -1584,9 +1663,9 @@
 					||  data && data.length < fragments.length /* new file on a sub directoru */
 					) {
 						self.response(task, {
-							state:'complete',
-							status:404,
-							meta:{path:task.path}
+							state: 'complete',
+							status: 404,
+							meta: {path: task.path}
 						});
 						taskQueue.run();
 						return;
@@ -1601,7 +1680,7 @@
 
 					// valid path and existent file
 					var meta = data[data.length - 1];
-					if (meta.type == 'folder') {
+					if (isFolder(meta.type)) {
 						self.responseError(task, _('Cannot read a directory content.'));
 						taskQueue.run();
 						return;
@@ -1616,25 +1695,25 @@
 					self.request(
 						API_BASE_URL + data[data.length - 1].id + '/content',
 						{
-							beforesend:function (xhr) {
+							beforesend: function (xhr) {
 								xhr.onprogress = function (e) {
 									if (!e.lengthComputable) return;
 									self.response(task, {
-										state:'reading',
-										progress:e.loaded / e.total
+										state: 'reading',
+										progress: e.loaded / e.total
 									});
 								};
 							},
-							responseType:task.options.responseType || 'text'
+							responseType: task.options.responseType || 'text'
 						},
 						function (data, status) {
 							var prefix = getPathPrefix(fragments, fileSystemRoot);
 							prefix.pop();
 							self.response(task, {
-								state:'complete',
-								status:status,
-								content:data,
-								meta:getListItem(meta, prefix)
+								state: 'complete',
+								status: status,
+								content: data,
+								meta: getListItem(meta, prefix)
 							});
 							taskQueue.run();
 						},
@@ -1642,9 +1721,9 @@
 							if (handleError(task, status)) return;
 
 							self.response(task, {
-								state:'complete',
-								status:status || 404,
-								meta:{path:task.path}
+								state: 'complete',
+								status: status || 404,
+								meta: {path: task.path}
 							});
 							taskQueue.run();
 						}
@@ -1658,7 +1737,7 @@
 		}
 
 		function write (task) {
-			self.response(task, {state:'writing', progress:0});
+			self.response(task, {state: 'writing', progress: 0});
 			drillDown(
 				fileSystemRoot + task.path,
 				/^(?:auto|force)$/.test(task.options.mkdir),
@@ -1685,7 +1764,7 @@
 
 					// valid path
 					else {
-						if (data[data.length - 1].type == 'folder') {
+						if (isFolder(data[data.length - 1].type)) {
 							self.responseError(task, _('Cannot overwrite a directory.'));
 							taskQueue.run();
 							return;
@@ -1696,31 +1775,31 @@
 					var formData = extension.createFormData();
 					formData.append(
 						'file',
-						extension.createBlob([task.content], {type:mimeType}),
+						extension.createBlob([task.content], {type: mimeType}),
 						fragments[fragments.length - 1]
 					);
 
 					self.request(
 						API_BASE_URL + endPointFragment,
 						{
-							method:'POST',
-							beforesend:function (t) {
+							method: 'POST',
+							beforesend: function (t) {
 								if (!t.upload) return;
-								t.upload.onprogress = t.upload.onload = function (e) {
+								t.upload.onprogress = function (e) {
 									if (!e.lengthComputable) return;
-									self.response(task, {state:'writing', progress:e.loaded / e.total});
+									self.response(task, {state: 'writing', progress: e.loaded / e.total});
 								};
 							},
-							content:formData,
-							responseType:'json'
+							content: formData,
+							responseType: 'json'
 						},
 						function (data, status) {
 							var prefix = getPathPrefix(fragments, fileSystemRoot);
 							prefix.pop();
 							self.response(task, {
-								state:'complete',
-								status:status,
-								meta:getListItem(data, prefix)
+								state: 'complete',
+								status: status,
+								meta: getListItem(data, prefix)
 							});
 							taskQueue.run();
 						},
@@ -1755,13 +1834,14 @@
 		var self = this;
 		var writeBinder = new WriteBinder(this, write);
 		var authorize = this.authorizeOAuth2({
-			consumerKey:options.key,
-			consumerSecret:options.secret,
-			startUrl:'https://login.live.com/oauth20_authorize.srf',
-			callbackUrl:options.callback,
-			exchangeUrl:'https://login.live.com/oauth20_token.srf',
-			validateUrl:API_BASE_URL + 'me',
-			scopes:[
+			consumerKey: options.key,
+			consumerSecret: options.secret,
+			startUrl: 'https://login.live.com/oauth20_authorize.srf',
+			callbackUrl: options.callback,
+			exchangeUrl: 'https://login.live.com/oauth20_token.srf',
+			validateUrl: API_BASE_URL + 'me',
+			validateUserIdKey: 'id',
+			scopes: [
 				'wl.skydrive_update',
 				'wl.offline_access'
 			]
@@ -1786,6 +1866,353 @@
 	FileSystemOneDrive.prototype.constructor = FileSystemOneDrive;
 
 	/*
+	 * file system class for local file system
+	 * this class depends on Chrome apps named "Local File Operator for wasavi"
+	 */
+
+	function FileSystemLocalFileChrome (extension, options) {
+
+		/*
+		 * tasks
+		 */
+
+		function ls (task) {
+			chrome.runtime.sendMessage(
+				LFO_ID,
+				{
+					command: 'ls',
+					path: task.path
+				},
+				function (response) {
+					if (chrome.runtime.lastError) {
+						return self.responseError(
+							task, chrome.runtime.lastError.message);
+					}
+					else if (!response) {
+						return self.responseError(
+							task, _('Invalid response.'));
+					}
+					else if (response.error) {
+						return self.responseError(
+							task, response.error);
+					}
+
+					var data = {
+						name: response.name,
+						size: '',
+						bytes: 0,
+						path: response.path,
+						is_dir: true,
+						is_deleted: false,
+						id: null,
+						modified: null,
+						created: null,
+						mime_type: 'application/x-kosian-directory',
+						contents: response.entries
+					};
+
+					self.response(task, {data: data});
+					extension.emit(task.options.onload, data);
+				}
+			);
+			taskQueue.run();
+		}
+
+		function read (task) {
+			self.response(task, {state: 'reading', progress: 0});
+
+			chrome.runtime.sendMessage(
+				LFO_ID,
+				{
+					command: 'read',
+					path: task.path
+				},
+				function (response) {
+					try {
+						if (chrome.runtime.lastError) {
+							return self.responseError(
+								task, chrome.runtime.lastError.message);
+						}
+						else if (!response) {
+							return self.responseError(
+								task, _('Invalid response.'));
+						}
+						else if (response.error) {
+							return self.responseError(
+								task, response.error);
+						}
+
+						self.response(task, {
+							state: 'complete',
+							status: 200,
+							content: response.content,
+							meta: {
+								name: response.name,
+								size: u.readableSize(response.size),
+								bytes: response.size,
+								path: response.path,
+								is_dir: false,
+								is_deleted: false,
+								id: null,
+								modified: new Date(response.lastModified),
+								created: null,
+								mime_type: 'application/octet-stream',
+							}
+						});
+					}
+					finally {
+						taskQueue.run();
+					}
+				}
+			);
+		}
+
+		function write (task) {
+			self.response(task, {state: 'writing', progress: 0});
+
+			chrome.runtime.sendMessage(
+				LFO_ID,
+				{
+					command: 'write',
+					path: task.path,
+					content: task.content
+				},
+				function (response) {
+					try {
+						if (chrome.runtime.lastError) {
+							return self.responseError(
+								task, chrome.runtime.lastError.message);
+						}
+						else if (!response) {
+							return self.responseError(
+								task, _('Invalid response.'));
+						}
+						else if (response.error) {
+							return self.responseError(
+								task, response.error);
+						}
+
+						self.response(task, {
+							state: 'complete',
+							status: 200,
+							meta: {
+								name: response.name,
+								size: u.readableSize(response.size),
+								bytes: response.size,
+								path: response.path,
+								is_dir: false,
+								is_deleted: false,
+								id: null,
+								modified: null,
+								created: null,
+								mime_type: 'application/octet-stream'
+							}
+						});
+					}
+					finally {
+						taskQueue.run();
+					}
+				}
+			);
+		}
+
+		/*
+		 * init
+		 */
+
+		FileSystem.apply(this, arguments);
+		this.backend = 'file';
+		this.needAuthentication = false;
+		var self = this;
+		var taskQueue = this.taskQueue = new TaskQueue(this, null, ls, read, write);
+		//var LFO_ID = 'igbjeepbgpdcjmpcjgkkfgelekeigbhc';	// develop version
+		var LFO_ID = 'dkbdmkncpnepdbaneikhbbeiboehjnol';	// release version
+	}
+
+	FileSystemLocalFileChrome.prototype = Object.create(FileSystem.prototype);
+	FileSystemLocalFileChrome.prototype.constructor = FileSystemLocalFileChrome;
+
+	/*
+	 * file system class for local file system
+	 * this class is dedicated to Firefox.
+	 */
+
+	function FileSystemLocalFileFirefox (extension, options) {
+
+		function initClasses () {
+			var osfile = require('chrome').Cu.import(
+				'resource://gre/modules/osfile.jsm', {});
+			TextDecoder = osfile.TextDecoder;
+			TextEncoder = osfile.TextEncoder;
+			OS = osfile.OS;
+		}
+
+		/*
+		 * tasks
+		 */
+
+		function ls (task) {
+			var entries = [];
+			var iter = new OS.File.DirectoryIterator(task.path);
+
+			iter.forEach(function (entry) {
+				entries.push({
+					name: OS.Path.basename(entry.name),
+					size: '',
+					bytes: 0,
+					path: entry.path.replace(/\/{2,}/g, '/'),
+					is_dir: entry.isDir,
+					is_deleted: false,
+					id: null,
+					modified: null,
+					created: null,
+					mime_type: entry.isDir ?
+						'application/x-kosian-directory' :
+						'application/octet-stream'
+				});
+			})
+			.then(
+				function () {
+					var data = {
+						name: OS.Path.basename(task.path),
+						size: '',
+						bytes: 0,
+						path: task.path,
+						is_dir: true,
+						is_deleted: false,
+						id: null,
+						modified: null,
+						created: null,
+						mime_type: 'application/x-kosian-directory',
+						contents: entries
+					};
+
+					self.response(task, {data: data});
+					extension.emit(task.options.onload, data);
+				},
+				function (reason) {
+					self.responseError(task, reason);
+				}
+			)
+			.then(function () {
+				iter.close();
+			});
+			taskQueue.run();
+		}
+
+		function read (task) {
+			self.response(task, {state: 'reading', progress: 0});
+
+			OS.File.read(task.path).then(
+				function (data) {
+					return OS.File.stat(task.path).then(function (stat) {
+						var content = data;
+
+						if ('encoding' in task.options) {
+							var decoder;
+							try {
+								decoder = new TextDecoder(task.options.encoding);
+							}
+							catch (ex) {
+								return self.responseError(
+									task, 'Cannot create decoder: ' + task.options.encoding);
+							}
+							content = decoder.decode(content);
+						}
+
+						self.response(task, {
+							state: 'complete',
+							status: 200,
+							content: content,
+							meta: {
+								name: OS.Path.basename(task.path),
+								size: u.readableSize(stat.size),
+								bytes: stat.size,
+								path: task.path,
+								is_dir: false,
+								is_deleted: false,
+								id: null,
+								modified: stat.lastModificationDate,
+								created: stat.creationDate,
+								mime_type: 'application/octet-stream'
+							}
+						});
+					});
+				},
+				function (err) {
+					self.responseError(task, _('Failed to read'));
+				}
+			).then(function () {
+				taskQueue.run();
+			});
+		}
+
+		function write (task) {
+			self.response(task, {state: 'writing', progress: 0});
+
+			var content = task.content;
+
+			if (typeof content == 'string') {
+				var encoder;
+				try {
+					encoder = new TextEncoder(task.options.encoding || 'UTF-8');
+				}
+				catch (ex) {
+					self.responseError(
+						task, 'Cannot create encoder: ' + task.options.encoding);
+					taskQueue.run();
+					return;
+				}
+				content = encoder.encode(content);
+			}
+
+			OS.File.writeAtomic(task.path, content, {tmpPath: task.path + '.tmp'}).then(
+				function () {
+					return OS.File.stat(task.path).then(function (stat) {
+						self.response(task, {
+							state: 'complete',
+							status: 200,
+							meta: {
+								name: OS.Path.basename(task.path),
+								size: u.readableSize(stat.size),
+								bytes: stat.size,
+								path: task.path,
+								is_dir: false,
+								is_deleted: false,
+								id: null,
+								modified: stat.lastModificationDate,
+								created: stat.creationDate,
+								mime_type: 'application/octet-stream'
+							}
+						});
+					});
+				},
+				function (err) {
+					self.responseError(task, _('Failed to write'));
+				}
+			).then(function () {
+				taskQueue.run();
+			});
+		}
+
+		/*
+		 * init
+		 */
+
+		FileSystem.apply(this, arguments);
+		this.backend = 'file';
+		this.needAuthentication = false;
+		var self = this;
+		var taskQueue = this.taskQueue = new TaskQueue(this, null, ls, read, write);
+		var TextDecoder, TextEncoder, OS;
+
+		initClasses();
+	}
+
+	FileSystemLocalFileFirefox.prototype = Object.create(FileSystem.prototype);
+	FileSystemLocalFileFirefox.prototype.constructor = FileSystemLocalFileFirefox;
+
+	/*
 	 * export
 	 */
 
@@ -1797,6 +2224,14 @@
 			return new FileSystemGDrive(ext, options);
 		case 'onedrive':
 			return new FileSystemOneDrive(ext, options);
+		case 'file':
+			switch (ext.kind) {
+			case 'Chrome':
+				return new FileSystemLocalFileChrome(ext, options);
+			case 'Firefox':
+				return new FileSystemLocalFileFirefox(ext, options);
+			}
+			// FALLTHRU
 		default:
 			return new FileSystem(ext, options);
 		}

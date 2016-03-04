@@ -27,7 +27,8 @@
       ],
       "exclude_matches": [
         "http://dec.2chan.net/up/*",
-        "http://dec.2chan.net/up2/*"
+        "http://dec.2chan.net/up2/*",
+		"http://*.2chan.net/bin/*"
       ],
       "js": [
         "frontend/extension_wrapper.js",

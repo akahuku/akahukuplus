@@ -8,12 +8,13 @@
 	"homepage": "http://akahuku.github.io/akahukuplus/",
 	"id": "jid1-ytdk6oePtVeu1A@jetpack",
 	"description": "Take your futaba life higher.",
-	"updateURL": "https://github.com/akahuku/akahukuplus/raw/master/update.rdf",
+	"updateURL": "https://github.com/akahuku/akahukuplus/raw/master/dist/update.rdf",
+	"updateLink": "https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.xpi",
 	"permissions": {
 		"private-browsing": true
 	},
 	"main": "lib/main.js",
 	"engines": {
-		"firefox": ">=38.0a1 <=42.*"
+		"firefox": ">=38.0a1 <=45.*"
 	}
 }

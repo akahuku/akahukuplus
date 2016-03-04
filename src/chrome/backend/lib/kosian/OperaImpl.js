@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2015 akahuku, akahuku@gmail.com
+ * Copyright 2012-2016 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -281,7 +281,7 @@
 			}, NOTIFY_TIMER_INTERVAL);
 
 			if (!collectTimer) {
-				collectTimer = setInterval(collectPorts, COLLECT_TIMER_INTERVAL);
+				collectTimer = setInterval(function () {collectPorts()}, COLLECT_TIMER_INTERVAL);
 			}
 		}
 
