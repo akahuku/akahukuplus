@@ -32,6 +32,7 @@
 	var fetchTweets = require('./FetchTweets').FetchTweets();
 	var completeUpfiles = require('./CompleteUpfiles').CompleteUpfiles();
 	var saveImage = require('./SaveImage').SaveImage();
+	var akahukuplusRunning = {};
 
 	/* <<<1 functions */
 	function getContentScriptsSpec () {
@@ -56,6 +57,37 @@
 				run_at: 'start'
 			}
 		];
+	}
+
+	function optimizeAssetLoadingOnChrome () {
+		var cancelParam = {cancel: true};
+		var throughParam = {cancel: false};
+		chrome.webRequest.onBeforeRequest.addListener(
+			function (details) {
+				if (details.type == 'main_frame') {
+					akahukuplusRunning[details.tabId] = true;
+					return throughParam;
+				}
+				else {
+					// other assets
+					if (details.tabId in akahukuplusRunning) {
+						return cancelParam;
+					}
+					else {
+						return throughParam;
+					}
+				}
+			},
+			{
+				urls: ['http://*.2chan.net/*'],
+				// xhr request is always allowed
+				types: [
+					'main_frame', 'sub_frame', 'stylesheet',
+					'script', 'object', 'other'
+				]
+			},
+			['blocking']
+		);
 	}
 
 	/** <<<2 request handlers */
@@ -103,6 +135,11 @@
 		return true;
 	}
 
+	// browser specific code
+	if (global.chrome) {
+		optimizeAssetLoadingOnChrome();
+	}
+
 	/** <<<2 request handler entry */
 	ext.receive(function (command, data, sender, respond) {
 
@@ -121,6 +158,7 @@
 
 			switch (command.type) {
 			case 'init':
+				delete akahukuplusRunning[sender];
 				res({
 					extensionId: ext.id,
 					tabId: sender,

@@ -10,7 +10,8 @@
     "128": "images/icon128.png"
   },
   "permissions": [
-    "tabs", "clipboardRead", "clipboardWrite",
+    "tabs", "clipboardRead", "clipboardWrite", "webRequest", "webRequestBlocking",
+    "http://*.2chan.net/*",
     "https://*.dropbox.com/*",
     "https://*.google.com/*",
     "https://*.googleapis.com/*",

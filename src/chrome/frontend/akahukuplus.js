@@ -261,6 +261,8 @@ function handleDOMContentLoaded (e) {
 	bootVars.bodyHTML = document.documentElement[IHTML];
 	removeAssets(e.type);
 	initialStyle(false);
+	document.body[IHTML] = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
+
 	config = createConfigurator();
 	config.assign();
 	backend = WasaviExtensionWrapper.create({extensionName: 'akahukuplus'});
@@ -276,7 +278,6 @@ function handleDOMContentLoaded (e) {
 		devMode = req.devMode;
 		resources = createResourceManager();
 		initCustomEventHandler();
-		document.body[IHTML] = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
 		timingLogger.endTag();
 		boot();
 	};
@@ -7898,5 +7899,7 @@ if (document.title != NOTFOUND_TITLE) {
 	removeAssets('script top');
 	document.addEventListener('DOMContentLoaded', handleDOMContentLoaded, false);
 }
+
+console.log('akahukuplus running');
 
 // vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker fmr=<<<,>>> :
