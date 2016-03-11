@@ -1178,6 +1178,121 @@ hr {
 }
 
 /*
+ * drawings
+ */
+
+.draw-box-outer {
+	display:flex;
+	flex-direction:row;
+	justify-content:center;
+	align-items:center;
+}
+
+.draw-box-inner {
+	text-align:center;
+}
+
+.draw-tools {
+	margin:0 0 24px 0;
+	padding:3px;
+	border-top:1px solid #6a6a6a;
+	background-color:#535353;
+	color:#fff;
+	text-align:center;
+
+	display:flex;
+	flex-direction:row;
+	justify-content:center;
+	align-items:stretch;
+}
+
+.draw-tools > div {
+	margin:0;
+	padding:3px 6px 3px 6px;
+	background-color:#535353;
+	font-size:small;
+	text-align:left;
+
+	display:flex;
+	flex-direction:column;
+	justify-content:center;
+	align-items:center;
+}
+
+.draw-tools > div:not(:last-child) {
+	margin-right:4px;
+	border-right:1px solid #383838;
+}
+
+.draw-tools > div > div:not(:last-child) {
+	margin: 0 0 2px 0;
+}
+
+.draw-tools a {
+	color:#8ac;
+}
+
+.draw-tools input[type="range"], .draw-tools input[type="radio"] {
+	vertical-align:middle;
+}
+
+.draw-tools .draw-pen-sample {
+	vertical-align:middle;
+}
+
+.draw-color-wrap {
+	width:40px;
+	height:36px;
+	position:relative;
+}
+
+.draw-fg, .draw-bg {
+	width:24px;
+	height:24px;
+	border:1px solid #fff;
+	outline:1px solid #353535;
+}
+
+.draw-fg {
+	position:absolute;
+	left:0;
+	top:0;
+	background-color:#800;
+}
+
+.draw-bg {
+	position:absolute;
+	right:0;
+	bottom:0;
+	background-color:#f0e0d6;
+}
+
+.draw-canvas {
+	margin:0 auto 0 auto;
+	image-rendering:-o-crisp-edges;
+	image-rendering:-moz-crisp-edges;
+	image-rendering:pixelated;
+	transition-property:width,height;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0s;
+}
+
+.draw-buttons {
+	margin:24px 0 0 0;
+	text-align:center;
+}
+
+.draw-buttons button {
+	margin:0;
+	font-size:x-large;
+}
+
+.draw-buttons button:not(:last-child) {
+	margin-right:8px;
+}
+
+/*
  * modal dialog
  */
 
@@ -1702,7 +1817,7 @@ div.catalog-popup span {
 								<tr>
 									<th>添付File</th>
 									<td><input type="file" id="upfile" name="upfile"/></td>
-									<td class="thin"><label>[<input type="checkbox" id="textonly" name="textonly" value="on" data-href="#clear-upfile"/>画像なし]</label></td>
+									<td class="thin"><span class="draw-button-wrap hide">[<a href="#draw">手書き</a>]</span> <label>[<input type="checkbox" id="textonly" name="textonly" value="on" data-href="#clear-upfile"/>画像なし]</label></td>
 								</tr>
 							</xsl:when>
 							<xsl:otherwise>
@@ -1754,6 +1869,44 @@ div.catalog-popup span {
 			<a class="selmenu i" href="#ss-youtube"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAB2klEQVQ4y5WTv0vjMRjGP/3aauuvkisngiAahIIgRymKHCeIuAlu/RN0cbcO4uTSxdnFURAnxUVpwV3qLIIUERTpQfA3DrbPDantl0M574GQNyF587yfJBFJAohEIkhq9l9VAFCpVAAoFAqEx1+SGsrn8wKUy+XknJO1VoCstWq4VLlcljFGYTUTOOeaiyTJWivnnIwxKhaLnyYI3p0YY/7ptlQqfV5C2OZHJWSzWQH6a4si+h/kHygKwN4erKxA9TckuyH1HYIA2trg5gaSSRgdhcwP+PkLjIGzM8jlGn76+6Xz85avdFpKJqUgkB4epLExH6fT0uCgtLsrLS+HbiGb9QskaW6u1cbHpUpFOjiQJicl803a3vYJp6ZCDCYm4PQUnp4gk4HjYzg8hIEBuL2F+Xk4OfHx9DTUajAyArWaf4nU6xCPQywG3d1weQnX135DVxcsLcHjI/T1weurp9fTE4LYRBr18KJRcA6s9XE8Dh0dkErB2po/PZVq/QU6O1tJ6nVIJGBjw48TCdjagrc32N+HnR1YXISXl5CDoSG4u4PZWXh+hoUFb71ahfZ22NyEiwu4uvJzR0cwMwNA6yGtr/s7j8U8zPdawUPr7fV87u9heBhWVwH4A2xcVgnnGajtAAAAAElFTkSuQmCC"/></a>
 			<div/>
 			<a class="selmenu l" href="#ss-cancel">やめて</a>
+		</div>
+		<div id="draw-wrap" class="lightbox-wrap draw-wrap hide">
+			<div class="dimmer"></div>
+			<div class="draw-box-outer hide">
+				<div class="draw-box-inner">
+					<div class="draw-tools">
+						<div class="draw-color-control-wrap">
+							<div class="draw-color-wrap">
+								<div class="draw-bg" data-color="#f0e0d6"></div>
+								<div class="draw-fg" data-color="#800000"></div>
+							</div>
+							<div class="draw-color-switch"><a href="#draw-color-switch">交換</a></div>
+						</div>
+						<div class="draw-pen-width-wrap">
+							<div>ペンサイズ: <span id="draw-pen-indicator">3</span>px <canvas class="draw-pen-sample" width="24" height="24"></canvas></div>
+							<div>1<input class="draw-pen-range" type="range" min="1" max="24" step="1" value="3"/>24</div>
+						</div>
+						<div class="draw-zoom-wrap">
+							<div>
+								<label><input type="radio" name="draw-zoom" value="1" data-href="#draw-zoom-factor" checked="checked"/>×1</label>
+								<label><input type="radio" name="draw-zoom" value="2" data-href="#draw-zoom-factor"/>×2</label>
+							</div>
+							<div>
+								<label><input type="radio" name="draw-zoom" value="3" data-href="#draw-zoom-factor"/>×3</label>
+								<label><input type="radio" name="draw-zoom" value="4" data-href="#draw-zoom-factor"/>×4</label>
+							</div>
+						</div>
+						<div class="draw-clear-wrap">
+							<button data-href="#draw-clear">消去...</button>
+						</div>
+					</div>
+					<canvas class="draw-canvas" width="344" height="135"></canvas>
+					<div class="draw-buttons">
+						<button data-href="#draw-complete">描き終えた</button>
+						<button data-href="#draw-cancel">キャンセル</button>
+					</div>
+				</div>
+			</div>
 		</div>
 		<div id="lightbox-wrap" class="lightbox-wrap hide">
 			<div class="dimmer"></div>
