@@ -85,6 +85,7 @@ var catalogPopup;
 var quotePopup;
 var selectionMenu;
 var historyStateWrapper;
+var tegakiForSummary;
 
 // xmlhttprequest
 var transport;
@@ -2047,7 +2048,7 @@ function createKeyManager () {
 
 	function keypress (e) {
 		var focusedNodeName = getFocusedNodeName();
-		if (isSpecialInputElement(focusedNodeName)) {
+		if ((e.code == 13 || e.code == 27) && isSpecialInputElement(focusedNodeName)) {
 			return;
 		}
 
@@ -4370,13 +4371,20 @@ function install (mode) {
 	});
 
 	/*
-	 * drawpad, standard size: 344x135
+	 * allow tegaki link, if baseform element exists or the page is summary
 	 */
 
 	(function (drawButtonWrap) {
 		if (!drawButtonWrap) return;
-		if (document.getElementsByName('baseform').length) {
-			drawButtonWrap.classList.remove('hide');
+		if (document.getElementsByName('baseform').length == 0 && pageModes[0] != 'summary') return;
+
+		drawButtonWrap.classList.remove('hide');
+
+		if (pageModes[0] == 'summary') {
+			var canvas = document.querySelector('.draw-canvas');
+			if (!canvas) return;
+			canvas.width = 640;
+			canvas.height = 480;
 		}
 	})(document.querySelector('.draw-button-wrap'));
 
@@ -4389,6 +4397,7 @@ function install (mode) {
 		file.addEventListener('change', function (e) {
 			setPostThumbnail(this.files[0]);
 			resetform('baseform', 'textonly');
+			tegakiForSummary = undefined;
 		}, false);
 	})($('upfile'));
 
@@ -5524,6 +5533,7 @@ function startDrawing (callback) {
 	var drawCanvas;
 	var ctx;
 	var ctxPenSample;
+	var undoImage;
 	var mousedownPos = {x: null, y: null};
 
 	var foregroundColor = '#800000';
@@ -5549,6 +5559,8 @@ function startDrawing (callback) {
 	}
 
 	function canvasMousedown (x, y) {
+		undoImage = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+
 		mousedownPos.x = x;
 		mousedownPos.y = y;
 
@@ -5685,12 +5697,17 @@ function startDrawing (callback) {
 			.add('#draw-color-switch', handleColorSwitch)
 			.add('#draw-zoom-factor', handleZoomFactor)
 			.add('#draw-clear', handleClear)
+			.add('#draw-undo', handleUndo)
 			.add('#draw-complete', handleComplete)
 			.add('#draw-cancel', handleCancel);
 
 		// register keyboard events
 		keyManager
 			.addStroke('draw', ['1', '2', '3', '4'], handleZoomFactorKey)
+			.addStroke('draw', '[', handleThinerPen)
+			.addStroke('draw', ']', handleThickerPen)
+			.addStroke('draw', 'x', handleColorSwitch)
+			.addStroke('draw', 'u', handleUndo)
 			.addStroke('draw', '\u001b', handleCancel)
 			.updateManifest();
 
@@ -5783,7 +5800,7 @@ function startDrawing (callback) {
 		});
 	}
 
-	function handleColorSwitch (e) {
+	function handleColorSwitch () {
 		var container = drawWrap.querySelector('.draw-color-wrap');
 		container.appendChild(
 			container.removeChild(container.firstElementChild));
@@ -5811,8 +5828,32 @@ function startDrawing (callback) {
 		}
 	}
 
-	function handleClear (e) {
+	function handleThinerPen () {
+		var range = drawWrap.querySelector('.draw-pen-range');
+		if (range) {
+			range.value = Math.max(range.min, range.value - 1);
+			handlePenRangeInput({target: range});
+		}
+	}
+
+	function handleThickerPen () {
+		var range = drawWrap.querySelector('.draw-pen-range');
+		if (range) {
+			range.value = Math.min(range.max, (range.value - 0) + 1);
+			handlePenRangeInput({target: range});
+		}
+	}
+
+	function handleUndo () {
+		if (undoImage) {
+			ctx.putImageData(undoImage, 0, 0);
+			undoImage = null;
+		}
+	}
+
+	function handleClear () {
 		if (window.confirm('消去していいですか？')) {
+			undoImage = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
 			ctx.fillStyle = '#f0e0d6'; //backgroundColor;
 			ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 		}
@@ -6411,6 +6452,23 @@ function rangeToString (range) {
 	return nodeToString(container);
 }
 
+// http://stackoverflow.com/a/30666203
+function dataURLtoBlob (dataUrl, callback) {
+	var req = new window.XMLHttpRequest;
+
+	req.open('GET', dataUrl);
+	// Can't use blob directly because of https://crbug.com/412752
+	req.responseType = 'arraybuffer';
+
+	req.onload = function (e) {
+		var mime = req.getResponseHeader('content-type');
+		callback(new window.Blob([this.response], {type: mime}));
+		req = null;
+	};
+
+	req.send();
+}
+
 /*
  * <<<1 functions for posting
  */
@@ -6490,6 +6548,19 @@ function postBase (type, form, callback) {
 				'\r\n'
 			);
 		});
+
+		if (tegakiForSummary) {
+			data.push(
+				'--' + boundary + '\r\n' +
+				'Content-Disposition: form-data' +
+				'; name="upfile"' +
+				'; filename="tegaki.png"\r\n' +
+				'Content-Type: image/png\r\n' +
+				'\r\n',
+				tegakiForSummary,
+				'\r\n'
+			);
+		}
 
 		data.push('--' + boundary + '--\r\n');
 		data = new window.Blob(data);
@@ -8060,6 +8131,7 @@ var commands = {
 						commands.deactivatePostForm();
 						setPostThumbnail();
 						resetForm('com', 'upfile', 'textonly', 'baseform');
+						tegakiForSummary = undefined;
 						setBottomStatus('投稿完了');
 
 						var pageMode = pageModes[0];
@@ -8394,14 +8466,21 @@ var commands = {
 		startDrawing(function (dataURL) {
 			if (!dataURL) return;
 
-			var baseform = document.getElementsByName('baseform')[0];
 			var thumbWrap = $('post-image-thumbnail-wrap');
 			var thumb = $('post-image-thumbnail');
-			if (!baseform || !thumbWrap || !thumb) return;
+			if (!thumbWrap || !thumb) return;
 
 			var img = document[CRE]('img');
 			img.onload = function () {
-				baseform.value = dataURL.replace(/^[^,]+,/, '');
+				var baseform = document.getElementsByName('baseform')[0];
+				if (pageModes[0] == 'summary' || pageModes[0] == 'catalog') {
+					dataURLtoBlob(dataURL, function (blob) {
+						tegakiForSummary = blob;
+					});
+				}
+				else if (baseform) {
+					baseform.value = dataURL.replace(/^[^,]+,/, '');
+				}
 				resetForm('upfile', 'textonly');
 				doDisplayThumbnail(thumbWrap, thumb, img);
 				img = img.onload = thumbWrap = thumb = null;

@@ -1193,7 +1193,7 @@ hr {
 }
 
 .draw-tools {
-	margin:0 0 24px 0;
+	margin:0;
 	padding:3px;
 	border-top:1px solid #6a6a6a;
 	background-color:#535353;
@@ -1204,6 +1204,28 @@ hr {
 	flex-direction:row;
 	justify-content:center;
 	align-items:stretch;
+}
+
+.draw-shortcut-describes {
+	margin:4px 0 24px 0;
+	font-size:x-small;
+	line-height:1;
+	color:#fff;
+	text-align:center;
+}
+
+.draw-shortcut-describes span {
+	margin:0 4px 0 16px;
+	padding:1px 4px 1px 4px;
+	border-radius:3px;
+	background-color:#ea8;
+	color:#800;
+	font-family:monospace;
+	font-size:small;
+}
+
+.draw-shortcut-describes span.mini {
+	margin-left:-3px !important;
 }
 
 .draw-tools > div {
@@ -1250,7 +1272,7 @@ hr {
 	width:24px;
 	height:24px;
 	border:1px solid #fff;
-	outline:1px solid #353535;
+	box-shadow:#000 0px 0px 0px 1px;
 }
 
 .draw-fg {
@@ -1898,8 +1920,10 @@ div.catalog-popup span {
 						</div>
 						<div class="draw-clear-wrap">
 							<button data-href="#draw-clear">消去...</button>
+							<button data-href="#draw-undo">アンドゥ</button>
 						</div>
 					</div>
+					<div class="draw-shortcut-describes"><span>X</span>色交換<span>[</span>細く<span>]</span>太く<span>1</span><span class="mini">2</span><span class="mini">3</span><span class="mini">4</span>表示倍率<span>u</span>アンドゥ<span>esc</span>キャンセル</div>
 					<canvas class="draw-canvas" width="344" height="135"></canvas>
 					<div class="draw-buttons">
 						<button data-href="#draw-complete">描き終えた</button>
