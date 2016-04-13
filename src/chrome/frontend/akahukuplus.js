@@ -283,7 +283,11 @@ function handleDOMContentLoaded (e) {
 		boot();
 	};
 	var timeout = function () {
-		if (connected || retryRest <= 0) return;
+		if (connected) return;
+		if (retryRest <= 0) {
+			document.body[IHTML] = 'akahukuplus: バックエンドに接続できません。中止。';
+			return;
+		}
 		retryRest--;
 		wait += 1000;
 		setTimeout(function () {timeout()}, wait);

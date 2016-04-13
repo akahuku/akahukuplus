@@ -11,7 +11,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2015 akahuku, akahuku@gmail.com
+ * Copyright 2012-2016 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@
 		&& window.navigator.userAgent.indexOf('Gecko/') != -1;
 	var IS_FX_JETPACK =
 		typeof global.self == 'object' && typeof global.self.on == 'function'
-		&& /^\s*function\s+on\s*\([^)]*\)\s*\{\s*\[native\s+code\]\s*\}\s*$/.test(
+		&& /^\s*function(?: bound)? on\s*\([^)]*\)\s*\{\s*\[native\s+code\]\s*\}\s*$/.test(
 			global.self.on.toString().replace(/[\s\r\n\t]+/g, ' '));
 	/* >>> */
 
@@ -182,7 +182,7 @@
 				}
 			});
 		},
-		getKeyHookScriptSrc: function (path) {
+		getPageContextScriptSrc: function (path) {
 			return '';
 		},
 		ensureRun: function () {
@@ -296,8 +296,8 @@
 		this.getMessage = function (messageId) {
 			return chrome.i18n.getMessage(messageId);
 		};
-		this.getKeyHookScriptSrc = function () {
-			return chrome.runtime.getURL('scripts/key_hook.js');
+		this.getPageContextScriptSrc = function () {
+			return chrome.runtime.getURL('scripts/page_context.js');
 		};
 		this.urlInfo = new function () {
 			var extensionId = chrome.runtime.id;
@@ -383,8 +383,8 @@
 		this.setMessageListener = function (handler) {
 			onMessageHandler = handler;
 		};
-		this.getKeyHookScriptSrc = function () {
-			return widget.preferences['keyHookScript'];
+		this.getPageContextScriptSrc = function () {
+			return widget.preferences['pageContextScript'];
 		};
 		this.urlInfo = new function () {
 			var extensionId = widget.preferences['widget-id'];
@@ -488,8 +488,8 @@
 		this.setMessageListener = function (handler) {
 			onMessageHandler = handler;
 		};
-		this.getKeyHookScriptSrc = function () {
-			return self.options.keyHookScript;
+		this.getPageContextScriptSrc = function () {
+			return self.options.pageContextScript;
 		};
 		this.urlInfo = new function () {
 			var extensionHostname = self.options.extensionId
@@ -497,7 +497,7 @@
 				.replace(/@/g, '-at-')
 				.replace(/\./g, '-dot-');
 			return new UrlInfo(
-				'resource://' + extensionHostname + '/wasavi/data/options.html',
+				self.options.wasaviOptionsUrl,
 				self.options.wasaviFrameSource
 			);
 		};

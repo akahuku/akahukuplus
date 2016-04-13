@@ -78,10 +78,14 @@
 				s.onload = onload;
 				document.head.appendChild(s);
 				modules[s.src] = global.exports = {};
+				global.module = global;
 			}
 		};
 		loader(function onload (e) {
 			if (e) {
+				if (modules[e.target.src] != global.exports) {
+					modules[e.target.src] = global.exports;
+				}
 				e.target.onload = null;
 				e.target.parentNode.removeChild(e.target);
 			}
