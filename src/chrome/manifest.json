@@ -11,11 +11,8 @@
   },
   "permissions": [
     "tabs", "clipboardRead", "clipboardWrite", "webRequest", "webRequestBlocking",
-    "http://*.2chan.net/*",
-    "https://*.dropbox.com/*",
-    "https://*.google.com/*",
-    "https://*.googleapis.com/*",
-    "https://apis.live.net/*"
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "page": "backend/main.html"

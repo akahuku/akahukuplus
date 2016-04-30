@@ -351,6 +351,9 @@ function boot () {
 				return;
 			}
 
+			// notify initialized message to backend
+			sendToBackend('initialized');
+
 			try {
 				// transform xsl into html
 				timingLogger.startTag('applying xsl');

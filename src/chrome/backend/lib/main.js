@@ -32,7 +32,7 @@
 	var fetchTweets = require('./FetchTweets').FetchTweets();
 	var completeUpfiles = require('./CompleteUpfiles').CompleteUpfiles();
 	var saveImage = require('./SaveImage').SaveImage();
-	var akahukuplusRunning = {};
+	var initializingTabIds = {};
 
 	/* <<<1 functions */
 	function getContentScriptsSpec () {
@@ -62,30 +62,34 @@
 	function optimizeAssetLoadingOnChrome () {
 		var cancelParam = {cancel: true};
 		var throughParam = {cancel: false};
+		var regexFutabaContent = /^https?:\/\/[^.]+\.2chan\.net(:\d+)?\/[^\/]+\/(?:(?:futaba|\d+)|res\/\d+)\.html?/;
+		var regexFutabaAsset = /^https?:\/\/[^.]+\.2chan\.net(:\d+)?\//;
 		chrome.webRequest.onBeforeRequest.addListener(
 			function (details) {
-				if (details.type == 'main_frame') {
-					akahukuplusRunning[details.tabId] = true;
-					return throughParam;
-				}
-				else {
-					// other assets
-					if (details.tabId in akahukuplusRunning) {
-						return cancelParam;
-					}
-					else {
+				switch (details.type) {
+				case 'main_frame':
+				case 'sub_frame':
+					if (regexFutabaContent.test(details.url)) {
+						initializingTabIds[details.tabId] = true;
 						return throughParam;
 					}
+					break;
+
+				case 'image':
+					if (regexFutabaAsset.test(details.url)) {
+						return throughParam;
+					}
+					break;
+				}
+
+				if (details.tabId in initializingTabIds) {
+					return cancelParam;
+				}
+				else {
+					return throughParam;
 				}
 			},
-			{
-				urls: ['http://*.2chan.net/*'],
-				// xhr request is always allowed
-				types: [
-					'main_frame', 'sub_frame', 'stylesheet',
-					'script', 'object', 'other'
-				]
-			},
+			{urls: ['<all_urls>']},
 			['blocking']
 		);
 	}
@@ -158,13 +162,15 @@
 
 			switch (command.type) {
 			case 'init':
-				delete akahukuplusRunning[sender];
 				res({
 					extensionId: ext.id,
 					tabId: sender,
 					version: ext.version,
 					devMode: ext.isDev
 				});
+				break;
+			case 'initialized':
+				delete initializingTabIds[sender];
 				break;
 			case 'iconv':
 				res(sjisUtils.toSjis(data));
