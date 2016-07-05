@@ -1066,6 +1066,7 @@ function createXMLGenerator () {
 				}
 				catch (e) {}
 
+				anchor.textContent = reduceURL(anchor.textContent);
 				anchor.setAttribute('class', linkTargets[index].className);
 				anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
 			}
@@ -1089,6 +1090,45 @@ function createXMLGenerator () {
 				break;
 			}
 		}
+	}
+
+	function reduceURL (url) {
+		var LIMIT = 100;
+
+		if (url.length <= LIMIT) {
+			return url;
+		}
+
+		var re = /^([^:]+:\/\/[^\/]+\/)([^?]*)?(\?.*)?/.exec(url);
+		var result = re[1];
+		var seps = ['/', '&'];
+		var components = [(re[2] || '').split(seps[0]), (re[3] || '').split(seps[1])];
+
+		components.forEach(function (cs, i) {
+			if (i == 1 && components[0].length) return;
+
+			while (cs.length && result.length < LIMIT) {
+				result += cs[0];
+				if (cs.length > 1) {
+					result += seps[i];
+				}
+				cs.shift();
+			}
+
+			if (result.length >= LIMIT) {
+				var lastIndex = result.lastIndexOf(seps[i]);
+				if (lastIndex >= 0) {
+					cs.push(result.substring(lastIndex + 1));
+					result = result.substring(0, lastIndex + 1);
+				}
+			}
+		});
+
+		if (components[0].length || components[1].length) {
+			result += '...(省略)';
+		}
+
+		return result;
 	}
 
 	function toUCS32 (s) {
@@ -1230,6 +1270,9 @@ function createXMLGenerator () {
 
 		// strip script tag and its contents
 		content = content.replace(/<script[^>]*>.*?<\/script>/gi, '');
+
+		// strip comments
+		content = content.replace(/<!--.*?-->/g, ' ');
 
 		// regalize all references
 		content = content.replace(/&amp;/g, '&');
@@ -1438,7 +1481,7 @@ function createXMLGenerator () {
 		 */
 
 		var threadIndex = 0;
-		var threadRegex = /(<br>|<\/div>)(<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
+		var threadRegex = /(<br>|<\/div>\s*<div\s+class="thre"[^>]*>\s*)(<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
 		var matches;
 		markStatistics.start();
 		while ((matches = threadRegex.exec(content))) {
@@ -2448,6 +2491,8 @@ function createMarkStatistics () {
 
 	function updatePostformView (statistics) {
 		var result = false;
+		var marked = false;
+		var identified = false;
 
 		for (var i in statistics.count) {
 			var current = statistics.count[i];
@@ -2463,7 +2508,28 @@ function createMarkStatistics () {
 			var s = current + '(' + (diff > 0 ? '+' : '') + diff + ')';
 			$t('replies-' + i, s);
 			$t('pf-replies-' + i, s);
-			(i == 'mark' || i == 'id') && sounds.detectNewMark.play();
+
+			if (i == 'mark') {
+				marked = true;
+			}
+			else if (i == 'id') {
+				identified = true;
+			}
+		}
+
+		if (identified) {
+			var node;
+			if (window.location.hostname == 'may.2chan.net'
+			&& /^\/id\//.test(window.location.pathname)) {
+				identified = false;
+			}
+			else if ((node = document.querySelector('.topic-wrap .email'))
+			&& /ID表示/i.test(node.textContent)) {
+				identified = false;
+			}
+		}
+		if (marked || identified) {
+			sounds.detectNewMark.play();
 		}
 
 		return result;
@@ -3662,6 +3728,11 @@ function createHistoryStateWrapper (popstateHandler) {
 			window.addEventListener('popstate', popstateHandler, false);
 		}
 	};
+}
+
+function createTransport () {
+	transportLastUsedTime = Date.now();
+	return new window.XMLHttpRequest;
 }
 
 /*
@@ -6661,7 +6732,7 @@ function postBase (type, form, callback) {
 		transport.send(data);
 	}
 
-	transport = new window.XMLHttpRequest;
+	transport = createTransport();
 	transportType = type;
 	sendToBackend('iconv', getIconvPayload(form), handleIconv);
 }
@@ -6772,7 +6843,7 @@ function reloadBase (callback, errorCallback) {
 	timingLogger.startTag('reloadBase');
 	var now = Date.now();
 
-	transport = new window.XMLHttpRequest;
+	transport = createTransport();
 	transportType = 'reload';
 	transport.open('GET', window.location.href);
 	transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
@@ -6879,7 +6950,7 @@ function reloadCatalogBase (query, callback, errorCallback) {
 	timingLogger.startTag('reloadCatalogBase');
 	var now = Date.now();
 
-	transport = new window.XMLHttpRequest;
+	transport = createTransport();
 	transportType = 'reload';
 	transport.open('GET', resolveRelativePath('futaba.php?mode=cat' + query));
 	transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
@@ -8345,7 +8416,7 @@ var commands = {
 			'?b=' + encodeURIComponent(re[2]) +
 			'&d=' + encodeURIComponent(getPostNumber(anchor));
 
-		transport = new window.XMLHttpRequest;
+		transport = createTransport();
 		transportType = 'moderate-pre';
 		transport.open('GET', moderatorUrl);
 		transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
