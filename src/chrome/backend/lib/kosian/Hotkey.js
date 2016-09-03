@@ -138,6 +138,7 @@
 			var result = [];
 
 			hotkeys = (hotkeys || '').replace(/^\s+|\s+$/g, '') || this.defaultHotkeysDesc_;
+			hotkeys = hotkeys.replace(/,>/g, 'comma>');
 			hotkeys.toLowerCase().split(/\s*,\s*/).forEach(function (sc) {
 				var re = /^<([^>]+)>$/.exec(sc);
 				if (!re) return;

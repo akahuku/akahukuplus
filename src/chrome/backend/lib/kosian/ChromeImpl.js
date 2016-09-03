@@ -31,7 +31,7 @@
 	function openTabWithUrl (url, selfUrl, callback) {
 		var that = this;
 		var selfHost = this.getBaseUrl(selfUrl);
-		chrome.tabs.query({}, function (tabs) {
+		chrome.tabs.query({windowId:chrome.windows.WINDOW_ID_CURRENT}, function (tabs) {
 			var state = 0;
 			var existsTabId = -1;
 			var rightTabIndex = -1;

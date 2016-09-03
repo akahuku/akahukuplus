@@ -812,7 +812,8 @@ function createXMLGenerator () {
 			var imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
 			if (imagehref) {
 				var imageNode = element(replyNode, 'image');
-				imageNode.appendChild(text(resolveRelativePath(imagehref[1], baseUrl)));
+				var srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
 				// animated
@@ -834,6 +835,7 @@ function createXMLGenerator () {
 				if (re) {
 					thumbUrl = re[1].replace(/^["']|["']$/g, '');
 					thumbUrl = resolveRelativePath(thumbUrl, baseUrl);
+					thumbUrl = restoreDistributedImageURL(thumbUrl);
 				}
 				re = /\bwidth="?(\d+)"?/i.exec(imagehref[2]);
 				if (re) {
@@ -875,14 +877,15 @@ function createXMLGenerator () {
 			anchor
 		));
 	};
-	LinkTarget.prototype.completeScheme = function (url, scheme) {
-		scheme || (scheme = 'http');
-		if (/^[^:]*:\/\//.test(url)) {
-			url = url.replace(/^[^:]*:\/\//, scheme + '://');
+	LinkTarget.prototype.completeScheme = function (url) {
+		var scheme = /^[^:]+/.exec(url)[0];
+		if (/^h?t?t?p?s$/.test(scheme)) {
+			scheme = 'https';
 		}
-		else {
-			url = scheme + '://' + url;
+		else if (/^h?t?t?p?$/.test(scheme)) {
+			scheme = 'http';
 		}
+		url = url.replace(/^[^:]*:\/\//, scheme + '://');
 		return url;
 	};
 	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
@@ -1022,10 +1025,9 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-external',
-			'\\b((h?t?t?p?s?)(://\\S+))',
+			'\\b((\\w+)(://\\S+))',
 			function (re, anchor) {
-				var scheme = /s$/.test(re[1]) ? 'https': 'http';
-				return scheme + re[2];
+				return re[0];
 			}
 		)
 	];
@@ -1280,7 +1282,7 @@ function createXMLGenerator () {
 		// base url
 		re = /<base[^>]+href="([^"]+)"/i.exec(content);
 		if (re) {
-			baseUrl = re[1];
+			baseUrl = resolveRelativePath(re[1], window.location.protocol + '//' + window.location.host + '/');
 			element(metaNode, 'base').appendChild(text(re[1]));
 		}
 
@@ -1643,6 +1645,7 @@ function createXMLGenerator () {
 				if (re) {
 					thumbUrl = re[1].replace(/^["']|["']$/g, '');
 					thumbUrl = resolveRelativePath(thumbUrl, baseUrl);
+					thumbUrl = restoreDistributedImageURL(thumbUrl);
 				}
 				re = /\bwidth="?(\d+)"?/i.exec(imagehref[2]);
 				if (re) {
@@ -1844,6 +1847,12 @@ function createConfigurator () {
 			type:'bool',
 			value:false,
 			name:'バナーを表示する'
+		},
+		image_distrubution_enabled: {
+			type:'bool',
+			value:true,
+			name:'画像の分散化を有効にする',
+			desc:'このスイッチをオフにすると、画像を掲示板のあるサーバから取得します。画像サーバが落ちている場合などに一時的にオフにするとよいでしょう'
 		}
 	};
 
@@ -6236,11 +6245,22 @@ function resolveRelativePath (url, baseUrl) {
 		return url;
 	}
 	else if (/^\//.test(url)) {
-		return baseUrl.replace(/^(\w+:\/\/[^\/]+).*$/, '$1') + url;
+		return window.location.protocol + '//' + window.location.host + url;
 	}
 	else {
 		return baseUrl + url;
 	}
+}
+
+function restoreDistributedImageURL (url) {
+	if (config.data.image_distrubution_enabled.value) {
+		return url;
+	}
+	// $1: scheme
+	// $2: base host
+	// $3: original server
+	// $4: rest file name
+	return url.replace(/^([^:]+:\/\/)[^.]+(\.2chan\.net(?::\d+)?)\/([^\/]+)\/([^\/]+\/(?:cat|thumb|src)\/.*)/, '$1$3.2chan.net/$4');
 }
 
 function serializeXML (xml) {
@@ -8068,8 +8088,9 @@ var commands = {
 
 								switch (atr) {
 								case 'data-src':
-									to.src = config.data.catalog_thumbnail_scale.value >= 1.5 ?
-										value.replace('/cat/', '/thumb/') : value;
+									to.src = restoreDistributedImageURL(
+										config.data.catalog_thumbnail_scale.value >= 1.5 ?
+											value.replace('/cat/', '/thumb/') : value);
 									break;
 
 								case 'width':
