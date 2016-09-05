@@ -1623,7 +1623,8 @@ function createXMLGenerator () {
 			var imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(topicInfo);
 			if (imagehref) {
 				var imageNode = element(topicNode, 'image');
-				imageNode.appendChild(text(resolveRelativePath(imagehref[1], baseUrl)));
+				var srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
 				// animated
