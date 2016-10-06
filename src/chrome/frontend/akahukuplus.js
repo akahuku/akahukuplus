@@ -891,7 +891,7 @@ function createXMLGenerator () {
 	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png)$/.test(re[2])) {
+			if (/\.(?:jpg|gif|png|webm)$/.test(re[2])) {
 				anchor.setAttribute('class', this.className + ' lightbox');
 				anchor.setAttribute('thumbnail', baseUrl + 'misc/' + re[1] + '.thumb.jpg');
 			}
@@ -906,7 +906,7 @@ function createXMLGenerator () {
 	LinkTarget.prototype.upProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png)$/.test(re[2])) {
+			if (/\.(?:jpg|gif|png|webm)$/.test(re[2])) {
 				anchor.setAttribute('class', this.className + ' lightbox');
 			}
 			return baseUrl + 'src/' + re[1] + re[2];
@@ -1005,13 +1005,13 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-futaba lightbox',
-			'\\b((?:h?t?t?p?://)?[^.]+\\.2chan\\.net/[^/]+/[^/]+/src/\\d+\\.(?:jpg|gif|png)\\S*)',
+			'\\b((?:h?t?t?p?://)?[^.]+\\.2chan\\.net/[^/]+/[^/]+/src/\\d+\\.(?:jpg|gif|png|webm)\\S*)',
 			function (re, anchor) {
 				anchor.setAttribute(
 					'thumbnail',
 					re[0]
 						.replace('/src/', '/thumb/')
-						.replace(/\.(?:jpg|gif|png)/, 's.jpg'));
+						.replace(/\.(?:jpg|gif|png|webm)/, 's.jpg'));
 				return re[0];
 			}
 		),
@@ -4226,7 +4226,12 @@ function install (mode) {
 		})
 		.add('.lightbox', function (e, t) {
 			if (config.data.lightbox_enabled.value) {
-				lightbox(t, t.classList.contains('link-siokara'));
+				if (/\.(?:jpg|gif|png)$/.test(t.href)) {
+					lightbox(t, t.classList.contains('link-siokara'));
+				}
+				else if (/\.(?:webm)$/.test(t.href)) {
+					displayInlineVideo(t);
+				}
 			}
 			else {
 				return 'passthrough';
@@ -6356,6 +6361,9 @@ function getImageMimeType (href) {
 	if (/\.gif\b/i.test(href)) {
 		return 'image/gif';
 	}
+	if (/\.webm\b/i.test(href)) {
+		return 'video/webm';
+	}
 	return 'application/octet-stream';
 }
 
@@ -6542,7 +6550,7 @@ function nodeToString (container) {
 		}
 	}
 
-	return result.join('');
+	return result.join('').replace(/^\s+|\s+$/g, '');
 }
 
 function rangeToString (range) {
@@ -6566,6 +6574,35 @@ function dataURLtoBlob (dataUrl, callback) {
 	};
 
 	req.send();
+}
+
+function displayInlineVideo (anchor) {
+	var thumbnail = anchor.querySelector('img');
+	var video = document[CRE]('video');
+	var props = {
+		autoplay: true,
+		controls: true,
+		//loop: true,
+		muted: false,
+		src: anchor.href
+	};
+
+	for (var i in props) {
+		video[i] = props[i];
+	}
+
+	anchor.parentNode.insertBefore(video, anchor);
+
+	if (thumbnail) {
+		var r = thumbnail.getBoundingClientRect();
+		thumbnail.style.display = 'none';
+
+		video.style.width = r.width + 'px';
+		video.style.height = r.height + 'px';
+	}
+	else {
+		video.style.width = '250px';
+	}
 }
 
 /*
@@ -7082,7 +7119,7 @@ function extractIncompleteFiles () {
 					node.appendChild(document.createTextNode(data.base));
 				}
 
-				if (/\.(?:jpg|gif|png)$/.test(data.url)) {
+				if (/\.(?:jpg|gif|png|webm)$/.test(data.url)) {
 					node.classList.add('lightbox');
 				}
 
@@ -7560,7 +7597,7 @@ function setPostThumbnail (file) {
 	var thumb = $('post-image-thumbnail');
 
 	if (!thumbWrap || !thumb) return;
-	if (!file || !/^image\/(?:jpeg|png|gif)$/.test(file.type)) {
+	if (!file || !/^(?image\/(?:jpeg|png|gif)|video\/webm)$/.test(file.type)) {
 		thumbWrap.removeAttribute('data-available');
 		setPostThumbnailVisibility(false);
 		return;
