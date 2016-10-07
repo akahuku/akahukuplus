@@ -7597,7 +7597,7 @@ function setPostThumbnail (file) {
 	var thumb = $('post-image-thumbnail');
 
 	if (!thumbWrap || !thumb) return;
-	if (!file || !/^(?image\/(?:jpeg|png|gif)|video\/webm)$/.test(file.type)) {
+	if (!file || !/^(?:image\/(?:jpeg|png|gif))|video\/webm$/.test(file.type)) {
 		thumbWrap.removeAttribute('data-available');
 		setPostThumbnailVisibility(false);
 		return;
