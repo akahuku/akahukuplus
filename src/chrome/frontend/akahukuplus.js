@@ -4,8 +4,14 @@
 // @include       http://*.2chan.net/*/*.htm?*
 // @include       http://*.2chan.net/*/res/*.htm
 // @include       http://*.2chan.net/*/res/*.htm?*
+// @include       https://*.2chan.net/*/*.htm
+// @include       https://*.2chan.net/*/*.htm?*
+// @include       https://*.2chan.net/*/res/*.htm
+// @include       https://*.2chan.net/*/res/*.htm?*
 // @exclude       http://dec.2chan.net/up/*
 // @exclude       http://dec.2chan.net/up2/*
+// @exclude       https://dec.2chan.net/up/*
+// @exclude       https://dec.2chan.net/up2/*
 // ==/UserScript==
 
 /*
