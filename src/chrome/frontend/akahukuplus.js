@@ -740,8 +740,8 @@ function createXMLGenerator () {
 			}
 
 			// mark
-			re = /\[?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(comment);
-			if (re) {
+			re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(comment);
+			if (re && (!re[1] || re[1].substr(-1) != '=')) {
 				if (!replyNode.querySelector('deleted')) {
 					element(replyNode, 'deleted');
 				}
@@ -750,9 +750,9 @@ function createXMLGenerator () {
 				re[0].charAt(0) == '['
 					&& re[0].substr(-1) == ']'
 					&& markNode.setAttribute('bracket', 'true');
-				re[1] = stripTags(re[1]);
-				markNode.appendChild(text(re[1]));
-				markStatistics.notifyMark(number, re[1]);
+				re[2] = stripTags(re[2]);
+				markNode.appendChild(text(re[2]));
+				markStatistics.notifyMark(number, re[2]);
 			}
 
 			// そうだね (that's right）
@@ -1671,13 +1671,13 @@ function createXMLGenerator () {
 			}
 
 			// communist sign :-)
-			re = /\[?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(topic);
-			if (re) {
+			re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(topic);
+			if (re && (!re[1] || re[1].substr(-1) != '=')) {
 				var markNode = element(topicNode, 'mark');
 				re[0].charAt(0) == '['
 					&& re[0].substr(-1) == ']'
 					&& markNode.setAttribute('bracket', 'true');
-				markNode.appendChild(text(stripTags(re[1])));
+				markNode.appendChild(text(stripTags(re[2])));
 			}
 
 			// comment
@@ -6249,19 +6249,22 @@ function appendFragment (container, f) {
 }
 
 function resolveRelativePath (url, baseUrl) {
+	// full path
+	if (/^(\w+:)?\/\//.test(url)) {
+		return url;
+	}
+
+	// absolute path
+	else if (/^\//.test(url)) {
+		return window.location.protocol + '//' + window.location.host + url;
+	}
+
+	// relative path
 	if (baseUrl == undefined) {
 		baseUrl = (document.getElementsByTagName('base')[0] || window.location).href;
 	}
 	baseUrl = baseUrl.replace(/\/[^\/]*$/, '/');
-	if (/^\w+:\/\//.test(url)) {
-		return url;
-	}
-	else if (/^\//.test(url)) {
-		return window.location.protocol + '//' + window.location.host + url;
-	}
-	else {
-		return baseUrl + url;
-	}
+	return baseUrl + url;
 }
 
 function restoreDistributedImageURL (url) {
