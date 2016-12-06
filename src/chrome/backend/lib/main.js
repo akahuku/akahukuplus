@@ -43,11 +43,13 @@
 			{
 				name: 'akahukuplus',
 				matches: [
-					/^http:\/\/[^.]+\.2chan\.net\/[^\/]+\/(?:futaba|(?:res\/)?\d+)\.html?\b.*(#[^#]*)?$/
+					/^https?:\/\/[^.]+\.2chan\.net\/[^\/]+\/(?:futaba|(?:res\/)?\d+)\.html?\b.*(#[^#]*)?$/
 				],
 				exclude_matches: [
 					'http://dec.2chan.net/up/*',
 					'http://dec.2chan.net/up2/*',
+					'https://dec.2chan.net/up/*',
+					'https://dec.2chan.net/up2/*'
 				],
 				js: [
 					'frontend/extension_wrapper.js',
