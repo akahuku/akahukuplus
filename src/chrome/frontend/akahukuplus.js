@@ -7016,10 +7016,11 @@ function reloadBase (callback, errorCallback) {
 function reloadCatalogBase (query, callback, errorCallback) {
 	timingLogger.startTag('reloadCatalogBase');
 	var now = Date.now();
+	var board = window.location.pathname.split('/')[1];
 
 	transport = createTransport();
 	transportType = 'reload';
-	transport.open('GET', resolveRelativePath('futaba.php?mode=cat' + query));
+	transport.open('GET', '/' + board + '/futaba.php?mode=cat' + query);
 	transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
 
 	transport.onload = function (e) {
