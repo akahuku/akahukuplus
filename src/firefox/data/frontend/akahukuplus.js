@@ -1,1 +1,0 @@
-../../../chrome/frontend/akahukuplus.js

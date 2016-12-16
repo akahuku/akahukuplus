@@ -92,8 +92,7 @@
 			if (args.length) {
 				loader(onload);
 			}
-			else {
-				/*
+			else if (false) {
 				var a = ['*** all scripts has been loaded ***'];
 				for (var i in modules) {
 					a.push('module path: ' + i);
@@ -102,13 +101,12 @@
 					}
 				}
 				console.log(a.join('\n'));
-				 */
 			}
 		});
 	}
 
 	function getBasePath () {
-		var pattern = /((?:chrome-extension|widget):.*\.js)/;
+		var pattern = /((?:(?:chrome|moz)-extension|widget):.*\.js)/;
 		var stack = (new Error).stack.split('\n');
 		var self, target;
 		while (stack.length) {
@@ -130,7 +128,8 @@
 
 	function require (path) {
 		if (path in pathCache) {
-			return modules[pathCache[path]];
+			path = pathCache[path];
+			return path in modules ? modules[path] : null;
 		}
 
 		var base = getBasePath();
@@ -140,7 +139,11 @@
 		var canonical = anchor.href;
 		pathCache[path] = canonical;
 
-		if (!modules[canonical] && /^\./.test(path)) {
+		if (canonical in modules) {
+			return modules[canonical];
+		}
+
+		if (/^\./.test(path)) {
 			console.error([
 				'*** error in require ***',
 				' argument path: "' + path + '"',
@@ -150,7 +153,7 @@
 			].join('\n'));
 		}
 
-		return modules[canonical];
+		return null;
 	}
 
 	global.loadScripts = loadScripts;

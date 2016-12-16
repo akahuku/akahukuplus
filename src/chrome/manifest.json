@@ -1,55 +1,62 @@
 {
-  "manifest_version": 2,
-  "name": "__MSG_akahukuplus_name__",
-  "short_name": "__MSG_akahukuplus_name__",
-  "version": "0.0.1",
-  "description": "__MSG_akahukuplus_desc__",
-  "default_locale": "ja",
-  "icons": {
-     "48": "images/icon048.png",
-    "128": "images/icon128.png"
-  },
-  "permissions": [
-    "tabs", "clipboardRead", "clipboardWrite", "webRequest", "webRequestBlocking",
-    "http://*/*",
-    "https://*/*"
-  ],
-  "background": {
-    "page": "backend/main.html"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "http://*.2chan.net/*/*.htm",
-        "http://*.2chan.net/*/res/*.htm",
-        "https://*.2chan.net/*/*.htm",
-        "https://*.2chan.net/*/res/*.htm"
-      ],
-      "exclude_matches": [
-        "*://dec.2chan.net/up/*",
-        "*://dec.2chan.net/up2/*",
-		"*://*.2chan.net/bin/*"
-      ],
-      "js": [
-        "frontend/extension_wrapper.js",
-        "frontend/qeema.js",
-        "frontend/akahukuplus.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": true
-    },
-    {
-      "matches": [
-        "http://*.2chan.net/*/futaba.php",
-        "https://*.2chan.net/*/futaba.php"
-      ],
-      "js": [
-        "frontend/trampoline.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": true
-    }
-  ],
-  "homepage_url": "http://akahuku.github.io/akahukuplus/",
-  "update_url":"https://github.com/akahuku/akahukuplus/raw/master/dist/chrome.xml"
+	"manifest_version": 2,
+	"name": "__MSG_akahukuplus_name__",
+	"short_name": "__MSG_akahukuplus_name__",
+	"version": "0.0.1",
+	"description": "__MSG_akahukuplus_desc__",
+	"default_locale": "ja",
+	"applications": {
+		"gecko": {
+			"id": "jid1-ytdk6oePtVeu1A@jetpack",
+			"strict_min_version": "42.0",
+			"update_url": "https://github.com/akahuku/akahukuplus/raw/master/dist/firefox.json"
+		}
+	},
+	"icons": {
+		"48": "images/icon048.png",
+		"128": "images/icon128.png"
+	},
+	"permissions": [
+		"tabs", "clipboardRead", "clipboardWrite", "webRequest", "webRequestBlocking",
+		"http://*/*",
+		"https://*/*"
+	],
+	"background": {
+		"page": "backend/main.html"
+	},
+	"content_scripts": [
+		{
+			"matches": [
+				"http://*.2chan.net/*/*.htm*",
+				"http://*.2chan.net/*/res/*.htm*",
+				"https://*.2chan.net/*/*.htm*",
+				"https://*.2chan.net/*/res/*.htm*"
+			],
+			"exclude_matches": [
+				"*://dec.2chan.net/up/*",
+				"*://dec.2chan.net/up2/*",
+				"*://*.2chan.net/bin/*"
+			],
+			"js": [
+				"frontend/extension_wrapper.js",
+				"frontend/qeema.js",
+				"frontend/akahukuplus.js"
+			],
+			"run_at": "document_start",
+			"all_frames": true
+		},
+		{
+			"matches": [
+				"http://*.2chan.net/*/futaba.php*",
+				"https://*.2chan.net/*/futaba.php*"
+			],
+			"js": [
+				"frontend/trampoline.js"
+			],
+			"run_at": "document_start",
+			"all_frames": true
+		}
+	],
+	"homepage_url": "http://akahuku.github.io/akahukuplus/",
+	"update_url":"https://github.com/akahuku/akahukuplus/raw/master/dist/chrome.xml"
 }

@@ -173,7 +173,7 @@ window.opera && (function () {
 }(window.DOMParser));
 
 function d (s) {
-	result = '';
+	var result = '';
 	for (var i = 0, goal = s.length; i < goal; i++) {
 		result += String.fromCharCode(s.charCodeAt(i) - 1);
 	}
@@ -2240,7 +2240,7 @@ function createSound (name) {
 	}
 }
 
-function sendToBackend (type, data, callback) {
+function sendToBackend () {
 	var args = Array.prototype.slice.call(arguments), data, callback;
 	if (args.length > 1 && typeof args[args.length - 1] == 'function') {
 		callback = args.pop();
@@ -2251,7 +2251,7 @@ function sendToBackend (type, data, callback) {
 	else {
 		data = {};
 	}
-	data.type = type;
+	data.type = args[0];
 	backend.postMessage(data, callback);
 }
 
@@ -3748,7 +3748,13 @@ function createHistoryStateWrapper (popstateHandler) {
 
 function createTransport () {
 	transportLastUsedTime = Date.now();
-	return new window.XMLHttpRequest;
+	try {
+		// Firefox's WebExtensions is still incomplete
+		return XPCNativeWrapper(new window.wrappedJSObject.XMLHttpRequest);
+	}
+	catch (ex) {
+		return new window.XMLHttpRequest;
+	}
 }
 
 /*
@@ -4316,12 +4322,12 @@ function install (mode) {
 		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)
 		.addStroke('command.edit', '\u0013', commands.toggleSage)
 		.addStroke('command.edit', '<S-enter>', commands.post)
-		//.addStroke('command.edit', 'm-a', commands.cursorTopOfLine)
-		//.addStroke('command.edit', 'm-e', commands.cursorBottomOfLine)
+		.addStroke('command.edit', '\u0001', commands.cursorTopOfLine)
+		.addStroke('command.edit', '\u0005', commands.cursorBottomOfLine)
 		//.addStroke('command.edit', 'C-p', commands.cursorPrev)
 		//.addStroke('command.edit', 'C-n', commands.cursorNext)
-		//.addStroke('command.edit', 'C-b', commands.cursorBack)
-		//.addStroke('command.edit', 'C-f', commands.cursorForward)
+		.addStroke('command.edit', '\u0002', commands.cursorBack)
+		.addStroke('command.edit', '\u0006', commands.cursorForward)
 		.addStroke('command.edit', '\u000d', function (e, t) {
 			switch (t.id) {
 			case 'search-text':
@@ -5490,15 +5496,19 @@ function startColorPicker (target, options) {
 	// core functions
 	function parseHexColor (color) {
 		var r = 255, g = 255, b = 255, re;
-		if (re = /^\s*#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})\s*$/i.exec(color)) {
+		re = /^\s*#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})\s*$/i.exec(color);
+		if (re) {
 			r = parseInt(re[1], 16);
 			g = parseInt(re[2], 16);
 			b = parseInt(re[3], 16);
 		}
-		else if (re = /^\s*#?([0-9a-f])([0-9a-f])([0-9a-f])\s*$/i.exec(color)) {
-			r = parseInt(re[1], 16) * 17;
-			g = parseInt(re[2], 16) * 17;
-			b = parseInt(re[3], 16) * 17;
+		else {
+			re = /^\s*#?([0-9a-f])([0-9a-f])([0-9a-f])\s*$/i.exec(color)
+			if (re) {
+				r = parseInt(re[1], 16) * 17;
+				g = parseInt(re[2], 16) * 17;
+				b = parseInt(re[3], 16) * 17;
+			}
 		}
 		var result = {
 			hue: 0, saturation: 0, value: 0,
@@ -6672,12 +6682,26 @@ function postBase (type, form, callback) {
 		var data = [];
 
 		for (var i in items) {
+			var item = '';
+
+			// In Presto Opera, we have to use window.Uint8Array
+			// In Firefox WebExtensions, we have NOT to use window.Uint8Array
+			try {
+				if (typeof Uint8Array == 'function') {
+					item = new Uint8Array(items[i]);
+				}
+				else if (typeof window.Uint8Array == 'function') {
+					item = new window.Uint8Array(items[i]);
+				}
+			}
+			catch (ex) {
+				console.log(ex);
+			}
+
 			data.push(
 				'--' + boundary + '\r\n' +
 				'Content-Disposition: form-data; name="' + i + '"\r\n' +
-				'\r\n',
-				new window.Uint8Array(items[i]),
-				'\r\n'
+				'\r\n', item, '\r\n'
 			);
 		};
 
@@ -6934,8 +6958,9 @@ function reloadBase (callback, errorCallback) {
 			}
 
 			// for mark detection test
+			/*
 			if (doc) {
-				false && Array.prototype.forEach.call(
+				Array.prototype.forEach.call(
 					doc.querySelectorAll('blockquote:nth-child(-n+4)'),
 					function (node, i) {
 						switch (i) {
@@ -6971,7 +6996,7 @@ function reloadBase (callback, errorCallback) {
 					}
 				);
 				// for expiration warning test
-				false && Array.prototype.forEach.call(
+				Array.prototype.forEach.call(
 					doc.querySelectorAll('small + blockquote'),
 					function (node, i) {
 						node[IAHTML](
@@ -6981,6 +7006,7 @@ function reloadBase (callback, errorCallback) {
 					}
 				);
 			}
+			*/
 		}
 		timingLogger.endTag();
 
@@ -7016,11 +7042,16 @@ function reloadBase (callback, errorCallback) {
 function reloadCatalogBase (query, callback, errorCallback) {
 	timingLogger.startTag('reloadCatalogBase');
 	var now = Date.now();
-	var board = window.location.pathname.split('/')[1];
+	var url = [
+		window.location.protocol,
+		'/' + window.location.host,
+		window.location.pathname.split('/')[1],
+		'futaba.php?mode=cat' + query
+	].join('/');
 
 	transport = createTransport();
 	transportType = 'reload';
-	transport.open('GET', '/' + board + '/futaba.php?mode=cat' + query);
+	transport.open('GET', url);
 	transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
 
 	transport.onload = function (e) {
@@ -7811,7 +7842,7 @@ var commands = {
 		}
 
 		$t(indicator, '読み込み中です。ちょっとまってね。');
-		content.style.height = content.offsetHeight = 'px';
+		content.style.height = content.offsetHeight + 'px';
 		content.classList.add('init');
 		indicator.classList.remove('hide');
 		footer.classList.add('hide');
@@ -8324,8 +8355,13 @@ var commands = {
 		t.textContent = '...';
 
 		var board = window.location.pathname.split('/')[1];
+		var url = [
+			window.location.protocol,
+			'/' + window.location.host,
+			'sd.php?' + board + '.' + postNumber
+		].join('/');
 		var xhr = new window.XMLHttpRequest;
-		xhr.open('GET', '/sd.php?' + board + '.' + postNumber);
+		xhr.open('GET', url);
 		xhr.onload = function () {
 			setTimeout(function () {
 				var n = parseInt(xhr.responseText, 10) || 0;
@@ -8739,12 +8775,25 @@ var commands = {
 	cursorTopOfLine: function (e, t) {
 		var n = t.selectionStart;
 		var v = t.value;
-		while (n >= 0 && !/[\n]/.test(v.charAt(n))) {
-			n--;
+		var lastpos = t.getAttribute('data-last-pos');
+		if (n == 0 && t.selectionEnd == v.length && lastpos) {
+			n = lastpos - 0;
+			if (n >= 0 && /[\n]/.test(v.charAt(n))) {
+				n--;
+			}
+			while (n >= 0 && !/[\n]/.test(v.charAt(n))) {
+				n--;
+			}
+			n++;
+			t.selectionStart = n;
+			t.selectionEnd = n;
+			t.removeAttribute('data-last-pos');
 		}
-		n++;
-		t.selectionStart = n;
-		t.selectionEnd = n;
+		else {
+			t.setAttribute('data-last-pos', n);
+			t.selectionStart = 0;
+			t.selectionEnd = v.length;
+		}
 	},
 	cursorBottomOfLine: function (e, t) {
 		var n = t.selectionEnd;
@@ -8915,11 +8964,16 @@ var commands = {
  */
 
 if (document.title != NOTFOUND_TITLE) {
-	timingLogger = createTimingLogger();
-	timingLogger.startTag('booting akahukuplus');
-	initialStyle(true);
-	removeAssets('script top');
-	document.addEventListener('DOMContentLoaded', handleDOMContentLoaded, false);
+	if (document.querySelector('meta[name="generator"][content="akahukuplus"]')) {
+		window.location.reload();
+	}
+	else {
+		timingLogger = createTimingLogger();
+		timingLogger.startTag('booting akahukuplus');
+		initialStyle(true);
+		removeAssets('script top');
+		document.addEventListener('DOMContentLoaded', handleDOMContentLoaded, false);
+	}
 }
 
 // vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker fmr=<<<,>>> :

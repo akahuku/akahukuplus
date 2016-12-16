@@ -30,6 +30,7 @@
 <xsl:template match="futaba" mode="full">
 <html lang="ja">
 	<head>
+		<meta name="generator" content="akahukuplus"/>
 		<meta http-equiv="Content-type" content="text/html; charset=UTF-8"/>
 		<meta http-equiv="Content-Script-Type" content="text/javascript"/>
 		<meta http-equiv="Content-Style-Type" content="text/css"/>

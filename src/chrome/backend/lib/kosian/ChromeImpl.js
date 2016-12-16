@@ -163,7 +163,7 @@
 
 	function doSendRequest (tabId, message) {
 		try {
-			chrome.tabs.sendRequest(tabId, message);
+			chrome.tabs.sendMessage(tabId, message);
 			return true;
 		}
 		catch (e) {
@@ -244,25 +244,21 @@
 		// handlers of a message via long-lived port
 		function handleConnect (port) {
 			ports[port.name] = {port: port};
-			port.onMessage.addListener(handlePortMessage);
-			port.onDisconnect.addListener(handleDisconnect);
-		}
+			port.onMessage.addListener(function (req) {
+				if (!that.receiver) return;
 
-		function handleDisconnect (port) {
-			delete ports[port.name];
-		}
+				var data = req.data;
+				delete req.data;
 
-		function handlePortMessage (req, port) {
-			if (!that.receiver) return;
+				if (/^init\b/.test(req.type) && port.name in ports) {
+					ports[port.name].url = data.url;
+				}
 
-			var data = req.data;
-			delete req.data;
-
-			if (/^init\b/.test(req.type) && port.name in ports) {
-				ports[port.name].url = data.url;
-			}
-
-			that.receiver(req, data, port.sender.tab.id, function () {});
+				that.receiver(req, data, port.sender.tab.id, function () {});
+			});
+			port.onDisconnect.addListener(function () {
+				delete ports[port.name];
+			});
 		}
 
 		// single message handlers

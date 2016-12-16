@@ -1,1 +1,0 @@
-../../../chrome/xsl/fundamental.xsl

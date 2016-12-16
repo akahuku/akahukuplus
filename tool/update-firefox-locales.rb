@@ -30,7 +30,8 @@ Dir.entries(localedir)
 	fileName = dir + "/locale/" + localeCode + ".properties"
 	content =
 		"# #{product} description\n" +
-		"#{product}_desc = #{message["#{product}_desc"]['message']}\n"
+		"#{product}_desc = #{message["#{product}_desc"]['message']}\n" +
+		"optionsOpener_label = #{message['option_open_button_desc']['message']}\n"
 
 	File.write(fileName, content)
 	# print "generated: #{fileName}\n#{content}\n\n"

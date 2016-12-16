@@ -7,6 +7,7 @@ dir = ''
 outdir = ''
 ver = ''
 strip_update_url = false
+strip_applications = false
 update_url = false
 manifest = 'manifest.json'
 
@@ -15,6 +16,7 @@ parser.on('--indir directory') {|v| dir = v}
 parser.on('--outdir directory') {|v| outdir = v}
 parser.on('--ver string') {|v| ver = v}
 parser.on('--strip-update-url') {strip_update_url = true}
+parser.on('--strip-applications') {strip_applications = true}
 parser.on('--update-url url') {|v| update_url = v}
 parser.parse(ARGV)
 
@@ -41,6 +43,9 @@ if update_url != false && content.key?("update_url") then
 end
 if strip_update_url then
 	content.delete("update_url")
+end
+if strip_applications then
+	content.delete("applications")
 end
 
 content = JSON.pretty_generate(content)
