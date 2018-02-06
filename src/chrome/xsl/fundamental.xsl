@@ -1944,8 +1944,8 @@ div.catalog-popup span {
 					<a id="lightbox-link" href="#" target="_blank"></a>
 					(<span id="lightbox-ratio"></span>)
 					<span id="lightbox-zoom-modes">
-						- <a class="js" href="#lightbox-whole">全体(1)</a>
-						- <a class="js" href="#lightbox-actual-size">実寸(2)</a>
+						- <a class="js" href="#lightbox-whole">全体(o)</a>
+						- <a class="js" href="#lightbox-actual-size">実寸(a)</a>
 						- <a class="js" href="#lightbox-fit-to-width">幅を最大(w)</a>
 						- <a class="js" href="#lightbox-fit-to-height">高さを最大(h)</a>
 						- <a class="js" href="#lightbox-search">この画像を検索(s)</a>

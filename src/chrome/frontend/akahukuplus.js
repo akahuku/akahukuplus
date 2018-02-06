@@ -52,6 +52,7 @@ const CATALOG_COOKIE_LIFE_DAYS = 100;
 const CATALOG_POPUP_DELAY = 500;
 const CATALOG_POPUP_TEXT_WIDTH = 150;
 const CATALOG_POPUP_THUMBNAIL_ZOOM_FACTOR = 4;
+const IDEOGRAPH_CONVERSION = false;
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
@@ -1284,6 +1285,11 @@ function createXMLGenerator () {
 
 		// regalize all references
 		content = content.replace(/&amp;/g, '&');
+
+		// experimental feature
+		if (IDEOGRAPH_CONVERSION) {
+			content = 新字体の漢字を旧字体に変換(content);
+		}
 
 		// base url
 		re = /<base[^>]+href="([^"]+)"/i.exec(content);
@@ -4894,7 +4900,7 @@ function lightbox (anchor, ignoreThumbnail) {
 			.add('#lightbox-search', handleSearch);
 
 		keyManager
-			.addStroke('lightbox', ['1', '2', 'w', 'h'], handleZoomModeKey)
+			.addStroke('lightbox', ['o', 'a', 'w', 'h'], handleZoomModeKey)
 			.addStroke('lightbox', '\u001b', leave)
 			.addStroke('lightbox', 's', handleSearch)
 			.addStroke('lightbox', [' ', '<S-space>'], handleStroke, true)
@@ -5133,8 +5139,8 @@ function lightbox (anchor, ignoreThumbnail) {
 		if (isInTransition) return;
 		if (!image) return;
 		setZoomMode({
-			'1': 'whole',
-			'2': 'actual-size',
+			'o': 'whole',
+			'a': 'actual-size',
 			'w': 'fit-to-width',
 			'h': 'fit-to-height'
 		}[e.key]);
@@ -6350,8 +6356,7 @@ function setBottomStatus (s, persistent) {
 function getDOMFromString (s) {
 	try {
 		return (new window.DOMParser()).parseFromString(
-			transport.responseText
-			.replace(/\r?\n/g, ' ')
+			s.replace(/\r?\n/g, ' ')
 			.replace(/<script[^>]*>.*?<\/script>/gi, '')
 			.replace(/<img[^>]*>/gi, function ($0) {
 				return $0.replace(/\bsrc=/g, 'data-src=')
@@ -6603,7 +6608,8 @@ function displayInlineVideo (anchor) {
 		controls: true,
 		//loop: true,
 		muted: false,
-		src: anchor.href
+		src: anchor.href,
+		volume: 0.2
 	};
 
 	for (var i in props) {
@@ -6623,6 +6629,72 @@ function displayInlineVideo (anchor) {
 		video.style.width = '250px';
 	}
 }
+
+var 新字体の漢字を旧字体に変換 = (function () {
+	var map = {
+		亜:'亞',悪:'惡',圧:'壓',囲:'圍',為:'爲',医:'醫',壱:'壹',稲:'稻',飲:'飮',隠:'隱',
+		営:'營',栄:'榮',衛:'衞',駅:'驛',悦:'悅',閲:'閱',円:'圓',縁:'緣',艶:'艷',塩:'鹽',
+		奥:'奧',応:'應',横:'橫',欧:'歐',殴:'毆',黄:'黃',温:'溫',穏:'穩',仮:'假',価:'價',
+		画:'畫',会:'會',回:'囘',壊:'壞',懐:'懷',絵:'繪',概:'槪',拡:'擴',殻:'殼',覚:'覺',
+		学:'學',岳:'嶽',楽:'樂',渇:'渴',鎌:'鐮',勧:'勸',巻:'卷',寛:'寬',歓:'歡',缶:'罐',
+		観:'觀',間:'閒',関:'關',陥:'陷',巌:'巖',顔:'顏',帰:'歸',気:'氣',亀:'龜',偽:'僞',
+		戯:'戲',犠:'犧',却:'卻',糾:'糺',旧:'舊',拠:'據',挙:'擧',虚:'虛',峡:'峽',挟:'挾',
+		教:'敎',強:'强',狭:'狹',郷:'鄕',尭:'堯',暁:'曉',区:'區',駆:'驅',勲:'勳',薫:'薰',
+		群:'羣',径:'徑',恵:'惠',掲:'揭',携:'攜',渓:'溪',経:'經',継:'繼',茎:'莖',蛍:'螢',
+		軽:'輕',鶏:'鷄',芸:'藝',撃:'擊',欠:'缺',倹:'儉',剣:'劍',圏:'圈',検:'檢',権:'權',
+		献:'獻',県:'縣',研:'硏',険:'險',顕:'顯',験:'驗',厳:'嚴',呉:'吳',娯:'娛',効:'效',
+		広:'廣',恒:'恆',鉱:'鑛',号:'號',国:'國',黒:'黑',歳:'歲',済:'濟',砕:'碎',斎:'齋',
+		剤:'劑',冴:'冱',桜:'櫻',冊:'册',雑:'雜',産:'產',参:'參',惨:'慘',桟:'棧',蚕:'蠶',
+		賛:'贊',残:'殘',糸:'絲',姉:'姊',歯:'齒',児:'兒',辞:'辭',湿:'濕',実:'實',舎:'舍',
+		写:'寫',釈:'釋',寿:'壽',収:'收',従:'從',渋:'澁',獣:'獸',縦:'縱',粛:'肅',処:'處',
+		緒:'緖',叙:'敍',尚:'尙',奨:'奬',将:'將',床:'牀',渉:'涉',焼:'燒',称:'稱',証:'證',
+		乗:'乘',剰:'剩',壌:'壤',嬢:'孃',条:'條',浄:'淨',状:'狀',畳:'疊',穣:'穰',譲:'讓',
+		醸:'釀',嘱:'囑',触:'觸',寝:'寢',慎:'愼',晋:'晉',真:'眞',刃:'刄',尽:'盡',図:'圖',
+		粋:'粹',酔:'醉',随:'隨',髄:'髓',数:'數',枢:'樞',瀬:'瀨',清:'淸',青:'靑',声:'聲',
+		静:'靜',斉:'齊',税:'稅',跡:'蹟',説:'說',摂:'攝',窃:'竊',絶:'絕',専:'專',戦:'戰',
+		浅:'淺',潜:'潛',繊:'纖',践:'踐',銭:'錢',禅:'禪',曽:'曾',双:'瘦',痩:'雙',遅:'遲',
+		壮:'壯',捜:'搜',挿:'插',巣:'巢',争:'爭',窓:'窗',総:'總',聡:'聰',荘:'莊',装:'裝',
+		騒:'騷',増:'增',臓:'臟',蔵:'藏',即:'卽',属:'屬',続:'續',堕:'墮',体:'體',対:'對',
+		帯:'帶',滞:'滯',台:'臺',滝:'瀧',択:'擇',沢:'澤',単:'單',担:'擔',胆:'膽',団:'團',
+		弾:'彈',断:'斷',痴:'癡',昼:'晝',虫:'蟲',鋳:'鑄',庁:'廳',徴:'徵',聴:'聽',勅:'敕',
+		鎮:'鎭',脱:'脫',逓:'遞',鉄:'鐵',転:'轉',点:'點',伝:'傳',党:'黨',盗:'盜',灯:'燈',
+		当:'當',闘:'鬭',徳:'德',独:'獨',読:'讀',届:'屆',縄:'繩',弐:'貳',妊:'姙',粘:'黏',
+		悩:'惱',脳:'腦',覇:'霸',廃:'廢',拝:'拜',売:'賣',麦:'麥',発:'發',髪:'髮',抜:'拔',
+		晩:'晚',蛮:'蠻',秘:'祕',彦:'彥',姫:'姬',浜:'濱',瓶:'甁',払:'拂',仏:'佛',併:'倂',
+		並:'竝',変:'變',辺:'邊',弁:'辨',/*弁:'瓣',弁:'辯',*/舗:'舖',歩:'步',穂:'穗',宝:'寶',
+		萌:'萠',褒:'襃',豊:'豐',没:'沒',翻:'飜',槙:'槇',毎:'每',万:'萬',満:'滿',麺:'麵',
+		黙:'默',餅:'餠',歴:'歷',恋:'戀',戻:'戾',弥:'彌',薬:'藥',訳:'譯',予:'豫',余:'餘',
+		与:'與',誉:'譽',揺:'搖',様:'樣',謡:'謠',遥:'遙',瑶:'瑤',欲:'慾',来:'來',頼:'賴',
+		乱:'亂',覧:'覽',略:'畧',竜:'龍',両:'兩',猟:'獵',緑:'綠',隣:'鄰',凛:'凜',塁:'壘',
+		涙:'淚',励:'勵',礼:'禮',隷:'隸',霊:'靈',齢:'齡',暦:'曆',錬:'鍊',炉:'爐',労:'勞',
+		楼:'樓',郎:'郞',禄:'祿',録:'錄',亘:'亙',湾:'灣',
+
+		逸:'逸',羽:'羽',鋭:'銳',益:'益',謁:'謁',禍:'禍',悔:'悔',海:'海',慨:'慨',喝:'喝',
+		褐:'褐',漢:'漢',館:'館',器:'器',既:'既',既:'旣',祈:'祈',響:'響',勤:'勤',謹:'謹',
+		契:'契',戸:'戶',穀:'穀',殺:'殺',祉:'祉',視:'視',飼:'飼',煮:'煮',社:'社',者:'者',
+		臭:'臭',祝:'祝',暑:'暑',署:'署',諸:'諸',祥:'祥',神:'神',晴:'晴',精:'精',節:'節',
+		祖:'祖',僧:'僧',層:'層',憎:'憎',贈:'贈',琢:'琢',嘆:'嘆',着:'著',猪:'猪',懲:'懲',
+		塚:'塚',都:'都',闘:'鬭',突:'突',難:'難',梅:'梅',繁:'繁',飯:'飯',卑:'卑',碑:'碑',
+		賓:'賓',頻:'頻',敏:'敏',侮:'侮',福:'福',塀:'塀',勉:'勉',墨:'墨',免:'免',祐:'祐',
+		欄:'欄',隆:'隆',虜:'虜',旅:'旅',類:'類',廉:'廉',練:'練',廊:'廊',朗:'朗'
+	};
+	var key = new RegExp('[' +
+		'亜悪圧囲為医壱稲飲隠営栄衛駅悦閲円縁艶塩奥応横欧殴黄温穏仮価画会回壊懐絵概拡殻覚' +
+		'学岳楽渇鎌勧巻寛歓缶観間関陥巌顔帰気亀偽戯犠却糾旧拠挙虚峡挟教強狭郷尭暁区駆勲薫' +
+		'群径恵掲携渓経継茎蛍軽鶏芸撃欠倹剣圏検権献県研険顕験厳呉娯効広恒鉱号国黒歳済砕斎' +
+		'剤冴桜冊雑産参惨桟蚕賛残糸姉歯児辞湿実舎写釈寿収従渋獣縦粛処緒叙尚奨将床渉焼称証' +
+		'乗剰壌嬢条浄状畳穣譲醸嘱触寝慎晋真刃尽図粋酔随髄数枢瀬清青声静斉税跡説摂窃絶専戦' +
+		'浅潜繊践銭禅曽双痩遅壮捜挿巣争窓総聡荘装騒増臓蔵即属続堕体対帯滞台滝択沢単担胆団' +
+		'弾断痴昼虫鋳庁徴聴勅鎮脱逓鉄転点伝党盗灯当闘徳独読届縄弐妊粘悩脳覇廃拝売麦発髪抜' +
+		'晩蛮秘彦姫浜瓶払仏併並変辺弁弁弁舗歩穂宝萌褒豊没翻槙毎万満麺黙餅歴恋戻弥薬訳予余' +
+		'与誉揺様謡遥瑶欲来頼乱覧略竜両猟緑隣凛塁涙励礼隷霊齢暦錬炉労楼郎禄録亘湾' +
+		'逸羽鋭益謁禍悔海慨喝褐漢館器既既祈響勤謹契戸穀殺祉視飼煮社者臭祝暑署諸祥神晴精節' +
+		'祖僧層憎贈琢嘆着猪懲塚都闘突難梅繁飯卑碑賓頻敏侮福塀勉墨免祐欄隆虜旅類廉練廊朗' +
+		']', 'g');
+	return function (s) {
+		return s.replace(key, function ($0) {return map[$0]});
+	};
+})();
 
 /*
  * <<<1 functions for posting
@@ -7060,7 +7132,14 @@ function reloadCatalogBase (query, callback, errorCallback) {
 		timingLogger.startTag('parsing html');
 		var doc;
 		if (transport.status == 200) {
-			doc = getDOMFromString(transport.responseText);
+			doc = transport.responseText;
+
+			// experimental feature
+			if (IDEOGRAPH_CONVERSION) {
+				doc = 新字体の漢字を旧字体に変換(doc);
+			}
+
+			doc = getDOMFromString(doc);
 			if (!doc) {
 				transport = doc = null;
 				errorCallback(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
@@ -8419,8 +8498,10 @@ var commands = {
 			onok: function (dialog) {
 				var form = dialog.content.querySelector('form');
 				var status = dialog.content.querySelector('.delete-status');
+				var board = window.location.pathname.split('/')[1];
 				if (!form || !status) return;
 
+				form.action = '/' + board + '/futaba.php';
 				$t(status, '削除をリクエストしています...');
 				postBase(
 					'delete',

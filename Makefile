@@ -5,7 +5,7 @@ VERSION := $(shell echo -n `git describe --tags --abbrev=0|sed -e 's/[^0-9.]//g'
 
 SHELL := /bin/sh
 
-CHROME := chromium-browser
+CHROME := google-chrome
 OPERA := opera
 FIREFOX := firefox
 CYGPATH := echo
@@ -35,26 +35,26 @@ CRYPT_DST_FILE = consumer_keys.bin
 CHROME_SUFFIX = crx
 CHROME_SRC_DIR = chrome
 CHROME_EXT_ID = ebdgiiahmbloeogknjeekjpkkfnamlkb
-CHROME_EXT_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.crx
-CHROME_UPDATE_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist/chrome.xml
+CHROME_EXT_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/$(PRODUCT).crx
+CHROME_UPDATE_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/chrome.xml
 
 OPERA_SUFFIX = oex
 OPERA_SRC_DIR = opera
 OPERA_EXT_ID =
-OPERA_EXT_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.oex
-OPERA_UPDATE_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist/opera.xml
+OPERA_EXT_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/$(PRODUCT).oex
+OPERA_UPDATE_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/opera.xml
 
 BLINKOPERA_SUFFIX = nex
 BLINKOPERA_SRC_DIR = opera-blink
 BLINKOPERA_EXT_ID = ebdgiiahmbloeogknjeekjpkkfnamlkb
-BLINKOPERA_EXT_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.nex
-BLINKOPERA_UPDATE_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist/blink-opera.xml
+BLINKOPERA_EXT_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/$(PRODUCT).nex
+BLINKOPERA_UPDATE_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/blink-opera.xml
 
 FIREFOX_SUFFIX = xpi
 FIREFOX_SRC_DIR = firefox
 FIREFOX_EXT_ID = jid1-ytdk6oePtVeu1A@jetpack
-FIREFOX_EXT_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.xpi
-FIREFOX_UPDATE_LOCATION = https://github.com/akahuku/akahukuplus/raw/master/dist/firefox.json
+FIREFOX_EXT_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/$(PRODUCT).xpi
+FIREFOX_UPDATE_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/firefox.json
 
 # derived macros
 # ========================================
@@ -87,7 +87,8 @@ FIREFOX_TEST_PROFILE_PATH := $(shell $(CYGPATH) profile/firefox)
 SED_SCRIPT_DEBUG_OFF = -e 's/\(const\s\+DEBUG_ALWAYS_LOAD_XSL\s*=\s*\)true/\1false/' \
 	-e 's/\(const\s\+DEBUG_DUMP_INTERNAL_XML\s*=\s*\)true/\1false/' \
 	-e 's/\(const\s\+DEBUG_HIDE_BANNERS\s*=\s*\)true/\1false/' \
-	-e 's/\(const\s\+DEBUG_IGNORE_LAST_MODIFIED\s*=\s*\)true/\1false/'
+	-e 's/\(const\s\+DEBUG_IGNORE_LAST_MODIFIED\s*=\s*\)true/\1false/' \
+	-e '/const\s\+IDEOGRAPH_CONVERSION/s/true/false/'
 
 # local override of macros
 # ========================================
@@ -123,7 +124,7 @@ FORCE:
 
 .PHONY: all crx oex nex xpi \
 	clean message \
-	dbgfx \
+	dbgfx version \
 	FORCE
 
 #
@@ -153,7 +154,7 @@ $(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEYS_PATH)
 	$(CHROME) \
 		--lang=en \
 		--pack-extension=$(CHROME_EMBRYO_SRC_PATH) \
-		--pack-extension-key=akahukuplus.pem
+		--pack-extension-key=$(PRODUCT).pem
 
 	mv $(EMBRYO_DIR)/$(CHROME_SRC_DIR).$(CHROME_SUFFIX) $@
 
@@ -166,9 +167,10 @@ $(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEYS_PATH)
 		--strip-applications
 
 #	build zip archive for google web store
-	rm -f $(DIST_DIR)/akahukuplus_chrome_web_store.zip
+	rm -f $(DIST_DIR)/$(PRODUCT)_chrome_web_store.zip
 	cd $(CHROME_EMBRYO_SRC_PATH) \
-		&& $(ZIP) ../../$(DIST_DIR)/akahukuplus_chrome_web_store.zip .
+		&& find . -type f -print0 | sort -z | xargs -0 $(ZIP) \
+		../../$(DIST_DIR)/$(PRODUCT)_chrome_web_store.zip
 
 #	create update description file
 	sed -e 's/@appid@/$(CHROME_EXT_ID)/g' \
@@ -218,7 +220,8 @@ $(OPERA_TARGET_PATH): $(OPERA_MTIME_PATH) $(BINKEYS_PATH)
 
 #	zip it
 	rm -f $@
-	cd $(OPERA_EMBRYO_SRC_PATH) && $(ZIP) ../../$@ .
+	cd $(OPERA_EMBRYO_SRC_PATH) \
+		&& find . -type f -print0 | sort -z | xargs -0 $(ZIP) ../../$@
 
 	@echo ///
 	@echo /// created: $@, version $(VERSION)
@@ -259,7 +262,7 @@ $(BLINKOPERA_TARGET_PATH): $(BLINKOPERA_MTIME_PATH) $(BINKEYS_PATH)
 	$(CHROME) \
 		--lang=en \
 		--pack-extension=$(BLINKOPERA_EMBRYO_SRC_PATH) \
-		--pack-extension-key=akahukuplus.pem
+		--pack-extension-key=$(PRODUCT).pem
 
 	mv $(EMBRYO_DIR)/$(BLINKOPERA_SRC_DIR).$(CHROME_SUFFIX) $@
 
@@ -367,5 +370,8 @@ message: FORCE
 dbgfx: FORCE
 #	cd $(FIREFOX_SRC_PATH) && jpm run -b `which firefox` -p $(abspath $(FIREFOX_TEST_PROFILE_PATH)) --no-copy --binary-args="http://dat.2chan.net/b/futaba.htm"
 	cd $(FIREFOX_SRC_PATH) && web-ext run
+
+version: FORCE
+	@echo $(VERSION)
 
 # end
