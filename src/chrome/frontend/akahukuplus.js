@@ -702,6 +702,7 @@ function createXMLGenerator () {
 		var goal = count + maxReplies;
 		var offset = count + 1;
 		var reply;
+		var postTimeRegex = getPostTimeRegex();
 
 		for (;count < goal && (reply = regex.exec(s)); offset++, count++) {
 			var re = /^(.*)<blockquote[^>]*>(.*)<\/blockquote>/i.exec(reply[0]);
@@ -760,7 +761,10 @@ function createXMLGenerator () {
 			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(info);
 			if (re) {
 				var sodaneNode = element(replyNode, 'sodane');
-				sodaneNode.appendChild(text(re[1].replace('x', ' × ')));
+				sodaneNode.appendChild(text(re[1]
+					.replace('x', ' × ')
+					.replace('+', '＋')
+				));
 				sodaneNode.setAttribute('className', re[1] == '+' ? 'sodane-null' : 'sodane');
 			}
 
@@ -773,7 +777,7 @@ function createXMLGenerator () {
 			element(replyNode, 'offset').appendChild(text(offset));
 
 			// posted date
-			re = /(\d+)\/(\d+)\/(\d+)\(.\)(\d+):(\d+):(\d+)/.exec(info);
+			re = postTimeRegex.exec(info);
 			if (re) {
 				var postedDate = new Date(
 					2000 + (re[1] - 0),
@@ -898,7 +902,7 @@ function createXMLGenerator () {
 	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webm)$/.test(re[2])) {
+			if (/\.(?:jpg|gif|png|webm|mp4)$/.test(re[2])) {
 				anchor.setAttribute('class', this.className + ' lightbox');
 				anchor.setAttribute('thumbnail', baseUrl + 'misc/' + re[1] + '.thumb.jpg');
 			}
@@ -913,7 +917,7 @@ function createXMLGenerator () {
 	LinkTarget.prototype.upProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webm)$/.test(re[2])) {
+			if (/\.(?:jpg|gif|png|webm|mp4)$/.test(re[2])) {
 				anchor.setAttribute('class', this.className + ' lightbox');
 			}
 			return baseUrl + 'src/' + re[1] + re[2];
@@ -1012,13 +1016,13 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-futaba lightbox',
-			'\\b((?:h?t?t?p?://)?[^.]+\\.2chan\\.net/[^/]+/[^/]+/src/\\d+\\.(?:jpg|gif|png|webm)\\S*)',
+			'\\b((?:h?t?t?p?://)?[^.]+\\.2chan\\.net/[^/]+/[^/]+/src/\\d+\\.(?:jpg|gif|png|webm|mp4)\\S*)',
 			function (re, anchor) {
 				anchor.setAttribute(
 					'thumbnail',
 					re[0]
 						.replace('/src/', '/thumb/')
-						.replace(/\.(?:jpg|gif|png|webm)/, 's.jpg'));
+						.replace(/\.(?:jpg|gif|png|webm|mp4)/, 's.jpg'));
 				return re[0];
 			}
 		),
@@ -1497,6 +1501,7 @@ function createXMLGenerator () {
 		var threadIndex = 0;
 		var threadRegex = /(<br>|<\/div>\s*<div\s+class="thre"[^>]*>\s*)(<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
 		var matches;
+		var postTimeRegex = getPostTimeRegex();
 		markStatistics.start();
 		while ((matches = threadRegex.exec(content))) {
 			var match = matches[0];
@@ -1573,7 +1578,7 @@ function createXMLGenerator () {
 			}
 
 			// posted date
-			re = /(\d+)\/(\d+)\/(\d+)\(.\)(\d+):(\d+):(\d+)/.exec(topicInfo);
+			re = postTimeRegex.exec(topicInfo);
 			if (re) {
 				var postedDate = new Date(
 					2000 + (re[1] - 0),
@@ -1619,7 +1624,10 @@ function createXMLGenerator () {
 			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
 			if (re) {
 				var sodaneNode = element(topicNode, 'sodane');
-				sodaneNode.appendChild(text(re[1].replace('x', ' × ')));
+				sodaneNode.appendChild(text(re[1]
+					.replace('x', ' × ')
+					.replace('+', '＋')
+				));
 				sodaneNode.setAttribute('className', re[1] == '+' ? 'sodane-null' : 'sodane');
 			}
 
@@ -4247,7 +4255,7 @@ function install (mode) {
 				if (/\.(?:jpg|gif|png)$/.test(t.href)) {
 					lightbox(t, t.classList.contains('link-siokara'));
 				}
-				else if (/\.(?:webm)$/.test(t.href)) {
+				else if (/\.(?:webm|mp4)$/.test(t.href)) {
 					displayInlineVideo(t);
 				}
 			}
@@ -6388,6 +6396,9 @@ function getImageMimeType (href) {
 	if (/\.webm\b/i.test(href)) {
 		return 'video/webm';
 	}
+	if (/\.mp4\b/i.test(href)) {
+		return 'video/mp4';
+	}
 	return 'application/octet-stream';
 }
 
@@ -7239,7 +7250,7 @@ function extractIncompleteFiles () {
 					node.appendChild(document.createTextNode(data.base));
 				}
 
-				if (/\.(?:jpg|gif|png|webm)$/.test(data.url)) {
+				if (/\.(?:jpg|gif|png|webm|mp4)$/.test(data.url)) {
 					node.classList.add('lightbox');
 				}
 
@@ -7684,6 +7695,10 @@ function getThumbnailSize (width, height, maxWidth, maxHeight) {
 	}
 }
 
+function getPostTimeRegex () {
+	return /(\d+)\/(\d+)\/(\d+)\(.\)(\d+):(\d+):(\d+)(?:\s+IP:[a-zA-Z0-9_*:.\-()]+)?/;
+}
+
 function doDisplayThumbnail (thumbWrap, thumb, img) {
 	var containerWidth = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
 	var containerHeight = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
@@ -7717,7 +7732,7 @@ function setPostThumbnail (file) {
 	var thumb = $('post-image-thumbnail');
 
 	if (!thumbWrap || !thumb) return;
-	if (!file || !/^(?:image\/(?:jpeg|png|gif))|video\/webm$/.test(file.type)) {
+	if (!file || !/^(?:image\/(?:jpeg|png|gif))|video\/(?:webm|mp4)$/.test(file.type)) {
 		thumbWrap.removeAttribute('data-available');
 		setPostThumbnailVisibility(false);
 		return;
@@ -8444,9 +8459,11 @@ var commands = {
 		xhr.onload = function () {
 			setTimeout(function () {
 				var n = parseInt(xhr.responseText, 10) || 0;
-				t.textContent = 'そうだね \u00d7 ' + n;
+				t.textContent = 'そうだね × ' + n;
 				t.removeAttribute('data-busy');
 				t.removeAttribute('data-text');
+				t.classList.remove('sodane-null');
+				t.classList.add('sodane');
 				t = xhr = xhr.onload = xhr.onerror = null;
 			}, 1000);
 		};

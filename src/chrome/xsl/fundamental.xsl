@@ -1565,6 +1565,11 @@ hr {
 #catalog .catalog-threads-wrap a.long { background-color:#cfc; border-color:#cfc; }
 #catalog .catalog-threads-wrap a.warned { border:2px solid #d00; padding:1px; }
 
+#catalog .catalog-threads-wrap a:nth-child(111),
+#catalog .catalog-threads-wrap a:nth-child(121) {
+	background-color:#eeaa88 !important;
+}
+
 #catalog .catalog-threads-wrap .info {
 	padding:1px;
 	color:#789922;
@@ -1595,6 +1600,8 @@ div.catalog-popup {
 	box-shadow:0 0 4px 4px rgba(0,0,0,.25);
 	box-sizing:border-box;
 	font-size:x-small;
+	overflow:hidden;
+	text-overflow:ellipsis;
 	transition-property:opacity;
 	transition-duration:.5s;
 	transition-timing-function:ease-out;
