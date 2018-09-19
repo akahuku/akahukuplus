@@ -1,8 +1,3 @@
-// ==UserScript==
-// @include http://*/*
-// @include https://*/*
-// ==/UserScript==
-//
 /**
  * wasavi: vi clone implemented in javascript
  * =============================================================================
@@ -11,7 +6,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2016 akahuku, akahuku@gmail.com
+ * Copyright 2012-2017 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,13 +25,8 @@
 
 !this.WasaviExtensionWrapper && (function (global) {
 	/* <<<1 consts */
-	var IS_GECKO =
-		window.navigator.product == 'Gecko'
-		&& window.navigator.userAgent.indexOf('Gecko/') != -1;
-	var IS_FX_JETPACK =
-		typeof global.self == 'object' && typeof global.self.on == 'function'
-		&& /^\s*function(?: bound)? on\s*\([^)]*\)\s*\{\s*\[native\s+code\]\s*\}\s*$/.test(
-			global.self.on.toString().replace(/[\s\r\n\t]+/g, ' '));
+	const IS_GECKO = 'InstallTrigger' in global;
+	const IS_FX_WEBEXT = IS_GECKO && global.chrome && global.chrome.extension;
 	/* >>> */
 
 	/* <<<1 vars */
@@ -90,15 +80,13 @@
 	 */
 
 	function ExtensionWrapper () {
-		this.internalId = this.getUniqueId();
+		this.tabId = null;
 		this.requestNumber = 0;
-		this.clipboardData = '';
-		this.preservedCallbacks = {};
 	}
 	ExtensionWrapper.prototype = {
 		get name () {return extensionName},
 		isTopFrame: function () {return global.window == window.top},
-		postMessage: function (data, callback, preserved) {
+		postMessage: function (data, callback) {
 			var type;
 			var requestNumber = this.getNewRequestNumber();
 
@@ -109,26 +97,21 @@
 				delete data.type;
 			}
 
-			if (callback && preserved) {
-				this.preservedCallbacks[requestNumber] = callback;
-			}
-
 			this.doPostMessage({
 				type:type || 'unknown-command',
 				tabId:this.tabId,
-				internalId:this.internalId,
 				requestNumber:requestNumber,
 				data:data
-			}, callback, preserved);
+			}, callback);
 
 			return requestNumber;
 		},
-		doPostMessage: function (data, callback, preserved) {},
+		doPostMessage: function (data, callback) {},
 		connect: function (type, callback) {
 			this.doConnect();
 			this.doPostMessage({
 				type:type || 'init',
-				internalId:this.internalId,
+				tabId:this.tabId,
 				requestNumber:this.getNewRequestNumber(),
 				data:{url:window.location.href}
 			}, callback);
@@ -139,16 +122,8 @@
 		},
 		doDisconnect: function () {},
 		setMessageListener: function (handler) {},
-		removeCallback: function (id) {
-			if (typeof id != 'number') return;
-			delete this.preservedCallbacks[id];
-		},
-		interruptCallback: function (id, data) {
-			if (typeof id != 'number') return;
-			if (!(id in this.preservedCallbacks)) return;
-			this.runCallback(this.preservedCallbacks[id], data);
-			this.removeCallback(id);
-		},
+		addMessageListener: function (handler) {},
+		removeMessageListener: function (handler) {},
 		runCallback: function () {
 			var args = Array.prototype.slice.call(arguments);
 			var callback = args.shift();
@@ -168,18 +143,25 @@
 		},
 		getMessage: function (messageId) {},
 		setClipboard: function (data) {
-			this.postMessage({type:'set-clipboard', data:data});
+			if (IS_GECKO) {
+				let buffer = document.getElementById('wasavi_fx_clip');
+				buffer.value = data;
+				buffer.focus();
+				buffer.select();
+				document.execCommand('cut');
+			}
+			else {
+				this.postMessage({type:'set-clipboard', data:data});
+			}
 		},
 		getClipboard: function () {
 			var self = this;
 			var args = Array.prototype.slice.call(arguments);
 			var callback = args.shift();
 			this.postMessage({type:'get-clipboard'}, function (req) {
-				self.clipboardData = (req && req.data || '').replace(/\r\n/g, '\n');
-				if (callback) {
-					args.unshift(self.clipboardData);
-					callback.apply(null, args);
-				}
+				let clipboardData = (req && req.data || '').replace(/\r\n/g, '\n');
+				args.unshift(clipboardData);
+				callback.apply(null, args);
 			});
 		},
 		getPageContextScriptSrc: function (path) {
@@ -223,17 +205,10 @@
 		
 		if (window.chrome) return new ChromeExtensionWrapper;
 		if (global.chrome) return new ChromeExtensionWrapper;
-		if (window.opera)  return new OperaExtensionWrapper;
-		if (IS_FX_JETPACK) return new FirefoxJetpackExtensionWrapper;
 		return new ExtensionWrapper;
 	};
 	ExtensionWrapper.IS_GECKO = IS_GECKO;
-	ExtensionWrapper.IS_FX_JETPACK = IS_FX_JETPACK;
-	ExtensionWrapper.CAN_COMMUNICATE_WITH_EXTENSION =
-		window.chrome && chrome.extension
-		|| global.opera && global.opera.extension
-		|| IS_GECKO && IS_FX_JETPACK;
-	ExtensionWrapper.HOTKEY_ENABLED = IS_GECKO && IS_FX_JETPACK;
+	ExtensionWrapper.IS_FX_WEBEXT = IS_FX_WEBEXT;
 	ExtensionWrapper.urlInfo = new UrlInfo;
 	/* >>> */
 
@@ -246,53 +221,43 @@
 		ExtensionWrapper.apply(this, arguments);
 
 		var that = this;
-		var onMessageHandler;
-		var port = null;
+		var onMessageHandlers = [];
 
-		function handleMessage (req) {
-			if ('requestNumber' in req
-			&& req.requestNumber in that.preservedCallbacks) {
-				that.runCallback(that.preservedCallbacks[req.requestNumber], req);
-			}
-			else {
-				onMessageHandler && onMessageHandler(req);
+		function handleMessage (req, sender, response) {
+			for (const handler of onMessageHandlers) {
+				handler(req, sender, response);
 			}
 		}
 
 		this.constructor = ExtensionWrapper;
 		this.runType = 'chrome-extension';
-		this.doPostMessage = function (data, callback, preserved) {
-			if (callback && !preserved) {
-				try {
-					chrome.runtime.sendMessage(data, callback);
-				}
-				catch (e) {}
+		this.doPostMessage = function (data, callback) {
+			try {
+				chrome.runtime.sendMessage(data, callback);
 			}
-			else {
-				try {
-					port ?
-						port.postMessage(data) :
-						chrome.runtime.sendMessage(data);
-				}
-				catch (e) {}
-			}
+			catch (e) {}
 		};
 		this.doConnect = function () {
-			port = chrome.runtime.connect({
-				name: this.internalId
-			});
-			port.onMessage.addListener(handleMessage);
 			chrome.runtime.onMessage.addListener(handleMessage);
 		};
 		this.doDisconnect = function () {
-			onMessageHandler = null;
+			onMessageHandlers.length = 0;
 			chrome.runtime.onMessage.removeListener(handleMessage);
-			port.onMessage.removeListener(handleMessage);
-			port.disconnect();
-			port = null;
 		};
 		this.setMessageListener = function (handler) {
-			onMessageHandler = handler;
+			onMessageHandlers = [handler];
+		};
+		this.addMessageListener = function (handler) {
+			var index = onMessageHandlers.indexOf(handler);
+			if (index < 0) {
+				onMessageHandlers.push(handler);
+			}
+		};
+		this.removeMessageListener = function (handler) {
+			var index = onMessageHandlers.indexOf(handler);
+			if (index >= 0) {
+				onMessageHandlers.splice(index, 1);
+			}
 		};
 		this.getMessage = function (messageId) {
 			return chrome.i18n.getMessage(messageId);
@@ -301,209 +266,13 @@
 			return chrome.runtime.getURL('scripts/page_context.js');
 		};
 		this.urlInfo = new function () {
-			var extensionId = chrome.runtime.id;
 			return new UrlInfo(
-				'chrome-extension://' + extensionId + '/options.html',
-				'chrome-extension://' + extensionId + '/wasavi.html'
+				chrome.runtime.getURL('options.html'),
+				chrome.runtime.getURL('wasavi.html')
 			);
 		};
 	}
 	ChromeExtensionWrapper.prototype = ExtensionWrapper.prototype;
-	/* >>> */
-
-	/**
-	 * <<<1 extension wrapper class for opera
-	 * ----------------
-	 */
-
-	function OperaExtensionWrapper () {
-		ExtensionWrapper.apply(this, arguments);
-
-		var that = this;
-		var onMessageHandler;
-		var port = null;
-
-		function handleMessage (e) {
-			var req = e.data;
-			if (req.type == 'opera-notify-tab-id') {
-				that.tabId = req.tabId;
-				return;
-			}
-			if ('requestNumber' in req
-			&& req.requestNumber in that.preservedCallbacks) {
-				that.runCallback(that.preservedCallbacks[req.requestNumber], req);
-			}
-			else {
-				onMessageHandler && onMessageHandler(req);
-			}
-		};
-
-		this.constructor = ExtensionWrapper;
-		this.runType = 'opera-extension';
-		this.doPostMessage = function (data, callback, preserved) {
-			if (callback && !preserved) {
-				var ch = new MessageChannel;
-				ch.port1.onmessage = function (e) {
-					callback && callback(e.data);
-					if (port) {
-						ch.port1.close();
-					}
-					else {
-						port = ch.port1;
-						port.onmessage = handleMessage;
-						//opera.extension.onmessage = null;
-					}
-					ch = null;
-				};
-				try {
-					ch.port1.start();
-					opera.extension.postMessage(data, [ch.port2]);
-				}
-				catch (e) {}
-			}
-			else {
-				try {
-					port ?
-						port.postMessage(data) :
-						opera.extension.postMessage(data);
-				}
-				catch (e) {}
-			}
-		};
-		this.doConnect = function () {
-			opera.extension.onmessage = handleMessage;
-		};
-		this.doDisconnect = function () {
-			onMessageHandler = null;
-			opera.extension.onmessage = null;
-			if (this.port) {
-				this.port.close();
-				this.port = null;
-			}
-		};
-		this.setMessageListener = function (handler) {
-			onMessageHandler = handler;
-		};
-		this.getPageContextScriptSrc = function () {
-			return widget.preferences['pageContextScript'];
-		};
-		this.urlInfo = new function () {
-			var extensionId = widget.preferences['widget-id'];
-			return new UrlInfo(
-				'widget://' + extensionId + '/options.html',
-				null
-			);
-		};
-	}
-	OperaExtensionWrapper.prototype = ExtensionWrapper.prototype;
-	/* >>> */
-
-	/**
-	 * <<<1 extension wrapper class for firefox (Add-on SDK)
-	 * ----------------
-	 */
-
-	function FirefoxJetpackExtensionWrapper () {
-		ExtensionWrapper.apply(this, arguments);
-
-		var CALLBACK_SWEEP_MSECS = 1000 * 60 * 2;
-		var CALLBACK_TIMEOUT_MSECS = 1000 * 60;
-
-		var that = this;
-		var callbacks = {};
-		var onMessageHandler;
-		var sweepTimer;
-
-		function MessageCallbackQueueItem (callback) {
-			this.callback = callback;
-			this.time = Date.now();
-		}
-		MessageCallbackQueueItem.prototype = {
-			toString:function () {
-				return '[object MessageCallbackQueueItem(' +
-					this.time + ': ' +
-					this.callback.toString().replace(/[\s\r\n\t]+/g, ' ').substring(0, 100) +
-					')]';
-			},
-			run:function () {
-				typeof this.callback == 'function' && this.callback.apply(null, arguments);
-			}
-		};
-
-		function handleMessage (data) {
-			var now = Date.now();
-			var callbacksCurrent = callbacks;
-			var callbacksNext = {};
-
-			callbacks = {};
-
-			for (var i in callbacksCurrent) {
-				if (data && data.callbackNumber - i == 0) {
-					callbacksCurrent[i].run(data.payload);
-				}
-				else if (now - callbacksCurrent[i].time < CALLBACK_TIMEOUT_MSECS) {
-					callbacksNext[i] = callbacksCurrent[i];
-				}
-			}
-			for (var i in callbacksNext) {
-				callbacks[i] = callbacksNext[i];
-			}
-		}
-
-		this.constructor = ExtensionWrapper;
-		this.runType = 'firefox-jetpack-extension';
-		this.doPostMessage = function (data, callback, preserved) {
-			if (callback && !preserved) {
-				var id = data.requestNumber;
-				callbacks[id] = new MessageCallbackQueueItem(callback);
-				data.callbackNumber = id;
-			}
-
-			try {
-				self.postMessage(data);
-			}
-			catch (e) {}
-		};
-		this.doConnect = function () {
-			self.on('message', function (data) {
-				var payload = data.payload;
-
-				if ('requestNumber' in payload
-				&& payload.requestNumber in that.preservedCallbacks) {
-					that.runCallback(that.preservedCallbacks[payload.requestNumber], payload);
-				}
-				else if ('callbackNumber' in data) {
-					handleMessage(data);
-				}
-				else {
-					onMessageHandler && onMessageHandler(payload);
-				}
-			});
-			sweepTimer = setInterval(function () {handleMessage()}, CALLBACK_SWEEP_MSECS);
-		};
-		this.doDisconnect = function () {
-			onMessageHandler = null;
-			self.on('message', null);
-			clearInterval(sweepTimer);
-		};
-		this.setMessageListener = function (handler) {
-			onMessageHandler = handler;
-		};
-		this.getPageContextScriptSrc = function () {
-			return self.options.pageContextScript;
-		};
-		this.urlInfo = new function () {
-			var extensionHostname = self.options.extensionId
-				.toLowerCase()
-				.replace(/@/g, '-at-')
-				.replace(/\./g, '-dot-');
-			return new UrlInfo(
-				self.options.wasaviOptionsUrl,
-				self.options.wasaviFrameSource
-			);
-		};
-	}
-	FirefoxJetpackExtensionWrapper.prototype = ExtensionWrapper.prototype;
 	/* >>> */
 
 	/* <<<1 bootstrap */

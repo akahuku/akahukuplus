@@ -1,18 +1,4 @@
-// ==UserScript==
-// @name          frontend of akahukuplus
-// @include       http://*.2chan.net/*/*.htm
-// @include       http://*.2chan.net/*/*.htm?*
-// @include       http://*.2chan.net/*/res/*.htm
-// @include       http://*.2chan.net/*/res/*.htm?*
-// @include       https://*.2chan.net/*/*.htm
-// @include       https://*.2chan.net/*/*.htm?*
-// @include       https://*.2chan.net/*/res/*.htm
-// @include       https://*.2chan.net/*/res/*.htm?*
-// @exclude       http://dec.2chan.net/up/*
-// @exclude       http://dec.2chan.net/up2/*
-// @exclude       https://dec.2chan.net/up/*
-// @exclude       https://dec.2chan.net/up2/*
-// ==/UserScript==
+'use strict';
 
 /*
  * akahukuplus
@@ -51,7 +37,7 @@ const CATALOG_TEXT_MAX_LENGTH = 100;
 const CATALOG_COOKIE_LIFE_DAYS = 100;
 const CATALOG_POPUP_DELAY = 500;
 const CATALOG_POPUP_TEXT_WIDTH = 150;
-const CATALOG_POPUP_THUMBNAIL_ZOOM_FACTOR = 4;
+const CATALOG_POPUP_THUMBNAIL_ZOOM_FACTOR = 3;
 const IDEOGRAPH_CONVERSION = false;
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
@@ -92,7 +78,7 @@ var catalogPopup;
 var quotePopup;
 var selectionMenu;
 var historyStateWrapper;
-var tegakiForSummary;
+var overrideUpfile;
 
 // xmlhttprequest
 var transport;
@@ -100,44 +86,57 @@ var transportType;
 var transportLastUsedTime = 0;
 
 // others
+const siteInfo = {
+	server: '', board: '', resno: 0,
+	logSize: 10000,
+	maxAttachSize: 0,
+	lastModified: 0
+};
+const cursorPos = {
+	x: 0,
+	y: 0,
+	pagex: 0,
+	pagey: 0,
+	moved: false
+};
+const pageModes = [];
+const appStates = ['command'];
+const subHash = {};
+const nameHash = {};
+
 var version = '0.1.0';
 var devMode = false;
-var pageModes = [];
-var appStates = ['command'];
 var viewportRect;
-var cursorPos = {x:0, y:0, pagex:0, pagey:0};
-var subHash = {};
-var nameHash = {};
-var lastModified;
 var lastScrollTop;
-var logSize = 10000;
 
 /*
  * <<<1 bootstrap functions
  */
 
-window.opera && (function () {
-	function cancel (e) {
-		if (!bootVars) {
-			return;
-		}
-		if (e.element.text) {
-			e.element.text = '';
-		}
-		if (e.element.src) {
-			e.element.src = '';
-		}
-		if (e.source) {
-			e.source = '';
-		}
-
-		removeAssets('script canceler');
-		return e.preventDefault();
+var scriptWatcher = (function () {
+	function handleBeforeScriptExecute (e) {
+		e.target.removeEventListener(
+			e.type, handleBeforeScriptExecute);
+		e.preventDefault();
 	}
 
-	window.opera.addEventListener('BeforeScript', cancel, false);
-	window.opera.addEventListener('BeforeExternalScript', cancel, false);
-	window.opera.addEventListener('BeforeJavascriptURL', cancel, false);
+	let result = new MutationObserver(ms => {
+		ms.forEach(m => {
+			m.addedNodes.forEach(node => {
+				if (node.nodeType != 1 || node.nodeName != 'SCRIPT') return;
+				node.type = 'text/plain';
+				node.addEventListener(
+					'beforescriptexecute', handleBeforeScriptExecute);
+			});
+		});
+	});
+
+	result.observe(document.documentElement, {
+		childList: true,
+		subtree: true
+	});
+
+	return result;
 })();
 
 // html extension to DOMParser: @see https://gist.github.com/kethinov/4760460
@@ -181,19 +180,6 @@ function d (s) {
 	return result;
 }
 
-function removeAssets (context) {
-	var nodes = document.querySelectorAll('script, link, style, iframe, object');
-	for (var i = nodes.length - 1; i >= 0; i--) {
-		if (/^akahuku_/.test(nodes[i].id)) continue;
-		if (nodes[i].nodeName == 'IFRAME') {
-			if (!/^https?:/.test(nodes[i].src)) continue;
-			bootVars.iframeSources += nodes[i].outerHTML;
-		}
-		//console.log((context || '') + ': ' +  nodes[i].nodeName + ' removed');
-		nodes[i].parentNode.removeChild(nodes[i]);
-	}
-}
-
 function initialStyle (isStart) {
 	var s;
 
@@ -220,18 +206,6 @@ function initialStyle (isStart) {
 }
 
 function initCustomEventHandler () {
-	document.addEventListener('Akahukuplus.imageError', function (e) {
-		if (e.detail && e.detail.target instanceof window.HTMLImageElement) {
-			resources.get(
-				'/images/404.jpg',
-				{method:'readAsDataURL'},
-				function (data) {
-					e.detail.target.src = data || '';
-				}
-			);
-		}
-	}, false);
-
 	var statusHideTimer;
 	document.addEventListener('Akahukuplus.bottomStatus', function (e) {
 		var ws = $('wheel-status');
@@ -259,21 +233,34 @@ function initCustomEventHandler () {
 }
 
 function handleDOMContentLoaded (e) {
+	document.removeEventListener(e.type, handleDOMContentLoaded, false);
+
+	scriptWatcher.disconnect();
+	scriptWatcher = undefined;
+
 	if (document.title == NOTFOUND_TITLE) {
 		initialStyle();
 		return;
 	}
 
 	timingLogger.startTag(e.type);
-	document.removeEventListener(e.type, arguments.callee, false);
 	bootVars.bodyHTML = document.documentElement[IHTML];
-	removeAssets(e.type);
 	initialStyle(false);
 	document.body[IHTML] = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
 
 	config = createConfigurator();
 	config.assign();
 	backend = WasaviExtensionWrapper.create({extensionName: 'akahukuplus'});
+
+	if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/res\/(\d+)\.htm/)) {
+		siteInfo.server = RegExp.$1;
+		siteInfo.board = RegExp.$2;
+		siteInfo.resno = RegExp.$3 - 0;
+	}
+	else if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)/)) {
+		siteInfo.server = RegExp.$1;
+		siteInfo.board = RegExp.$2;
+	}
 
 	var connected = false;
 	var retryRest = 5;
@@ -373,11 +360,11 @@ function boot () {
 					throw new Error('Cannot transform and import the XML document.');
 				}
 
-				var head = fragment.querySelector('head');
-				var body = fragment.querySelector('body');
+				var head = $qs('head', fragment);
+				var body = $qs('body', fragment);
 				var removeHeadElements = function () {
 					Array.prototype.slice
-					.call(document.querySelectorAll('head > *'))
+					.call($qsa('head > *'))
 					.forEach(function (node) {
 						if (node.nodeName == 'BASE') return;
 						node.parentNode.removeChild(node);
@@ -406,7 +393,7 @@ function boot () {
 
 				// some tweaks: move some elements to its proper position
 				var headNodes = Array.prototype.slice.call(
-					document.querySelectorAll('body style, body link'));
+					$qsa('body style, body link'));
 				while (headNodes.length) {
 					var node = headNodes.shift();
 					node.parentNode.removeChild(node);
@@ -443,8 +430,8 @@ function boot () {
 					startTransition = null;
 				}
 				else {
-					window.addEventListener('load', function (e) {
-						this.removeEventListener(e.type, arguments.callee, false);
+					window.addEventListener('load', function handleLoad (e) {
+						this.removeEventListener(e.type, handleLoad, false);
 						startTransition();
 						startTransition = null;
 					}, false);
@@ -464,13 +451,6 @@ function boot () {
 				node.style.whiteSpace = 'pre-wrap';
 			}
 
-			if (false) {
-				var s = document.documentElement[IHTML];
-				var ta = document.body.appendChild(document[CRE]('textarea'));
-				ta.value = s;
-				s = '';
-			}
-
 			xml = xsl = null;
 		}
 	);
@@ -481,7 +461,7 @@ function boot () {
  */
 
 function applyDataBindings (xml) {
-	var nodes = document.querySelectorAll('*[data-binding]');
+	var nodes = $qsa('*[data-binding]');
 	var result = null, re = null;
 	for (var i = 0, goal = nodes.length; i < goal; i++) {
 		var binding = nodes[i].getAttribute('data-binding');
@@ -520,7 +500,7 @@ function applyDataBindings (xml) {
 			try {
 				xsltProcessor.setParameter(null, 'render_mode', re[2]);
 				var f = fixFragment(xsltProcessor.transformToFragment(xml, document));
-				if (f.textContent.replace(/^\s+|\s+$/g, '') == '' && !f.querySelector('[data-doe]')) continue;
+				if (f.textContent.replace(/^\s+|\s+$/g, '') == '' && !$qs('[data-doe]', f)) continue;
 				empty(nodes[i]);
 				appendFragment(nodes[i], f);
 			}
@@ -538,65 +518,54 @@ function applyDataBindings (xml) {
  */
 
 function createResourceManager () {
-	function loadViaBackend (path, callback, expires, method) {
-		sendToBackend(
-			'get-resource', {
-				path: path,
-				asDataURL: method == 'readAsDataURL'
-			},
-			function (data) {
-				if (data) {
-					callback(data.data);
-					var slot = {
-						expires: Date.now() + (expires === undefined ? 1000 * 60 * 60 : expires),
-						data: data.data
-					};
-					window.localStorage.setItem(getResKey(path), JSON.stringify(slot));
-				}
-				else {
-					callback(null);
-				}
+	function setSlot (path, expires, data) {
+		let slot = {
+			expires: Date.now() + (expires === undefined ? 1000 * 60 * 60 : expires),
+			data: data
+		};
+		window.localStorage.setItem(getResKey(path), JSON.stringify(slot));
+	}
+
+	function loadWithXHR (path, callback, expires, responseType) {
+		let xhr = new XMLHttpRequest;
+
+		xhr.open('GET', chrome.runtime.getURL(path));
+		xhr.onload = () => {
+			if (responseType == 'dataURL') {
+				let fr = new FileReader;
+				fr.onload = () => {
+					setSlot(path, expires, fr.result);
+					callback(fr.result);
+				};
+				fr.onerror = () => { callback(); };
+				fr.onloadend = () => { fr = null; };
+				fr.readAsDataURL(xhr.response);
 			}
-		);
-	}
-	function loadDirectly (path, callback, expires, method) {
-		var file = opera.extension.getFile(path);
-		if (!file) {
-			setTimeout(function () {
-				callback(null);
-				callback = null;
-			}, 1);
-			return;
+			else {
+				setSlot(path, expires, xhr.response);
+				callback(xhr.response);
+			}
+		};
+		xhr.onerror = () => { callback(null); };
+		xhr.onloadend = () => { xhr = null; };
+
+		if (responseType == 'dataURL') {
+			xhr.responseType = 'blob';
 		}
-		
-		var fr = new FileReader;
-		fr.onload = function () {
-			callback(fr.result);
+		else {
+			xhr.responseType = responseType;
+		}
 
-			var slot = {
-				expires: Date.now() + (expires === undefined ? 1000 * 60 * 60 : expires),
-				data: fr.result
-			};
-			window.localStorage.setItem(getResKey(path), JSON.stringify(slot));
-
-			callback = fr.onload = fr.onerror = null;
-			fr = null;
-		};
-		fr.onerror = function () {
-			callback(null);
-			callback = fr.onload = fr.onerror = null;
-			fr = null;
-		};
-		fr[method](file);
+		xhr.send();
 	}
+
 	function getResKey (key) {
 		return 'resource:' + key;
 	}
 
 	function get (key) {
-		var resKey = getResKey(key);
-		var opts;
-		var callback;
+		let opts;
+		let callback;
 
 		switch (arguments.length) {
 		case 2:
@@ -611,33 +580,25 @@ function createResourceManager () {
 			break;
 		}
 
-		opts || (opts = {});
-		var method = opts.method || 'readAsText';
-		var expires = opts.expires;
-
 		if (typeof callback != 'function') {
 			throw new Error('createResourceManager: callback is not a function');
 		}
 
-		var slot = window.localStorage.getItem(resKey);
+		opts || (opts = {});
+		let resKey = getResKey(key);
+		let responseType = opts.responseType || 'text';
+		let expires = opts.expires;
+		let slot = window.localStorage.getItem(resKey);
 		if (slot !== null) {
 			slot = JSON.parse(slot);
-			if (slot.expires > Date.now()) {
-				setTimeout(function (data) {
-					callback(data);
-					callback = null;
-				}, 1, slot.data);
+			if (Date.now() < slot.expires) {
+				setTimeout(callback, 0, slot.data);
 				return;
 			}
 			window.localStorage.removeItem(resKey);
 		}
 
-		if (window.opera) {
-			loadDirectly(key, callback, expires, method);
-		}
-		else {
-			loadViaBackend(key, callback, expires, method);
-		}
+		loadWithXHR(key, callback, expires, responseType);
 	}
 
 	return {
@@ -651,16 +612,6 @@ function createXMLGenerator () {
 			s = s.replace(/<(\w+)[^>]*>([^>]*)<\/\1>/g, '$2');
 		}
 		return s;
-	}
-
-	function getReadableSize (s) {
-		if (s >= 1024 * 1024) {
-			return (s / (1024 * 1024)).toFixed(2) + 'MiB';
-		}
-		else if (s >= 1024) {
-			return (s / 1024).toFixed(2) + 'KiB';
-		}
-		return s + ' Bytes';
 	}
 
 	function textFactory (xml) {
@@ -744,7 +695,7 @@ function createXMLGenerator () {
 			// mark
 			re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(comment);
 			if (re && (!re[1] || re[1].substr(-1) != '=')) {
-				if (!replyNode.querySelector('deleted')) {
+				if (!$qs('deleted', replyNode)) {
 					element(replyNode, 'deleted');
 				}
 
@@ -781,7 +732,7 @@ function createXMLGenerator () {
 			if (re) {
 				var postedDate = new Date(
 					2000 + (re[1] - 0),
-					re[2] - 0,
+					re[2] - 1,
 					re[3] - 0,
 					re[4] - 0,
 					re[5] - 0,
@@ -865,6 +816,9 @@ function createXMLGenerator () {
 			}
 
 			// comment
+			//if (count == 0) {
+			//	comment += '';
+			//}
 			pushComment(element(replyNode, 'comment'), comment);
 		}
 
@@ -903,7 +857,7 @@ function createXMLGenerator () {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
 			if (/\.(?:jpg|gif|png|webm|mp4)$/.test(re[2])) {
-				anchor.setAttribute('class', this.className + ' lightbox');
+				anchor.setAttribute('class', this.className + ' incomplete-siokara-thumbnail lightbox');
 				anchor.setAttribute('thumbnail', baseUrl + 'misc/' + re[1] + '.thumb.jpg');
 			}
 			return baseUrl + 'src/' + re[1] + re[2];
@@ -996,22 +950,22 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-youtube',
-			'\\b((?:h?t?t?p?s?://)?(?:' + [
+			'\\b((?:h?t?t?p?s?://)?(' + [
 				'www\\.youtube\\.com/watch\?(?:.*?v=([\\w\\-]+))',
 				'www\\.youtube\\.com/v/([\\w\\-]+)',
 				'youtu\\.be/([\\w\\-]+)'
 			].join('|') + ')\\S*)',
 			function (re, anchor) {
-				anchor.setAttribute('youtube-key', re[1] || re[2] || re[3]);
-				return re[0];
+				anchor.setAttribute('youtube-key', re[2] || re[3] || re[4]);
+				return 'https://' + re[1];
 			}
 		),
 		new LinkTarget(
 			'link-nico2',
-			'\\b((?:h?t?t?p?://)?[^.]+\\.nicovideo\\.jp/watch/(sm\\w+)\\S*)',
+			'\\b((?:h?t?t?p?:s?//)?([^.]+\\.nicovideo\\.jp/watch/(sm\\w+)\\S*))',
 			function (re, anchor) {
-				anchor.setAttribute('nico2-key', re[1]);
-				return re[0];
+				anchor.setAttribute('nico2-key', re[2]);
+				return 'http://' + re[1];
 			}
 		),
 		new LinkTarget(
@@ -1194,10 +1148,14 @@ function createXMLGenerator () {
 		}
 	}
 
-	function getExpirationDate (s) {
-		var d = new Date;
+	function getExpirationDate (s, fromDate) {
 		var Y, M, D, h, m;
 
+		if (!(fromDate instanceof Date)) {
+			fromDate = new Date;
+		}
+
+		//
 		if (s.match(/(\d{4})年/)) {
 			Y = RegExp.$1 - 0;
 		}
@@ -1215,41 +1173,71 @@ function createXMLGenerator () {
 			m = RegExp.$2 - 0;
 		}
 
-		if (h != undefined && h < d.getHours() && D == undefined) {
-			D = d.getDate() + 1;
+		// 23:00 -> 01:00頃消えます: 翌日とみなす
+		if (h != undefined && h < fromDate.getHours() && D == undefined) {
+			D = fromDate.getDate() + 1;
 		}
-		if (D != undefined && D < d.getDate() && M == undefined) {
-			M = d.getMonth() + 1;
+		// 31日 -> 1日頃消えます: 翌月とみなす
+		if (D != undefined && D < fromDate.getDate() && M == undefined) {
+			M = fromDate.getMonth() + 1;
 		}
-		if (M != undefined && M < d.getMonth() && Y == undefined) {
-			Y = d.getFullYear() + 1;
+		// 12月 -> 1月頃消えます: 翌年とみなす
+		if (M != undefined && M < fromDate.getMonth() && Y == undefined) {
+			Y = fromDate.getFullYear() + 1;
 		}
 
-		Y != undefined && d.setFullYear(Y);
-		M != undefined && d.setMonth(M);
-		D != undefined && d.setDate(D);
-		h != undefined && m != undefined && d.setHours(h, m);
+		//
+		if (Y == undefined) Y = fromDate.getFullYear();
+		if (M == undefined) M = fromDate.getMonth();
+		if (D == undefined) D = fromDate.getDate();
+		if (h == undefined) h = fromDate.getHours();
+		if (m == undefined) m = fromDate.getMinutes();
 
-		var remains = d.getTime() - Date.now();
+		//
+		var remains = (new Date(Y, M, D, h, m)).getTime() - fromDate.getTime();
 		if (remains < 0) {
 			return '?';
 		}
 
+		//
 		var remainsString = [];
 		[
-			[1000 * 60 * 60 * 24, '日と'],
-			[1000 * 60 * 60, '時間'],
-			[1000 * 60, '分']
+			[1000 * 60 * 60 * 24, '日',   true],
+			[1000 * 60 * 60,      '時間', h != undefined && m != undefined],
+			[1000 * 60,           '分',   h != undefined && m != undefined]
 		].forEach(function (unit) {
-			if (remains >= unit[0]) {
-				remainsString.push(Math.floor(remains / unit[0]) + unit[1]);
-				remains %= unit[0];
-			}
+			if (!unit[2]) return;
+			if (remains < unit[0]) return;
+
+			remainsString.push(Math.floor(remains / unit[0]) + unit[1]);
+			remains %= unit[0];
 		});
 
-		return remainsString.length ?
-			'あと' + remainsString.join('') + 'くらい' :
-			'あと数秒！';
+		if (remainsString.length == 0) {
+			return 'まもなく';
+		}
+		else {
+			if (/日/.test(remainsString[0]) && remainsString.length > 1) {
+				remainsString[0] += 'と';
+			}
+
+			return 'あと' + remainsString.join('') + 'くらい';
+		}
+	}
+
+	function parseMaxAttachSize (number, unit) {
+		switch (unit) {
+		case 'KB':
+			unit = 1024;
+			break;
+		case 'MB':
+			unit = 1024 * 1024;
+			break;
+		default:
+			unit = 1;
+		}
+
+		return (number - 0) * unit;
 	}
 
 	function run (content, url, maxReplies) {
@@ -1339,7 +1327,13 @@ function createXMLGenerator () {
 				// log cycle
 				if (notice[1].match(/この板の保存数は(\d+)/)) {
 					element(metaNode, 'logsize').appendChild(text(RegExp.$1));
-					logSize = RegExp.$1 - 0;
+					siteInfo.logSize = RegExp.$1 - 0;
+				}
+
+				// max size of attachment file
+				if (notice[1].match(/(\d+)\s*(KB|MB)/)) {
+					siteInfo.maxAttachSize = parseMaxAttachSize(RegExp.$1, RegExp.$2);
+					element(metaNode, 'maxattachsize').appendChild(text(siteInfo.maxAttachSize));
 				}
 
 				element(noticesNode, 'notice').appendChild(text(notice[1]));
@@ -1392,7 +1386,7 @@ function createXMLGenerator () {
 		(function () {
 			var postform = /(<form[^>]+enctype="multipart\/form-data"[^>]*>)(.+?)<\/form>/i.exec(content);
 			if (!postform) return;
-			pfNode = element(metaNode, 'postform');
+			var pfNode = element(metaNode, 'postform');
 			var attribRegex = /(action|method|enctype)="([^"]*)"/ig;
 			var attrib;
 			while ((attrib = attribRegex.exec(postform[1]))) {
@@ -1413,25 +1407,35 @@ function createXMLGenerator () {
 
 		// ads
 		(function () {
-			var adsNode = element(metaNode, 'ads');
+			let adsNode = element(metaNode, 'ads');
+			let adsHash = {};
 
-			var adsHash = {};
-			var adsRegex = /<iframe[^>]+>.*?<\/iframe>/gi;
-			var ads;
+			// pick up unique ad iframe list
+			let adsRegex = /<iframe[^>]+>.*?<\/iframe>/gi;
+			let ads;
 			while ((ads = adsRegex.exec(content))) {
-				if (!(ads[0] in adsHash)) {
-					adsHash[ads[0]] = 1;
-				}
+				adsHash[ads[0]] = 1;
 			}
-			var bannersNode = element(adsNode, 'banners');
-			for (var i in adsHash) {
-				var width = /width="(\d+)"/.exec(i);
-				var height = /height="(\d+)"/.exec(i);
-				var src = /src="([^"]*)"/.exec(i);
+
+			// shuffle
+			let adsArray = Object.keys(adsHash);
+			for (let i = adsArray.length - 1; i > 0; i--) {
+				let index = Math.floor(Math.random() * (i + 1));
+				let tmp = adsArray[index];
+				adsArray[i] = adsArray[index];
+				adsArray[index] = tmp;
+			}
+
+			// store into xml
+			let bannersNode = element(adsNode, 'banners');
+			for (let i of adsArray) {
+				let width = /width="(\d+)"/.exec(i);
+				let height = /height="(\d+)"/.exec(i);
+				let src = /src="([^"]*)"/.exec(i);
 				if (!width || !height) continue;
 
-				var adNode = element(bannersNode, 'ad');
-				var className = 'unknown';
+				let adNode = element(bannersNode, 'ad');
+				let className = 'unknown';
 
 				width = width[1] - 0;
 				height = height[1] - 0;
@@ -1451,19 +1455,6 @@ function createXMLGenerator () {
 				adNode.setAttribute('width', width);
 				adNode.setAttribute('height', height);
 				adNode.setAttribute('src', src);
-			}
-
-			var re = /<div\s+class="ama"[^>]*>(.+<\/blockquote>)\s*<\/div>/i.exec(content);
-			if (re) {
-				re[1] = re[1].replace(/style="[^"]+"/i, '');
-				re[1] = re[1].replace(/<img[^>]*>/gi, function ($0) {
-					return $0
-						.replace(/\bdata-src=/gi, 'src=')
-						.replace(/(?:align|border|[hv]space)="[^"]*"/gi, '');
-				});
-				re[1] = re[1].replace(/(<\/?)blockquote\b/gi, '$1div');
-				var amazonNode = element(adsNode, 'amazon');
-				amazonNode.appendChild(text(re[1]));
 			}
 		})();
 
@@ -1582,7 +1573,7 @@ function createXMLGenerator () {
 			if (re) {
 				var postedDate = new Date(
 					2000 + (re[1] - 0),
-					re[2] - 0,
+					re[2] - 1,
 					re[3] - 0,
 					re[4] - 0,
 					re[5] - 0,
@@ -1796,8 +1787,8 @@ function createXMLGenerator () {
 }
 
 function createConfigurator () {
-	var keyName = 'akahukuplus_config';
-	var data = {
+	const keyName = 'akahukuplus_config';
+	const data = {
 		wheel_reload_unit_size: {
 			type:'int',
 			value:WHEEL_RELOAD_UNIT_SIZE,
@@ -1831,12 +1822,14 @@ function createConfigurator () {
 		storage: {
 			type:'list',
 			value:'dropbox',
-			name:'使用するオンラインストレージ',
+			name:'使用するストレージ',
 			list:{
 				dropbox:'dropbox',
 				gdrive:'Google Drive',
-				msonedrive:'Microsoft OneDrive'
-			}
+				msonedrive:'Microsoft OneDrive',
+				local:'local'
+			},
+			desc:'localストレージを使用できるのは現在Chromeのみです。詳細は https://akahuku.github.io/akahukuplus/how-to-save-image-with-chrome.html を参照してください。'
 		},
 		save_image_name_template: {
 			type:'string',
@@ -1846,6 +1839,17 @@ function createConfigurator () {
 				'$SERVER (サーバ名)、$BOARD (板名)、$THREAD (スレッド番号)、' +
 				'$YEAR (画像の投稿年)、$MONTH (画像の投稿月)、$DAY (画像の投稿日)、' +
 				'$SERIAL (画像番号)、$DIST (画像の分散キー)、$EXT (拡張子)'
+		},
+		auto_save_image: {
+			type:'bool',
+			value:false,
+			name:'画像を開いた際に自動的に保存する'
+		},
+		save_image_bell_volume: {
+			type:'int',
+			value:50,
+			name:'画像保存が成功した際のベルの音量',
+			min:0, max:100
 		},
 		lightbox_enabled: {
 			type:'bool',
@@ -1866,14 +1870,8 @@ function createConfigurator () {
 		},
 		banner_enabled: {
 			type:'bool',
-			value:false,
-			name:'バナーを表示する'
-		},
-		image_distrubution_enabled: {
-			type:'bool',
 			value:true,
-			name:'画像の分散化を有効にする',
-			desc:'このスイッチをオフにすると、画像を掲示板のあるサーバから取得します。画像サーバが落ちている場合などに一時的にオフにするとよいでしょう'
+			name:'バナーを表示する'
 		}
 	};
 
@@ -1978,8 +1976,8 @@ function createConfigurator () {
 }
 
 function createTimingLogger () {
-	var a = [];
-	var b = [];
+	const a = [];
+	const b = [];
 	var last = false;
 	var locked = false;
 	function timeOffset (now) {
@@ -2032,7 +2030,7 @@ function createTimingLogger () {
 }
 
 function createClickDispatcher () {
-	var keys = {};
+	const keys = {};
 
 	function handler (e) {
 		var t = e.target, fragment;
@@ -2124,7 +2122,7 @@ function createClickDispatcher () {
 }
 
 function createKeyManager () {
-	var strokes = {};
+	const strokes = {};
 
 	function keypress (e) {
 		var focusedNodeName = getFocusedNodeName();
@@ -2255,7 +2253,8 @@ function createSound (name) {
 }
 
 function sendToBackend () {
-	var args = Array.prototype.slice.call(arguments), data, callback;
+	var args = Array.prototype.slice.call(arguments);
+	var data, callback;
 	if (args.length > 1 && typeof args[args.length - 1] == 'function') {
 		callback = args.pop();
 	}
@@ -2273,7 +2272,7 @@ function createMarkStatistics () {
 	var marks, otherMarks, ids;
 	var repliesCount, newEntries;
 
-	var KEY_MAP = {
+	const KEY_MAP = {
 		'管理人': 'admin',
 		'なー': 'nar',
 		'スレッドを立てた人によって削除されました': 'passive',
@@ -2281,7 +2280,7 @@ function createMarkStatistics () {
 	};
 
 	function getRepliesCount () {
-		return document.querySelectorAll('article:first-child .reply-wrap').length;
+		return $qsa('article:first-child .reply-wrap').length;
 	}
 
 	function notifyMark (number, content) {
@@ -2473,7 +2472,7 @@ function createMarkStatistics () {
 			if (data.length) {
 				var li = setListItemVisibility(container, true);
 				if (li) {
-					var header = li.querySelector('p span');
+					var header = $qs('p span', li);
 					if (header) {
 						header.textContent = ' (' + markData[i].length + ')';
 					}
@@ -2553,7 +2552,7 @@ function createMarkStatistics () {
 			&& /^\/id\//.test(window.location.pathname)) {
 				identified = false;
 			}
-			else if ((node = document.querySelector('.topic-wrap .email'))
+			else if ((node = $qs('.topic-wrap .email'))
 			&& /ID表示/i.test(node.textContent)) {
 				identified = false;
 			}
@@ -2595,7 +2594,7 @@ function createMarkStatistics () {
 }
 
 function createQueryCompiler () {
-	var lex = /-?"[^"]*"|\(|\)|-\(|\||[^\s|)]+/g;
+	const lex = /-?"[^"]*"|\(|\)|-\(|\||[^\s|)]+/g;
 	var query;
 	var lastIndex;
 	var reachedToEof;
@@ -2778,17 +2777,10 @@ function createUrlStorage () {
 		return result;
 	}
 
-	function ensureUrl (url) {
-		return /:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/res\/(\d+)\.htm/.exec(url);
-	}
-
-	function ensureUrl2 (url) {
-		return /:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\//.exec(url);
-	}
-
 	function getKey (url) {
-		var re = ensureUrl(url);
-		return re ? (re[1] + '-' + re[2] + '-' + re[3]) : null;
+		return siteInfo.resno ?
+			(siteInfo.server + '-' + siteInfo.board + '-' + siteInfo.resno) :
+			null;
 	}
 
 	function memo (url) {
@@ -2808,11 +2800,9 @@ function createUrlStorage () {
 
 	function getAll (url) {
 		var result = {};
-		var url = ensureUrl2(url);
-		if (!url) return result;
 		getSlot().forEach(function (item) {
 			var key = item.key.split('-');
-			if (url[1] == key[0] && url[2] == key[1]) {
+			if (siteInfo.server == key[0] && siteInfo.board == key[1]) {
 				result[key[2]] = item.count;
 			}
 		});
@@ -2826,7 +2816,7 @@ function createUrlStorage () {
 }
 
 function createCatalogPopup (container) {
-	var popups = [];
+	const popups = [];
 	var timer;
 
 	function _log (s) {
@@ -2836,6 +2826,7 @@ function createCatalogPopup (container) {
 	function mover (e) {
 		if (!config.data.catalog_popup_enabled.value) return;
 		if (transport) return;
+		if (!cursorPos.moved) return;
 		_log('mover: ' + (e.target.outerHTML || '<#document>').match(/<[^>]*>/)[0]);
 
 		var target;
@@ -2905,16 +2896,18 @@ function createCatalogPopup (container) {
 		var st = viewportRect.top + docScrollTop();
 		var sr = sl + viewportRect.width;
 		var sb = st + viewportRect.height;
+		var right = rect.left + rect.width;
+		var bottom = rect.top + rect.height;
 		if ('left' in rect && rect.left < sl) rect.left = sl;
-		if ('left' in rect && 'right' in rect && 'width' in rect && rect.right > sr) rect.left = sr - rect.width;
+		if ('left' in rect && right > sr) rect.left = sr - rect.width;
 		if ('top' in rect && rect.top < st) rect.top = st;
-		if ('top' in rect && 'bottom' in rect && 'height' in rect && rect.bottom > sb) rect.top = sb - rect.height;
+		if ('top' in rect && bottom > sb) rect.top = sb - rect.height;
 	}
 
 	function prepare (target) {
 		var index = indexOf(target);
 		_log('prepare: index: ' + index +
-			', target: ' + (target.querySelector('.text') || {textContent:''}).textContent);
+			', target: ' + ($qs('.text', target) || {textContent:''}).textContent);
 		if (index >= 0) {
 			_log('prepare: popup for the target already exists. exit.');
 			return;
@@ -2922,20 +2915,24 @@ function createCatalogPopup (container) {
 
 		var thumbnail, text, shrinkedRect;
 
-		var targetThumbnail = target.querySelector('img');
+		var targetThumbnail = $qs('img', target);
 		if (targetThumbnail && targetThumbnail.naturalWidth && targetThumbnail.naturalHeight) {
 			thumbnail = document.body.appendChild(document[CRE]('img'));
 			thumbnail.src = targetThumbnail.src.replace('/cat/', '/thumb/');
 			thumbnail.className = 'catalog-popup hide';
 			thumbnail.setAttribute('data-url', target.href);
-			thumbnail.addEventListener('click', function (e) {
-				sendToBackend('open', {url:this.getAttribute('data-url'), selfUrl:window.location.href});
+			thumbnail.addEventListener('click', function () {
+				sendToBackend('open',
+					{
+						url: this.getAttribute('data-url'),
+						selfUrl: window.location.href
+					});
 			}, false);
 			shrinkedRect = getRect(targetThumbnail);
 		}
 
-		var targetText = target.querySelector('.text');
-		var targetCount = target.querySelector('.info span:first-child');
+		var targetText = $qs('.text', target);
+		var targetCount = $qs('.info span:first-child', target);
 		if (targetText || targetCount) {
 			text = document.body.appendChild(document[CRE]('div'));
 			text.className = 'catalog-popup hide';
@@ -2958,16 +2955,20 @@ function createCatalogPopup (container) {
 		index = popups.length - 1;
 
 		if (thumbnail && (!thumbnail.naturalWidth || !thumbnail.naturalHeight)) {
-			thumbnail.addEventListener('load', function () {
-				this.removeEventListener('load', arguments.callee, false);
-				this.removeEventListener('error', arguments.callee, false);
+			var handleLoad = function () {
+				this.removeEventListener('load', handleLoad, false);
+				this.removeEventListener('error', handleFail, false);
+				handleLoad = handleFail = null;
 				open(target);
-			}, false);
-			thumbnail.addEventListener('error', function () {
-				this.removeEventListener('load', arguments.callee, false);
-				this.removeEventListener('error', arguments.callee, false);
+			};
+			var handleFail = function () {
+				this.removeEventListener('load', handleLoad, false);
+				this.removeEventListener('error', handleFail, false);
+				handleLoad = handleFail = null;
 				open(target);
-			}, false);
+			};
+			thumbnail.addEventListener('load', handleLoad, false);
+			thumbnail.addEventListener('error', handleFail, false);
 		}
 		else {
 			open(index);
@@ -3071,7 +3072,7 @@ function createCatalogPopup (container) {
 
 	function closeAll (except) {
 		_log('closeAll: closing ' + popups.length + ' popup(s)');
-		var elms = Array.prototype.slice.call(document.querySelectorAll('body > .catalog-popup'));
+		var elms = Array.prototype.slice.call($qsa('body > .catalog-popup'));
 		for (var i = 0; i < popups.length; i++) {
 			['thumbnail', 'text'].forEach(function (p) {
 				var index = elms.indexOf(popups[i][p]);
@@ -3087,12 +3088,13 @@ function createCatalogPopup (container) {
 
 	function deleteAll () {
 		Array.prototype.forEach.call(
-			document.querySelectorAll('body > .catalog-popup'),
+			$qsa('body > .catalog-popup'),
 			function (node) {
 				node.parentNode && node.parentNode.removeChild(node);
 			}
 		);
 		popups.length = 0;
+		cursorPos.moved = false;
 	}
 
 	function init () {
@@ -3110,13 +3112,13 @@ function createCatalogPopup (container) {
 }
 
 function createQuotePopup () {
-	var POOL_ID = 'quote-popup-pool';
-	var ORIGIN_CACHE_ATTR = 'data-quote-origin';
-	var ORIGIN_ID_ATTR = 'data-quote-origin-id';
-	var POPUP_DELAY_MSEC = 1000 * 0.5;
-	var POPUP_HIGHLIGHT_MSEC = 1000 * 2;
-	var POPUP_HIGHLIGHT_TOP_MARGIN = 64;
-	var POPUP_POS_OFFSET = 8;
+	const POOL_ID = 'quote-popup-pool';
+	const ORIGIN_CACHE_ATTR = 'data-quote-origin';
+	const ORIGIN_ID_ATTR = 'data-quote-origin-id';
+	const POPUP_DELAY_MSEC = 1000 * 0.5;
+	const POPUP_HIGHLIGHT_MSEC = 1000 * 2;
+	const POPUP_HIGHLIGHT_TOP_MARGIN = 64;
+	const POPUP_POS_OFFSET = 8;
 
 	var timer;
 	var lastQuoteElement;
@@ -3219,7 +3221,7 @@ function createQuotePopup () {
 				return null;
 			}
 
-			var origin = document.querySelector([
+			var origin = $qs([
 				'article .topic-wrap[data-number="' + quotedNo + '"]',
 				'article .reply-wrap > [data-number="' + quotedNo + '"]'
 			].join(','));
@@ -3230,7 +3232,7 @@ function createQuotePopup () {
 				return null;
 			}
 
-			var index = origin.querySelector('.no');
+			var index = $qs('.no', origin);
 			if (index) {
 				index = index.textContent - 0;
 			}
@@ -3287,7 +3289,7 @@ function createQuotePopup () {
 			.replace(/^(?:>|&gt;)/, '')
 			.replace(/\n(?:>|&gt;)/g, '\n');
 
-		var nodes = document.querySelectorAll([
+		var nodes = $qsa([
 			'article .topic-wrap .comment',
 			'article .reply-wrap .comment'
 		].join(','));
@@ -3320,7 +3322,7 @@ function createQuotePopup () {
 		while (pool && pool.childNodes.length > 0) {
 			var ch = pool.lastChild;
 
-			if (indexOfNodes(ch.querySelectorAll('.comment'), sentinelComment) >= 0) {
+			if (indexOfNodes($qsa('.comment', ch), sentinelComment) >= 0) {
 				break;
 			}
 
@@ -3330,7 +3332,7 @@ function createQuotePopup () {
 
 	function createPopup (quoteOrigin) {
 		var no = quoteOrigin.element.getAttribute('data-number') ||
-			quoteOrigin.element.querySelector('[data-number]').getAttribute('data-number');
+			$qs('[data-number]', quoteOrigin.element).getAttribute('data-number');
 		quoteOrigin.element.id = '_' + no;
 
 		// create new popup
@@ -3339,7 +3341,7 @@ function createQuotePopup () {
 		div.appendChild(quoteOrigin.element.cloneNode(true));
 
 		// some tweaks for contents
-		var noElm = div.querySelector('.no');
+		var noElm = $qs('.no', div);
 		if (noElm) {
 			var a = document[CRE]('a');
 			noElm.parentNode.replaceChild(a, noElm);
@@ -3348,12 +3350,12 @@ function createQuotePopup () {
 			a.textContent = noElm.textContent;
 			a.setAttribute(ORIGIN_ID_ATTR, quoteOrigin.element.id);
 		}
-		var checkElm = div.querySelector('input[type="checkbox"]');
+		var checkElm = $qs('input[type="checkbox"]', div);
 		if (checkElm) {
 			checkElm.parentNode.removeChild(checkElm);
 		}
 		var iframe;
-		while ((iframe = div.querySelector('iframe'))) {
+		while ((iframe = $qs('iframe', div))) {
 			iframe.parentNode.removeChild(iframe);
 		}
 
@@ -3405,7 +3407,7 @@ function createQuotePopup () {
 		if (element) {
 			var quotePopupContainer = getParent(element, '.quote-popup');
 			if (quotePopupContainer) {
-				removePopup(quotePopupContainer.querySelector('.comment'));
+				removePopup($qs('.comment', quotePopupContainer));
 				return;
 			}
 		}
@@ -3596,11 +3598,11 @@ function createSelectionMenu () {
 }
 
 function createFavicon () {
-	var FAVICON_ID = 'dyn-favicon';
-	var isLoading = false;
+	const FAVICON_ID = 'dyn-favicon';
+	let isLoading = false;
 
 	function createLinkNode () {
-		var link = document.head.appendChild(document[CRE]('link'));
+		let link = document.head.appendChild(document[CRE]('link'));
 		link.setAttribute('rel', 'icon');
 		link.setAttribute('id', FAVICON_ID);
 		link.setAttribute('type', 'image/png');
@@ -3615,23 +3617,23 @@ function createFavicon () {
 		favicon = $(favicon);
 		if (!favicon) return;
 
-		var w = 16;
-		var h = 16;
-		var factor = 3;
-		var canvas = document[CRE]('canvas');
+		const w = 16;
+		const h = 16;
+		const factor = 3;
+		let canvas = document[CRE]('canvas');
 		canvas.width = w * factor;
 		canvas.height = h * factor;
-		var c = canvas.getContext('2d');
+		let c = canvas.getContext('2d');
 		c.fillStyle = '#000000';
 		c.fillRect(0, 0, canvas.width, canvas.height);
-		var clipSize = Math.min(image.width, image.height);
+		let clipSize = Math.min(image.width, image.height);
 		c.drawImage(image,
 			image.width / 2 - clipSize / 2,
 			image.height / 2 - clipSize / 2,
 			clipSize, clipSize, 0, 0, canvas.width, canvas.height);
 
-		var ps = c.getImageData(0, 0, w * factor, h * factor);
-		var pd;
+		let ps = c.getImageData(0, 0, w * factor, h * factor);
+		let pd;
 		if (window[USW] && window[USW].ImageData) {
 			pd = new window[USW].ImageData(w, h);
 		}
@@ -3643,13 +3645,13 @@ function createFavicon () {
 		}
 
 		if (pd) {
-			var factorPower = Math.pow(factor, 2);
-			for (var i = 0; i < h; i++) {
-				for (var j = 0; j < w; j++) {
-					var avg = [0, 0, 0, 0];
+			let factorPower = Math.pow(factor, 2);
+			for (let i = 0; i < h; i++) {
+				for (let j = 0; j < w; j++) {
+					let avg = [0, 0, 0, 0];
 
-					for (var k = 0; k < factor; k++) {
-						for (var l = 0; l < factor; l++) {
+					for (let k = 0; k < factor; k++) {
+						for (let l = 0; l < factor; l++) {
 							avg[0] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 0];
 							avg[1] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 1];
 							avg[2] += ps.data[((i * factor + k) * w * factor + (j * factor + l)) * 4 + 2];
@@ -3657,7 +3659,7 @@ function createFavicon () {
 						}
 					}
 
-					for (var k = 0; k < 4; k++) {
+					for (let k = 0; k < 4; k++) {
 						avg[k] = Math.floor(avg[k] / factorPower);
 						avg[k] += (255 - avg[k]) / 8;
 						pd.data[(i * w + j) * 4 + k] = Math.min(255, avg[k]);
@@ -3678,36 +3680,20 @@ function createFavicon () {
 	function update () {
 		if (isLoading) return;
 
-		var link = $(FAVICON_ID);
-		if (link) {
-			if (window.opera) {
-				var href = link.href;
-				link.parentNode.removeChild(link);
-				createLinkNode().href = '/favicon.ico';
-
-				setTimeout(function () {
-					var link = $(FAVICON_ID);
-					if (!link) return;
-					link.parentNode.removeChild(link);
-					createLinkNode().href = href;
-				}, 100);
-			}
-			return;
-		}
+		let link = $(FAVICON_ID);
+		if (link) return;
 
 		switch (pageModes[0]) {
 		case 'summary':
 		case 'catalog':
-			var re = /^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\//.exec(window.location.href);
-			if (!re) break;
-
 			isLoading = true;
 			resources.get(
-				'/images/board/' + re[1] + '-' + re[2] + '.png',
-				{method:'readAsDataURL'},
-				function (data) {
+				`/images/board/${siteInfo.server}-${siteInfo.board}.png`,
+				{responseType:'dataURL'},
+				data => {
 					if (data) {
-						createLinkNode().href = data.replace(/^data:[^,]+/, 'data:image/png;base64');
+						createLinkNode().href = data.replace(
+							/^data:[^,]+/, 'data:image/png;base64');
 					}
 					isLoading = false;
 				}
@@ -3715,23 +3701,16 @@ function createFavicon () {
 			break;
 
 		case 'reply':
-			var thumb = document.querySelector('article:nth-of-type(1) img');
+			let thumb = $qs('article:nth-of-type(1) img');
 			if (!thumb) break;
 
 			isLoading = true;
-			var re = /^[^:]+:\/\/[^.]+\.2chan\.net(?::\d+)?\/([^\/]+)(\/[^\/]+\/thumb\/\d+s\.jpg)/.exec(thumb.src);
-			var src = re ? re[2] : thumb.src;
-			var img = new Image();
-			function handleImageLoad (e) {
-				this.removeEventListener('load', arguments.callee, false);
-				this.removeEventListener('error', arguments.callee, false);
-				overwriteFavicon(this, createLinkNode());
-				img = null;
+			getImageFrom(restoreDistributedImageURL(thumb.src), img => {
+				if (img) {
+					overwriteFavicon(img, createLinkNode());
+				}
 				isLoading = false;
-			}
-			img.addEventListener('load', handleImageLoad, false);
-			img.addEventListener('error', handleImageLoad, false);
-			img.src = src;
+			});
 			break;
 		}
 	}
@@ -3781,7 +3760,7 @@ function setupSticky (selector, initCallback, aMarginTop) {
 	function handleScroll () {
 		var scrollTop = lastScrollTop = docScrollTop();
 
-		var nodes = document.querySelectorAll(selector);
+		var nodes = $qsa(selector);
 		for (var i = 0, goal = nodes.length; i < goal; i++) {
 			var stickyItem = nodes[i];
 			var stickyItemRect = stickyItem.getBoundingClientRect();
@@ -3816,7 +3795,7 @@ function setupSticky (selector, initCallback, aMarginTop) {
 	}
 
 	function init () {
-		var nodes = document.querySelectorAll(selector);
+		var nodes = $qsa(selector);
 		if (nodes.length) {
 			for (var i = 0, goal = nodes.length; i < goal; i++) {
 				var rect2 = nodes[i].getBoundingClientRect();
@@ -3841,14 +3820,14 @@ function setupParallax (selector) {
 	var marginTop = undefined;
 
 	function init () {
-		var node = document.querySelector(selector);
+		var node = $qs(selector);
 		if (!node) return;
 		marginTop = node.getBoundingClientRect().top;
 		window.addEventListener('scroll', handleScroll, false);
 		handleScroll();
 		setTimeout(function () {
 			Array.prototype.forEach.call(
-				document.querySelectorAll('iframe[data-src]'),
+				$qsa('iframe[data-src]'),
 				function (iframe) {
 					iframe.src = iframe.getAttribute('data-src');
 					iframe.removeAttribute('data-src');
@@ -3858,7 +3837,7 @@ function setupParallax (selector) {
 	}
 
 	function handleScroll () {
-		var node = document.querySelector(selector);
+		var node = $qs(selector);
 		if (!node) return;
 
 		var rect = node.getBoundingClientRect();
@@ -3898,7 +3877,7 @@ function setupVideoViewer () {
 		var vt = st - viewportRect.height;
 		var vb = st + viewportRect.height * 2;
 		Array.prototype.forEach.call(
-			document.querySelectorAll('.inline-video'),
+			$qsa('.inline-video'),
 			function (node) {
 				var rect = node.getBoundingClientRect();
 				if (rect.bottom + st < vt
@@ -3995,6 +3974,55 @@ function setupTextFieldEvent (items) {
 		items.forEach(updateInfoCore);
 	}
 
+	function handlePaste (e) {
+		if (!e.clipboardData.files) return;
+		if (e.clipboardData.files.length == 0) return;
+		if (!$qs('#upfile:not([disabled])')) return;
+
+		let availableTypes = [
+			'image/jpg', 'image/jpeg',
+			'image/png',
+			'image/gif'
+			// video?
+		];
+		let file = Array.prototype.reduce.call(e.clipboardData.files, (file, f) => {
+			if (file) return file;
+			if (availableTypes.indexOf(f.type) >= 0) return f;
+			return null;
+		}, null);
+		if (!file) return;
+
+		setBottomStatus('画像を貼り付けています...', true);
+		resetForm('baseform', 'upfile', 'textonly');
+		overrideUpfile = {
+			name: file.name,
+			data: file
+		};
+
+		if (siteInfo.maxAttachSize && file.size > siteInfo.maxAttachSize) {
+			getImageFrom(file, img => {
+				if (!img) return;
+
+				let canvas = document[CRE]('canvas');
+				canvas.width = img.naturalWidth;
+				canvas.height = img.naturalHeight;
+				let c = canvas.getContext('2d');
+				c.fillStyle = '#000000';
+				c.fillRect(0, 0, canvas.width, canvas.height);
+				c.drawImage(img, 0, 0);
+
+				setPostThumbnail(canvas, () => setBottomStatus());
+
+				getBlobFrom(canvas.toDataURL('image/jpeg', 0.8), blob => {
+					overrideUpfile.data = blob;
+				});
+			});
+		}
+		else {
+			setPostThumbnail(file, () => setBottomStatus());
+		}
+	}
+
 	var com = $('com');
 	if (com) {
 		initialComHeight = com.offsetHeight;
@@ -4002,10 +4030,13 @@ function setupTextFieldEvent (items) {
 			var el = $(item.id);
 			if (!el) return;
 
-			el.nodeName == 'TEXTAREA' && el.addEventListener('input', fixTextAreaHeight, false);
+			if (el.nodeName == 'TEXTAREA') {
+				el.addEventListener('input', fixTextAreaHeight, false);
+			}
 			el.addEventListener('input', updateInfo, false);
 		});
 		updateInfo.call(com);
+		com.addEventListener('paste', handlePaste, false);
 	}
 }
 
@@ -4087,7 +4118,7 @@ function setupPostShadowMouseEvent (tabContent, nodeName, className) {
 		var number = e.target.getAttribute('data-number');
 		if (!number) return;
 
-		var unit = document.querySelector([
+		var unit = $qs([
 			'article .topic-wrap[data-number="' + number + '"]',
 			'article .reply-wrap > [data-number="' + number + '"]'
 		].join(','));
@@ -4112,7 +4143,7 @@ function setupPostShadowMouseEvent (tabContent, nodeName, className) {
 	function mout (e) {
 		if (!e || e.target.nodeName != nodeName || !e.target.classList.contains(className)) return;
 		Array.prototype.forEach.call(
-			document.querySelectorAll([
+			$qsa([
 				'article .topic-wrap.hilight',
 				'article .reply-wrap > .hilight'
 			].join(',')),
@@ -4144,10 +4175,10 @@ function install (mode) {
 	 */
 
 	try {
-		lastModified = new Date(document.lastModified).toUTCString();
+		siteInfo.lastModified = new Date(document.lastModified).toUTCString();
 	}
 	catch (e) {
-		lastModified = 0;
+		siteInfo.lastModified = 0;
 	}
 
 	/*
@@ -4167,13 +4198,22 @@ function install (mode) {
 				}
 				else {
 					message = '保存完了';
-					sounds.imageSaved.play();
+
+					if (data.status == 200) {
+						anchor.setAttribute('data-image-saved', '1');
+						sounds.imageSaved.volume = config.data.save_image_bell_volume.value;
+						sounds.imageSaved.play();
+					}
 				}
+
 				anchor && setTimeout(function (anchor) {
+					if (/^save-image-anchor-/.test(anchor.id)) {
+						anchor.removeAttribute('id');
+					}
 					$t(anchor, anchor.getAttribute('data-original-text'));
 					anchor.removeAttribute('data-original-text');
 					anchor = null;
-				}, 1000 * 3, anchor);
+				}, 1000 * 1, anchor);
 			}
 			else {
 				switch (data.state) {
@@ -4183,6 +4223,15 @@ function install (mode) {
 				}
 			}
 			message && $t(anchor, message);
+			break;
+		case 'notify-viewers':
+			if (data.siteInfo.server == siteInfo.server
+			&&  data.siteInfo.board == siteInfo.board
+			&&  data.siteInfo.resno != siteInfo.resno) {
+				$t('viewers', data.data);
+			}
+			break;
+		default:
 			break;
 		}
 	});
@@ -4214,32 +4263,12 @@ function install (mode) {
 		.add('.postno', function (e, t) {
 			var wrap = getWrapElement(t);
 			if (!wrap) return;
-			var comment = wrap.querySelector('.comment');
+			var comment = $qs('.comment', wrap);
 			if (!comment) return;
 			selectionMenu.dispatch('quote', nodeToString(comment));
 		})
 		.add('.save-image',  function (e, t) {
-			if (t.getAttribute('data-original-text')) return;
-
-			var href = t.getAttribute('data-href') || t.href;
-			var f = getImageName(href);
-			if (f == undefined || f == '') return;
-
-			var id;
-			do {
-				id = 'save-image-anchor-' + (Math.floor(Math.random() * 0x10000)).toString(16);
-			} while ($(id));
-
-			t.setAttribute('data-original-text', t.textContent);
-			t.id = id;
-			$t(t, '保存中...');
-
-			sendToBackend('save-image', {
-				url:href,
-				path:config.data.storage.value.replace('msonedrive', 'onedrive') + ':' + f,
-				mimeType:getImageMimeType(href),
-				anchorId:id
-			});
+			commands.saveImage(e, t);
 		})
 		.add('.panel-tab',   function (e, t) {
 			showPanel(function (panel) {
@@ -4251,9 +4280,22 @@ function install (mode) {
 			commands.reload();
 		})
 		.add('.lightbox', function (e, t) {
+			if (config.data.auto_save_image.value) {
+				setTimeout(function (e, t) {
+					let saveLink = $qs(`.save-image[href="${t.href}"]`);
+					if (!saveLink) return;
+					if (saveLink.getAttribute('data-image-saved')) return;
+
+					commands.saveImage(e, saveLink);
+				}, 1000 * 1, e, t);
+			}
 			if (config.data.lightbox_enabled.value) {
 				if (/\.(?:jpg|gif|png)$/.test(t.href)) {
-					lightbox(t, t.classList.contains('link-siokara'));
+					let ignoreThumbnail =
+						t.classList.contains('link-siokara')
+						|| t.classList.contains('siokara-thumbnail');
+
+					lightbox(t, ignoreThumbnail);
 				}
 				else if (/\.(?:webm|mp4)$/.test(t.href)) {
 					displayInlineVideo(t);
@@ -4267,7 +4309,7 @@ function install (mode) {
 			var newActive;
 
 			Array.prototype.forEach.call(
-				document.querySelectorAll('#catalog .catalog-options a'),
+				$qsa('#catalog .catalog-options a'),
 				function (node) {
 					node.classList.remove('active');
 					if (node == t) {
@@ -4278,13 +4320,13 @@ function install (mode) {
 			);
 
 			if (!newActive) {
-				newActive = document.querySelector('#catalog .catalog-options a');
+				newActive = $qs('#catalog .catalog-options a');
 				newActive.classList.add('active');
 			}
 
 			var contentId = 'catalog-threads-wrap-' + newActive.href.match(/\w+$/)[0];
 			Array.prototype.forEach.call(
-				document.querySelectorAll('#catalog .catalog-threads-wrap > div'),
+				$qsa('#catalog .catalog-threads-wrap > div'),
 				function (node) {
 					node.classList.add('hide');
 					if (node.id == contentId) {
@@ -4332,6 +4374,7 @@ function install (mode) {
 		.addStroke('command', 'n', commands.activateNoticeTab)
 
 		.addStroke('command', 'i', commands.activatePostForm)
+		.addStroke('command', '\u001b', commands.deactivatePostForm)
 
 		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)
 		.addStroke('command.edit', '\u0013', commands.toggleSage)
@@ -4376,7 +4419,7 @@ function install (mode) {
 		if (!style) return;
 		empty(style);
 
-		var text = document.querySelector('article div.text');
+		var text = $qs('article div.text');
 		if (text) {
 			var rect = text.getBoundingClientRect();
 			style.appendChild(document.createTextNode([
@@ -4423,6 +4466,7 @@ function install (mode) {
 		cursorPos.y = e.clientY;
 		cursorPos.pagex = e.pageX;
 		cursorPos.pagey = e.pageY;
+		cursorPos.moved = true;
 	}, false);
 
 	/*
@@ -4500,12 +4544,12 @@ function install (mode) {
 		drawButtonWrap.classList.remove('hide');
 
 		if (pageModes[0] == 'summary') {
-			var canvas = document.querySelector('.draw-canvas');
+			var canvas = $qs('.draw-canvas');
 			if (!canvas) return;
 			canvas.width = 640;
 			canvas.height = 480;
 		}
-	})(document.querySelector('.draw-button-wrap'));
+	})($qs('.draw-button-wrap'));
 
 	/*
 	 * file element change listener
@@ -4515,8 +4559,8 @@ function install (mode) {
 		if (!file) return;
 		file.addEventListener('change', function (e) {
 			setPostThumbnail(this.files[0]);
-			resetform('baseform', 'textonly');
-			tegakiForSummary = undefined;
+			resetForm('baseform', 'textonly');
+			overrideUpfile = undefined;
 		}, false);
 	})($('upfile'));
 
@@ -4576,7 +4620,7 @@ function install (mode) {
 		setupSticky(
 			'article > .image > div', null,
 			article.getBoundingClientRect().top + docScrollTop());
-	})(document.querySelector('article'));
+	})($qs('article'));
 
 	/*
 	 * parallax banner handling
@@ -4616,7 +4660,7 @@ function install (mode) {
 	 * catalog popup
 	 */
 
-	catalogPopup = createCatalogPopup(document.querySelector('#catalog'));
+	catalogPopup = createCatalogPopup($qs('#catalog'));
 
 	/*
 	 * url memorizer
@@ -4630,19 +4674,6 @@ function install (mode) {
 	 */
 
 	quotePopup = createQuotePopup();
-
-	/*
-	 * special custom events from my keysnail.js :-)
-	 *
-	 * RequestMoreContent:
-	 *    emulates space key behavior at bottom of page
-	 *    on Presto Opera
-	 */
-
-	document.addEventListener('RequestMoreContent', function (e) {
-		e.preventDefault();
-		commands.invokeMousewheelEvent();
-	}, false);
 
 	/*
 	 * switch according to mode of pseudo-query
@@ -4681,11 +4712,11 @@ function install (mode) {
  */
 
 function lightbox (anchor, ignoreThumbnail) {
-	var MARGIN = 32;
-	var CLICK_THRESHOLD_DISTANCE = 4;
-	var CLICK_THRESHOLD_TIME = 500;
-	var WHEEL_SCROLL_UNIT_FACTOR = 0.4;
-	var ZOOMMODE_KEY = 'akahukuplus.lightbox.zoomMode';
+	const MARGIN = 32;
+	const CLICK_THRESHOLD_DISTANCE = 4;
+	const CLICK_THRESHOLD_TIME = 500;
+	const WHEEL_SCROLL_UNIT_FACTOR = 0.4;
+	const ZOOMMODE_KEY = 'akahukuplus.lightbox.zoomMode';
 
 	var lightboxWrap;
 	var dimmer;
@@ -4699,9 +4730,9 @@ function lightbox (anchor, ignoreThumbnail) {
 	var dragState = {x:0, y:0, region:0};
 
 	function getRegionId (e) {
-		var lightbox = document.querySelector('#lightbox-wrap');
+		var lightbox = $qs('#lightbox-wrap');
 		var imageRect = image ? image.getBoundingClientRect() : null;
-		var imageWrapRect = lightbox.querySelector('.image-wrap').getBoundingClientRect();
+		var imageWrapRect = $qs('.image-wrap', lightbox).getBoundingClientRect();
 		if (imageRect
 		&&  e.clientX >= imageRect.left && e.clientX < imageRect.right
 		&&  e.clientY >= imageRect.top  && e.clientY < imageRect.bottom) {
@@ -4795,7 +4826,7 @@ function lightbox (anchor, ignoreThumbnail) {
 
 	function updateZoomModeLinks () {
 		Array.prototype.forEach.call(
-			document.querySelectorAll('#lightbox-zoom-modes a'),
+			$qsa('#lightbox-zoom-modes a'),
 			function (node) {
 				node.classList.remove('selected');
 				node.getAttribute('href') == '#lightbox-' + zoomMode && node.classList.add('selected');
@@ -4832,12 +4863,12 @@ function lightbox (anchor, ignoreThumbnail) {
 	}
 
 	function init () {
-		var thumbImage = ignoreThumbnail ? null : anchor.querySelector('img');
+		var thumbImage = ignoreThumbnail ? null : $qs('img', anchor);
 		lightboxWrap = $('lightbox-wrap');
-		dimmer = lightboxWrap.querySelector('.dimmer');
-		imageWrap = lightboxWrap.querySelector('.image-wrap');
-		loaderWrap = lightboxWrap.querySelector('.loader-wrap');
-		receiver = lightboxWrap.querySelector('.receiver');
+		dimmer = $qs('.dimmer', lightboxWrap);
+		imageWrap = $qs('.image-wrap', lightboxWrap);
+		loaderWrap = $qs('.loader-wrap', lightboxWrap);
+		receiver = $qs('.receiver', lightboxWrap);
 
 		if (!lightboxWrap || !dimmer || !imageWrap || !loaderWrap || !receiver
 		|| imageWrap.childNodes.length) {
@@ -4859,13 +4890,13 @@ function lightbox (anchor, ignoreThumbnail) {
 		}
 
 		// loader image
-		if (!/^data:/.test(loaderWrap.querySelector('img').src)) {
+		if (!/^data:/.test($qs('img', loaderWrap).src)) {
 			resources.get(
 				'/images/icon128.png',
-				{method:'readAsDataURL'},
+				{responseType:'dataURL'},
 				function (data) {
 					data && Array.prototype.forEach.call(
-						loaderWrap.querySelectorAll('img'),
+						$qsa('img', loaderWrap),
 						function (img) {img.src = data}
 					)
 				}
@@ -4935,7 +4966,7 @@ function lightbox (anchor, ignoreThumbnail) {
 
 	function handleImageTransitionEnd (e) {
 		// show info panel
-		lightboxWrap.querySelector('.info').classList.remove('hide');
+		$qs('.info', lightboxWrap).classList.remove('hide');
 
 		// update zoom mode links
 		updateZoomModeLinks();
@@ -5177,7 +5208,7 @@ function lightbox (anchor, ignoreThumbnail) {
 	}
 
 	function leave () {
-		lightboxWrap.querySelector('.info').classList.add('hide');
+		$qs('.info', lightboxWrap).classList.add('hide');
 		image && image.parentNode.removeChild(image);
 
 		receiver.removeEventListener('mousedown', handleMousedown, false);
@@ -5216,11 +5247,11 @@ function lightbox (anchor, ignoreThumbnail) {
  */
 
 function startColorPicker (target, options) {
-	var IMAGE_SV = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAPAgMAAABGuH3ZAAAACVBMVEUAAAAAAAD///+D3c/SAAAAAXRSTlMAQObYZgAAADdJREFUCNdjYGB1YGBgiJrCwMC4NJOBgS1AzIFBkoFxAoRIYXVIYUhhAxIgFkICrA6kA6IXbAoAsj4LrV7uPHgAAAAASUVORK5CYII=';
-	var IMAGE_HUE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAC4AAAAJCAYAAABNEB65AAAAR0lEQVQ4y9XTIQ4AMAhD0V/uf2emJkZCZlsUIYgnWoAmb7rukoQGqHlIQE+4O/6x1e/BEb3BZQjXDy7jqGiDK6CcSinkmvkDtwYMCcTVwlUAAAAASUVORK5CYII=';
-	var IMAGE_UP = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAICAYAAAAm06XyAAAAQElEQVQY05XMwQ0AIAhD0ToC++9YRqgnL0YKNuFE/oMkVEdS7t+FcoANzyqgDR0wCitgHL6Ar/AGFklFBH6Xmdg1tm7Xheu+iwAAAABJRU5ErkJggg==';
-	var LRU_KEY = 'ColorPicker.LRUList';
-	var LRU_COLOR_ATTR = 'data-color';
+	const IMAGE_SV = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAPAgMAAABGuH3ZAAAACVBMVEUAAAAAAAD///+D3c/SAAAAAXRSTlMAQObYZgAAADdJREFUCNdjYGB1YGBgiJrCwMC4NJOBgS1AzIFBkoFxAoRIYXVIYUhhAxIgFkICrA6kA6IXbAoAsj4LrV7uPHgAAAAASUVORK5CYII=';
+	const IMAGE_HUE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAC4AAAAJCAYAAABNEB65AAAAR0lEQVQ4y9XTIQ4AMAhD0V/uf2emJkZCZlsUIYgnWoAmb7rukoQGqHlIQE+4O/6x1e/BEb3BZQjXDy7jqGiDK6CcSinkmvkDtwYMCcTVwlUAAAAASUVORK5CYII=';
+	const IMAGE_UP = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAICAYAAAAm06XyAAAAQElEQVQY05XMwQ0AIAhD0ToC++9YRqgnL0YKNuFE/oMkVEdS7t+FcoANzyqgDR0wCitgHL6Ar/AGFklFBH6Xmdg1tm7Xheu+iwAAAABJRU5ErkJggg==';
+	const LRU_KEY = 'ColorPicker.LRUList';
+	const LRU_COLOR_ATTR = 'data-color';
 
 	var overlay, panel, colorPanel, LRUPanel, controlPanel,
 		svCanvas, hueCanvas, receiver, colorText, okButton,
@@ -5648,7 +5679,7 @@ function startColorPicker (target, options) {
 }
 
 function startDrawing (callback) {
-	var PERSIST_KEY = 'data-persists';
+	const PERSIST_KEY = 'data-persists';
 
 	var drawWrap;
 	var drawBoxOuter;
@@ -5745,11 +5776,11 @@ function startDrawing (callback) {
 
 	function initOnFirstRun () {
 		// background color indicator
-		var node = drawWrap.querySelector('.draw-bg');
+		var node = $qs('.draw-bg', drawWrap);
 		node.setAttribute('data-color', backgroundColor);
 
 		// foreground color indicator
-		var node = drawWrap.querySelector('.draw-fg');
+		var node = $qs('.draw-fg', drawWrap);
 		node.setAttribute('data-color', foregroundColor);
 
 		// init canvas
@@ -5758,22 +5789,22 @@ function startDrawing (callback) {
 		handleZoomFactor({target: {value: zoomFactor}});
 
 		// display pen sample
-		handlePenRangeInput({target: drawWrap.querySelector('.draw-pen-range')});
+		handlePenRangeInput({target: $qs('.draw-pen-range', drawWrap)});
 
 		drawWrap.setAttribute(PERSIST_KEY, '1');
 	}
 
 	function initOnSecondRun () {
-		foregroundColor = drawWrap
-			.querySelector('.draw-color-wrap')
+		foregroundColor =
+			$qs('.draw-color-wrap', drawWrap)
 			.lastElementChild
 			.getAttribute('data-color');
-		backgroundColor = drawWrap
-			.querySelector('.draw-color-wrap')
+		backgroundColor =
+			$qs('.draw-color-wrap', drawWrap)
 			.firstElementChild
 			.getAttribute('data-color');
 		Array.prototype.some.call(
-			drawWrap.querySelectorAll('[name="draw-zoom"]'),
+			$qsa('[name="draw-zoom"]', drawWrap),
 			function (node) {
 				if (node.checked) {
 					zoomFactor = node.value - 0;
@@ -5786,16 +5817,16 @@ function startDrawing (callback) {
 	function init () {
 		// retrieve container elements
 		drawWrap = $('draw-wrap');
-		drawBoxOuter = drawWrap.querySelector('.draw-box-outer');
-		drawBoxInner = drawWrap.querySelector('.draw-box-inner');
-		drawCanvas = drawWrap.querySelector('.draw-canvas');
+		drawBoxOuter = $qs('.draw-box-outer', drawWrap);
+		drawBoxInner = $qs('.draw-box-inner', drawWrap);
+		drawCanvas = $qs('.draw-canvas', drawWrap);
 
 		// retrieve canvas contexts
 		ctx = drawCanvas.getContext('2d');
 		ctx.lineCap = 'round';
 		ctx.lineJoin = 'round';
 
-		ctxPenSample = drawWrap.querySelector('.draw-pen-sample').getContext('2d');
+		ctxPenSample = $qs('.draw-pen-sample', drawWrap).getContext('2d');
 
 		// start new state
 		appStates.unshift('draw');
@@ -5808,11 +5839,11 @@ function startDrawing (callback) {
 		// register some native events
 		drawBoxOuter.addEventListener(
 			'mousedown', handleMousedown, false);
-		drawWrap.querySelector('.draw-bg').addEventListener(
+		$qs('.draw-bg', drawWrap).addEventListener(
 			'click', handleColorIndicatorClick, false);
-		drawWrap.querySelector('.draw-fg').addEventListener(
+		$qs('.draw-fg', drawWrap).addEventListener(
 			'click', handleColorIndicatorClick, false);
-		drawWrap.querySelector('.draw-pen-range').addEventListener(
+		$qs('.draw-pen-range', drawWrap).addEventListener(
 			'input', handlePenRangeInput, false);
 
 		// register click-dispatched events
@@ -5841,18 +5872,18 @@ function startDrawing (callback) {
 		drawWrap.classList.remove('hide');
 		drawBoxOuter.classList.remove('hide');
 		setTimeout(function () {
-			drawWrap.querySelector('.dimmer').classList.add('run');
+			$qs('.dimmer', drawWrap).classList.add('run');
 		}, 0);
 	}
 
 	function leave () {
 		drawBoxOuter.removeEventListener(
 			'mousedown', handleMousedown, false);
-		drawWrap.querySelector('.draw-bg').removeEventListener(
+		$qs('.draw-bg', drawWrap).removeEventListener(
 			'click', handleColorIndicatorClick, false);
-		drawWrap.querySelector('.draw-fg').removeEventListener(
+		$qs('.draw-fg', drawWrap).removeEventListener(
 			'click', handleColorIndicatorClick, false);
-		drawWrap.querySelector('.draw-pen-range').removeEventListener(
+		$qs('.draw-pen-range', drawWrap).removeEventListener(
 			'input', handlePenRangeInput, false);
 
 		clickDispatcher
@@ -5867,11 +5898,11 @@ function startDrawing (callback) {
 
 		selectionMenu.enabled = true;
 
-		var dimmer = drawWrap.querySelector('.dimmer');
+		var dimmer = $qs('.dimmer', drawWrap);
 		drawBoxOuter.classList.add('hide');
 		transitionend(dimmer, function () {
 			drawWrap.classList.add('hide');
-			anchor = drawWrap = drawCanvas = dimmer = ctx = null;
+			drawWrap = drawCanvas = dimmer = ctx = null;
 			appStates.shift();
 			keyManager.updateManifest();
 		});
@@ -5924,7 +5955,7 @@ function startDrawing (callback) {
 	}
 
 	function handleColorSwitch () {
-		var container = drawWrap.querySelector('.draw-color-wrap');
+		var container = $qs('.draw-color-wrap', drawWrap);
 		container.appendChild(
 			container.removeChild(container.firstElementChild));
 
@@ -5944,15 +5975,14 @@ function startDrawing (callback) {
 	}
 
 	function handleZoomFactorKey (e) {
-		var node = drawWrap.querySelector(
-			'[name="draw-zoom"][value="' + e.key + '"]');
+		var node = $qs(`[name="draw-zoom"][value="${e.key}"]`, drawWrap);
 		if (node) {
 			node.click();
 		}
 	}
 
 	function handleThinerPen () {
-		var range = drawWrap.querySelector('.draw-pen-range');
+		var range = $qs('.draw-pen-range', drawWrap);
 		if (range) {
 			range.value = Math.max(range.min, range.value - 1);
 			handlePenRangeInput({target: range});
@@ -5960,7 +5990,7 @@ function startDrawing (callback) {
 	}
 
 	function handleThickerPen () {
-		var range = drawWrap.querySelector('.draw-pen-range');
+		var range = $qs('.draw-pen-range', drawWrap);
 		if (range) {
 			range.value = Math.min(range.max, (range.value - 0) + 1);
 			handlePenRangeInput({target: range});
@@ -6034,9 +6064,9 @@ function modalDialog (opts) {
 
 		appStates.unshift('dialog');
 
-		contentWrap = dialogWrap.querySelector('.dialog-content-wrap');
-		content = dialogWrap.querySelector('.dialog-content');
-		dimmer = dialogWrap.querySelector('.dimmer');
+		contentWrap = $qs('.dialog-content-wrap', dialogWrap);
+		content = $qs('.dialog-content', dialogWrap);
+		dimmer = $qs('.dimmer', dialogWrap);
 		if (!contentWrap || !content || !dimmer) return;
 		if (!dialogWrap.classList.contains('hide')) return;
 
@@ -6049,13 +6079,13 @@ function modalDialog (opts) {
 	}
 
 	function initTitle (opt) {
-		var title = dialogWrap.querySelector('.dialog-content-title');
+		var title = $qs('.dialog-content-title', dialogWrap);
 		if (!title) return;
 		title.textContent = opt != undefined ? opt : 'dialog';
 	}
 
 	function initButtons (opt) {
-		var footer = dialogWrap.querySelector('.dialog-content-footer');
+		var footer = $qs('.dialog-content-footer', dialogWrap);
 		if (!footer) return;
 
 		var buttons = [];
@@ -6241,6 +6271,14 @@ function $t (node, content) {
 	return node.textContent;
 }
 
+function $qs (selector, node) {
+	return ($(node) || document).querySelector(selector);
+}
+
+function $qsa (selector, node) {
+	return ($(node) || document).querySelectorAll(selector);
+}
+
 function empty (node) {
 	node = $(node);
 	if (!node) return;
@@ -6250,7 +6288,7 @@ function empty (node) {
 }
 
 function fixFragment (f, tagName) {
-	var element = f.querySelector(tagName || 'body');
+	var element = $qs(tagName || 'body', f);
 	if (!element) return f;
 	var r = document.createRange();
 	r.selectNodeContents(element);
@@ -6262,7 +6300,7 @@ function appendFragment (container, f) {
 	if (!container) return;
 	if (f) container.appendChild(f);
 	Array.prototype.forEach.call(
-		document.querySelectorAll('[data-doe]'),
+		$qsa('[data-doe]'),
 		function (node) {
 			var doe = node.getAttribute('data-doe');
 			node.removeAttribute('data-doe');
@@ -6292,9 +6330,6 @@ function resolveRelativePath (url, baseUrl) {
 }
 
 function restoreDistributedImageURL (url) {
-	if (config.data.image_distrubution_enabled.value) {
-		return url;
-	}
 	// $1: scheme
 	// $2: base host
 	// $3: original server
@@ -6336,9 +6371,7 @@ function setCookie (key, value, lifeDays, path) {
 }
 
 function setBoardCookie (key, value, lifeDays) {
-	var re = /^[^:]+:\/\/[^.]+\.2chan\.net(?::\d+)?(\/[^\/]+)\//.exec(window.location.href);
-	if (!re) return;
-	setCookie(key, value, lifeDays, re[1]);
+	setCookie(key, value, lifeDays, '/' + siteInfo.board);
 }
 
 function getCatalogSettings () {
@@ -6402,20 +6435,15 @@ function getImageMimeType (href) {
 	return 'application/octet-stream';
 }
 
-function getImageName (href) {
-	var dateAvailable = true;
-	var re;
-	var imageDate;
+function getImageName (href, targetNode) {
+	let dateAvailable = true;
+	let re;
+	let imageDate;
 
-	// distributed url
-	re = /^https?:\/\/[^.]+\.2chan\.net(?::\d+)?\/([^\/]+)\/([^\/]+)\/src\/(\d+)\.([^.]+)/.exec(href);
+	// image on futaba server
+	re = /^https?:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/src\/(\d+)\.([^.]+)/.exec(restoreDistributedImageURL(href));
 
-	// direct url
-	if (!re) {
-		re = /^https?:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/src\/(\d+)\.([^.]+)/.exec(href);
-	}
-
-	// siokara files
+	// image on siokara server
 	if (!re) {
 		re = /^https?:\/\/[^.]+\.(nijibox\d+)\.com(?::\d+)?\/futabafiles\/([^\/]+)\/src\/(\w+\d+)\.([^.]+)/.exec(href);
 		if (re) {
@@ -6429,33 +6457,51 @@ function getImageName (href) {
 	/*
 	 * re[1]: server key
 	 * re[2]: board key
-	 * re[3]: image serial number (unix time stamp + 3 digits of msec value)
+	 * re[3]: image serial number (unix timestamp + 3 digits of msec value)
 	 * re[4]: file name extension (excludes a dot)
 	 */
 
 	if (dateAvailable) {
-		imageDate = new Date(re[3].replace(/\d{3}$/, '') - 0);
+		imageDate = new Date(re[3] - 0);
 	}
 	else {
+		// images on siokara server has not created timestamp:
+		// so pick up current date
 		imageDate = new Date;
 	}
 
-	var f = config.data.save_image_name_template.value.replace(
+	// retrieve thread number
+	let threadNumber = 0;
+	let p = targetNode;
+	while (p) {
+		if (p.nodeName == 'ARTICLE') {
+			let topicWrap = $qs('.text [data-number]', p);
+			if (topicWrap) {
+				threadNumber = topicWrap.getAttribute('data-number') - 0 || 0;
+			}
+			break;
+		}
+		else {
+			p = p.parentNode;
+		}
+	}
+
+	let f = config.data.save_image_name_template.value.replace(
 		/\$([A-Z]+)/g,
-		function ($0, $1) {
+		($0, $1) => {
 			switch ($1) {
 			case 'SERVER':
-				return re[1];
+				return siteInfo.server;
 			case 'BOARD':
-				return re[2];
+				return siteInfo.board;
 			case 'THREAD':
-				// TBD
+				return threadNumber;
 			case 'YEAR':
 				return imageDate.getFullYear();
 			case 'MONTH':
-				return imageDate.getMonth();
+				return ('00' + (imageDate.getMonth() + 1)).substr(-2);
 			case 'DAY':
-				return imageDate.getDay();
+				return ('00' + (imageDate.getDate())).substr(-2);
 			case 'SERIAL':
 				return re[3];
 			case 'DIST':
@@ -6496,9 +6542,7 @@ function getPostNumber (element) {
 		if (element.classList.contains('topic-wrap')
 		|| element.classList.contains('reply-wrap')) {
 			if (result == undefined) {
-				result = element
-					.querySelector('[data-number]')
-					.getAttribute('data-number') - 0;
+				result = $qs('[data-number]', element).getAttribute('data-number') - 0;
 			}
 			return result;
 		}
@@ -6524,13 +6568,13 @@ function transitionend (element, callback, backupMsec) {
 	if (!element) return;
 
 	var backupTimer;
-	var handler = function (e) {
+	var handler = function handleTransitionEnd (e) {
 		if (backupTimer) {
 			clearTimeout(backupTimer);
 			backupTimer = null;
 		}
 		if (element) {
-			element.removeEventListener('transitionend', arguments.callee, false);
+			element.removeEventListener('transitionend', handleTransitionEnd, false);
 		}
 		if (callback) {
 			callback.call(element, e);
@@ -6595,24 +6639,73 @@ function rangeToString (range) {
 }
 
 // http://stackoverflow.com/a/30666203
-function dataURLtoBlob (dataUrl, callback) {
-	var req = new window.XMLHttpRequest;
+function getBlobFrom (url, callback) {
+	let req = createTransport();
 
-	req.open('GET', dataUrl);
+	req.open('GET', url);
 	// Can't use blob directly because of https://crbug.com/412752
 	req.responseType = 'arraybuffer';
-
-	req.onload = function (e) {
-		var mime = req.getResponseHeader('content-type');
-		callback(new window.Blob([this.response], {type: mime}));
+	req.onload = () => {
+		let mime = req.getResponseHeader('content-type');
+		callback(new window.Blob([req.response], {type: mime}));
+		req = null;
+	};
+	req.onerror = () => {
+		callback();
 		req = null;
 	};
 
 	req.send();
 }
 
+function getImageFrom (target, callback) {
+	let url;
+	let needRevoke = false;
+	let tagName = 'img';
+	let loadEvent = 'onload';
+
+	if (target instanceof File || target instanceof Blob) {
+		url = URL.createObjectURL(target);
+		needRevoke = true;
+		if (target.type.startsWith('video/')) {
+			tagName = 'video';
+			loadEvent = 'onloadeddata';
+		}
+	}
+	else {
+		url = target;
+	}
+
+	let img = document[CRE](tagName);
+	img[loadEvent] = () => {
+		needRevoke && URL.revokeObjectURL(url);
+		callback(img);
+		img = null;
+	};
+	img.onerror = () => {
+		needRevoke && URL.revokeObjectURL(url);
+		callback();
+		img = null;
+	};
+	img.src = url;
+}
+
+function getPostTimeRegex () {
+	return /(\d+)\/(\d+)\/(\d+)\(.\)(\d+):(\d+):(\d+)(?:\s+IP:[a-zA-Z0-9_*:.\-()]+)?/;
+}
+
+function getReadableSize (s) {
+	if (s >= 1024 * 1024) {
+		return (s / (1024 * 1024)).toFixed(2) + 'MiB';
+	}
+	else if (s >= 1024) {
+		return (s / 1024).toFixed(2) + 'KiB';
+	}
+	return s + ' Bytes';
+}
+
 function displayInlineVideo (anchor) {
-	var thumbnail = anchor.querySelector('img');
+	var thumbnail = $qs('img', anchor);
 	var video = document[CRE]('video');
 	var props = {
 		autoplay: true,
@@ -6712,7 +6805,7 @@ var 新字体の漢字を旧字体に変換 = (function () {
  */
 
 function populateTextFormItems (form, callback) {
-	var inputNodes = form.querySelectorAll([
+	var inputNodes = $qsa([
 		'input[type="hidden"]',
 		'input[type="text"]',
 		'input[type="number"]',
@@ -6721,7 +6814,7 @@ function populateTextFormItems (form, callback) {
 		'input[type="radio"]:checked',
 		'textarea',
 		'select'
-	].join(','));
+	].join(','), form);
 
 	Array.prototype.forEach.call(inputNodes, function (node) {
 		if (node.name == '') return;
@@ -6731,9 +6824,9 @@ function populateTextFormItems (form, callback) {
 }
 
 function populateFileFormItems (form, callback) {
-	var inputNodes = form.querySelectorAll([
+	var inputNodes = $qsa([
 		'input[type="file"]'
-	].join(','));
+	].join(','), form);
 
 	Array.prototype.forEach.call(inputNodes, function (node) {
 		if (node.name == '') return;
@@ -6765,22 +6858,7 @@ function postBase (type, form, callback) {
 		var data = [];
 
 		for (var i in items) {
-			var item = '';
-
-			// In Presto Opera, we have to use window.Uint8Array
-			// In Firefox WebExtensions, we have NOT to use window.Uint8Array
-			try {
-				if (typeof Uint8Array == 'function') {
-					item = new Uint8Array(items[i]);
-				}
-				else if (typeof window.Uint8Array == 'function') {
-					item = new window.Uint8Array(items[i]);
-				}
-			}
-			catch (ex) {
-				console.log(ex);
-			}
-
+			var item = new Uint8Array(items[i]);
 			data.push(
 				'--' + boundary + '\r\n' +
 				'Content-Disposition: form-data; name="' + i + '"\r\n' +
@@ -6801,15 +6879,15 @@ function postBase (type, form, callback) {
 			);
 		});
 
-		if (tegakiForSummary) {
+		if (overrideUpfile) {
 			data.push(
 				'--' + boundary + '\r\n' +
 				'Content-Disposition: form-data' +
 				'; name="upfile"' +
-				'; filename="tegaki.png"\r\n' +
-				'Content-Type: image/png\r\n' +
+				`; filename="${overrideUpfile.name}"\r\n` +
+				`Content-Type: ${overrideUpfile.data.type}\n` +
 				'\r\n',
-				tegakiForSummary,
+				overrideUpfile.data,
 				'\r\n'
 			);
 		}
@@ -7002,7 +7080,7 @@ function parsePostResponse (response) {
 
 function registerReleaseFormLock () {
 	setTimeout(function () {
-		$('postform').querySelector('fieldset').disabled = false;
+		$qs('fieldset', 'postform').disabled = false;
 		if (transportType == 'post') {
 			transport = null;
 		}
@@ -7021,14 +7099,14 @@ function reloadBase (callback, errorCallback) {
 	transportType = 'reload';
 	transport.open('GET', window.location.href);
 	transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
-	DEBUG_IGNORE_LAST_MODIFIED && (lastModified = 0);
-	transport.setRequestHeader('If-Modified-Since', lastModified || 'Fri, 01 Jan 2010 00:00:00 GMT');
+	DEBUG_IGNORE_LAST_MODIFIED && (siteInfo.lastModified = 0);
+	transport.setRequestHeader('If-Modified-Since', siteInfo.lastModified || 'Fri, 01 Jan 2010 00:00:00 GMT');
 
 	transport.onload = function (e) {
 		timingLogger.endTag();
 
 		var lm = transport.getResponseHeader('Last-Modified');
-		lm && (lastModified = lm);
+		lm && (siteInfo.lastModified = lm);
 
 		timingLogger.startTag('parsing html');
 		var doc;
@@ -7044,7 +7122,7 @@ function reloadBase (callback, errorCallback) {
 			/*
 			if (doc) {
 				Array.prototype.forEach.call(
-					doc.querySelectorAll('blockquote:nth-child(-n+4)'),
+					$qsa('blockquote:nth-child(-n+4)', doc),
 					function (node, i) {
 						switch (i) {
 						case 0:
@@ -7080,7 +7158,7 @@ function reloadBase (callback, errorCallback) {
 				);
 				// for expiration warning test
 				Array.prototype.forEach.call(
-					doc.querySelectorAll('small + blockquote'),
+					$qsa('small + blockquote', doc),
 					function (node, i) {
 						node[IAHTML](
 							'afterend',
@@ -7189,7 +7267,7 @@ function reloadCatalogBase (query, callback, errorCallback) {
 }
 
 function extractTweets () {
-	var tweets = document.querySelectorAll('.link-twitter');
+	var tweets = $qsa('.link-twitter');
 	if (tweets.length == 0) return;
 
 	function invokeTweetLoader (html) {
@@ -7238,7 +7316,7 @@ function extractTweets () {
 }
 
 function extractIncompleteFiles () {
-	var files = document.querySelectorAll('.incomplete');
+	var files = $qsa('.incomplete');
 	if (files.length == 0) return;
 
 	function getHandler (node) {
@@ -7255,15 +7333,34 @@ function extractIncompleteFiles () {
 				}
 
 				if (node.parentNode.nodeName != 'Q' && data.thumbnail) {
-					node.appendChild(document[CRE]('br'));
-					var img = node.appendChild(document[CRE]('img'));
-					img[ONER] =
-						'document.dispatchEvent(new CustomEvent(' +
-						'  "Akahukuplus.imageError",' +
-						'  {detail:{target:this}}' +
-						'))';
+					let div = document[CRE]('div');
+					div.className = 'link-siokara';
+
+					let r = document.createRange();
+					r.selectNode(node);
+					r.surroundContents(div);
+					node.classList.remove('link-siokara');
+
+					let thumbDiv = div.appendChild(document[CRE]('div'));
+					let thumbAnchor = node.cloneNode();
+					thumbAnchor.classList.add('siokara-thumbnail');
+					thumbDiv.appendChild(thumbAnchor);
+					let img = node.appendChild(document[CRE]('img'));
 					img.src = data.thumbnail;
+
+					let saveDiv = div.appendChild(document[CRE]('div'));
+					saveDiv.appendChild(document.createTextNode('['));
+					let saveAnchor = saveDiv.appendChild(document[CRE]('a'));
+					saveAnchor.className = 'js save-image';
+					saveAnchor.href = data.url;
+					saveAnchor.textContent = '保存する';
+					saveDiv.appendChild(document.createTextNode(']'));
 				}
+			}
+			else {
+				var span = node.appendChild(document[CRE]('span'));
+				span.className = 'link-completion-notice';
+				span.textContent = '(補完失敗)';
 			}
 			node = null;
 		}
@@ -7279,6 +7376,72 @@ function extractIncompleteFiles () {
 	}
 
 	setTimeout(function () {extractIncompleteFiles()}, 907);
+}
+
+function extractSiokaraThumbnails () {
+	var files = $qsa('.incomplete-siokara-thumbnail');
+	if (files.length == 0) return;
+
+	function getHandler (node) {
+		return function (data) {
+			if (data) {
+				let div = document[CRE]('div');
+				div.className = 'link-siokara';
+
+				let r = document.createRange();
+				r.selectNode(node);
+				r.surroundContents(div);
+				node.classList.remove('link-siokara');
+
+				let thumbDiv = div.appendChild(document[CRE]('div'));
+				let thumbAnchor = node.cloneNode();
+				thumbAnchor.classList.add('siokara-thumbnail');
+				thumbDiv.appendChild(thumbAnchor);
+				let img = thumbAnchor.appendChild(document[CRE]('img'));
+				img.src = data;
+
+				let saveDiv = div.appendChild(document[CRE]('div'));
+				saveDiv.appendChild(document.createTextNode('['));
+				let saveAnchor = saveDiv.appendChild(document[CRE]('a'));
+				saveAnchor.className = 'js save-image';
+				saveAnchor.href = node.href;
+				saveAnchor.textContent = '保存する';
+				saveDiv.appendChild(document.createTextNode(']'));
+			}
+			node = null;
+		}
+	}
+
+	for (var i = 0; i < files.length && i < 10; i++) {
+		var thumbHref = files[i].getAttribute('data-thumbnail-href');
+		if (thumbHref && files[i].parentNode.nodeName != 'Q') {
+			sendToBackend(
+				'load-siokara-thumbnail',
+				{url: thumbHref},
+				getHandler(files[i]));
+		}
+		files[i].classList.remove('incomplete-siokara-thumbnail');
+	}
+
+	setTimeout(function () {extractSiokaraThumbnails()}, 909);
+}
+
+function extractNico2 () {
+	var files = $qsa('.inline-video.nico2[data-nico2-key]');
+	if (files.length == 0) return;
+
+	for (var i = 0; i < files.length && i < 10; i++) {
+		var key = files[i].getAttribute('data-nico2-key');
+		var scriptNode = files[i].appendChild(document[CRE]('script'));
+		scriptNode.type = 'text/javascript';
+		scriptNode.src = 'https://embed.nicovideo.jp/watch/' + key + '/script?w=640&h=360';
+		scriptNode.onload = function () {
+			this.parentNode.removeChild(this);
+		};
+		files[i].removeAttribute('data-nico2-key');
+	}
+
+	setTimeout(function () {extractNico2()}, 911);
 }
 
 /*
@@ -7306,14 +7469,14 @@ function showFetchedRepliesStatus (content, autoHide) {
 
 function updateMarkedTopic (xml, container) {
 	var result = false;
-	var marks = xml.querySelectorAll('topic > mark');
+	var marks = $qsa('topic > mark', xml);
 	for (var i = 0, goal = marks.length; i < goal; i++) {
-		var number = marks[i].parentNode.querySelector('number').textContent;
+		var number = $qs('number', marks[i].parentNode).textContent;
 
-		var node = container.querySelector('.topic-wrap[data-number="' + number + '"]');
-		if (!node || node.querySelector('.mark')) continue;
+		var node = $qs(`.topic-wrap[data-number="${number}"]`, container);
+		if (!node || $qs('.mark', node)) continue;
 
-		var comment = node.querySelector('.comment');
+		var comment = $qs('.comment', node);
 		if (!comment) continue;
 
 		var isBracket = marks[i].getAttribute('bracket') == 'true';
@@ -7331,14 +7494,14 @@ function updateMarkedTopic (xml, container) {
 
 function updateTopicID (xml, container) {
 	var result = false;
-	var ids = xml.querySelectorAll('topic > user_id');
+	var ids = $qsa('topic > user_id', xml);
 	for (var i = 0, goal = ids.length; i < goal; i++) {
-		var number = ids[i].parentNode.querySelector('number').textContent;
+		var number = $qs('number', ids[i].parentNode).textContent;
 
-		var node = container.querySelector('.topic-wrap[data-number="' + number + '"]');
-		if (!node || node.querySelector('.user-id')) continue;
+		var node = $qs(`.topic-wrap[data-number="${number}"]`, container);
+		if (!node || $qs('.user-id', node)) continue;
 
-		var postno = node.querySelector('.postno');
+		var postno = $qs('.postno', node);
 		if (!postno) continue;
 
 		var span = postno.parentNode.insertBefore((document[CRE]('span')), postno);
@@ -7354,13 +7517,13 @@ function updateTopicID (xml, container) {
 
 function updateTopicSodane (xml, container) {
 	var result = false;
-	var sodanes = xml.querySelectorAll('topic > sodane[className="sodane"]');
+	var sodanes = $qsa('topic > sodane[className="sodane"]', xml);
 	for (var i = 0, goal = sodanes.length; i < goal; i++) {
-		var number = sodanes[i].parentNode.querySelector('number').textContent;
-		var node = container.querySelector('.topic-wrap[data-number="' + number + '"]');
+		var number = $qs('number', sodanes[i].parentNode).textContent;
+		var node = $qs(`.topic-wrap[data-number="${number}"]`, container);
 		if (!node) continue;
 
-		var sodane = node.querySelector('.sodane, .sodane-null');
+		var sodane = $qs('.sodane, .sodane-null', node);
 		if (!sodane) continue;
 		if (sodane.textContent == sodanes[i].textContent) continue;
 
@@ -7375,17 +7538,17 @@ function updateTopicSodane (xml, container) {
 
 function updateMarkedReplies (xml, container, start, end) {
 	var result = false;
-	var marks = xml.querySelectorAll('reply > mark');
+	var marks = $qsa('reply > mark', xml);
 	var parentSelector = getParentSelector(start, end);
 	for (var i = 0, goal = marks.length; i < goal; i++) {
-		var number = marks[i].parentNode.querySelector('number').textContent;
+		var number = $qs('number', marks[i].parentNode).textContent;
 
-		var node = container.querySelector(parentSelector + ' > [data-number="' + number + '"]');
+		var node = $qs(`${parentSelector} > [data-number="${number}"]`, container);
 		if (!node || node.classList.contains('deleted')) continue;
 
 		node.classList.add('deleted');
 
-		var comment = node.querySelector('.comment');
+		var comment = $qs('.comment', node);
 		if (!comment) continue;
 
 		var isBracket = marks[i].getAttribute('bracket') == 'true';
@@ -7403,13 +7566,13 @@ function updateMarkedReplies (xml, container, start, end) {
 
 function updateReplyIDs (xml, container, start, end) {
 	var result = false;
-	var ids = xml.querySelectorAll('reply > user_id');
+	var ids = $qsa('reply > user_id', xml);
 	var parentSelector = getParentSelector(start, end);
 	for (var i = 0, goal = ids.length; i < goal; i++) {
-		var number = ids[i].parentNode.querySelector('number').textContent;
+		var number = $qs('number', ids[i].parentNode).textContent;
 
-		var node = container.querySelector(parentSelector + ' > [data-number="' + number + '"]');
-		if (!node || node.querySelector('.user-id')) continue;
+		var node = $qs(`${parentSelector} > [data-number="${number}"]`, container);
+		if (!node || $qs('.user-id', node)) continue;
 
 		var div = node.appendChild(document[CRE]('div'));
 		div.appendChild(document.createTextNode('──'));
@@ -7425,15 +7588,15 @@ function updateReplyIDs (xml, container, start, end) {
 
 function updateReplySodanes (xml, container, start, end) {
 	var result = false;
-	var sodanes = xml.querySelectorAll('reply > sodane[className="sodane"]');
+	var sodanes = $qsa('reply > sodane[className="sodane"]', xml);
 	var parentSelector = getParentSelector(start, end);
 	for (var i = 0, goal = sodanes.length; i < goal; i++) {
-		var number = sodanes[i].parentNode.querySelector('number').textContent;
+		var number = $qs('number', sodanes[i].parentNode).textContent;
 
-		var node = container.querySelector(parentSelector + ' > [data-number="' + number + '"]');
+		var node = $qs(`${parentSelector} > [data-number="${number}"]`, container);
 		if (!node) continue;
 
-		var sodane = node.querySelector('.sodane, .sodane-null');
+		var sodane = $qs('.sodane, .sodane-null', node);
 		if (!sodane) continue;
 		if (sodane.textContent == sodanes[i].textContent) continue;
 
@@ -7452,9 +7615,9 @@ function updateIdFrequency (stat) {
 			if (stat.idData[id].length == 1) continue;
 
 			var number = stat.idData[id][i].number;
-			var unit = document.querySelector([
-				'article .topic-wrap[data-number="' + number + '"] span.user-id',
-				'article .reply-wrap > [data-number="' + number + '"] span.user-id'
+			var unit = $qs([
+				`article .topic-wrap[data-number="${number}"] span.user-id`,
+				`article .reply-wrap > [data-number="${number}"] span.user-id`
 			].join(','));
 			if (!unit) continue;
 
@@ -7477,13 +7640,13 @@ function getParentSelector (start, end) {
 
 function getReplyContainer (index) {
 	index || (index = 0);
-	return document.querySelector('article:nth-of-type(' + (index + 1) + ') .replies');
+	return $qs(`article:nth-of-type(${index + 1}) .replies`);
 }
 
 function getRule (container) {
 	container || (container = getReplyContainer());
 	if (!container) return;
-	return container.querySelector('.rule');
+	return $qs('.rule', container);
 }
 
 function createRule (container) {
@@ -7498,7 +7661,7 @@ function createRule (container) {
 function removeRule (container) {
 	container || (container = getReplyContainer());
 	if (!container) return;
-	var rule = container.querySelector('.rule');
+	var rule = $qs('.rule', container);
 	if (!rule) return;
 	rule.parentNode.removeChild(rule);
 }
@@ -7567,7 +7730,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 				try {
 					timingLogger.startTag('generate new replies xml');
 					var f = fixFragment(xsltProcessor.transformToFragment(xml, document));
-					if (f.querySelector('.reply-wrap')) {
+					if ($qs('.reply-wrap', f)) {
 						lowBoundNumber >= 0 && createRule(container);
 						appendFragment(container, f);
 						stripTextNodes(container);
@@ -7603,6 +7766,8 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 
 				favicon.update();
 				extractTweets();
+				extractSiokaraThumbnails();
+				extractNico2();
 				extractIncompleteFiles();
 
 				try {
@@ -7695,27 +7860,25 @@ function getThumbnailSize (width, height, maxWidth, maxHeight) {
 	}
 }
 
-function getPostTimeRegex () {
-	return /(\d+)\/(\d+)\/(\d+)\(.\)(\d+):(\d+):(\d+)(?:\s+IP:[a-zA-Z0-9_*:.\-()]+)?/;
-}
-
 function doDisplayThumbnail (thumbWrap, thumb, img) {
-	var containerWidth = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
-	var containerHeight = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
-	var size = getThumbnailSize(
-		img.naturalWidth, img.naturalHeight,
+	let containerWidth = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
+	let containerHeight = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
+	let naturalWidth = img.naturalWidth || img.videoWidth || img.width;
+	let naturalHeight = img.naturalHeight || img.videoHeight || img.height;
+	let size = getThumbnailSize(
+		naturalWidth, naturalHeight,
 		containerWidth, containerHeight);
 
-	var canvas = document[CRE]('canvas');
+	let canvas = document[CRE]('canvas');
 	canvas.width = size.width;
 	canvas.height = size.height;
 
-	var c = canvas.getContext('2d');
+	let c = canvas.getContext('2d');
 	c.fillStyle = '#f0e0d6';
 	c.fillRect(0, 0, canvas.width, canvas.height);
 	c.drawImage(
 		img,
-		0, 0, img.naturalWidth, img.naturalHeight,
+		0, 0, naturalWidth, naturalHeight,
 		0, 0, canvas.width, canvas.height);
 
 	thumbWrap.classList.add('hide');
@@ -7724,39 +7887,39 @@ function doDisplayThumbnail (thumbWrap, thumb, img) {
 	thumb.width = canvas.width;
 	thumb.height = canvas.height;
 	thumb.src = canvas.toDataURL();
-	setTimeout(function () {commands.activatePostForm()}, 0);
+	setTimeout(() => {commands.activatePostForm()}, 0);
 }
 
-function setPostThumbnail (file) {
-	var thumbWrap = $('post-image-thumbnail-wrap');
-	var thumb = $('post-image-thumbnail');
+function setPostThumbnail (file, callback) {
+	let thumbWrap = $('post-image-thumbnail-wrap');
+	let thumb = $('post-image-thumbnail');
 
 	if (!thumbWrap || !thumb) return;
-	if (!file || !/^(?:image\/(?:jpeg|png|gif))|video\/(?:webm|mp4)$/.test(file.type)) {
+
+	if (!file || 'type' in file && !/^(?:image\/(?:jpeg|png|gif))|video\/(?:webm|mp4)$/.test(file.type)) {
 		thumbWrap.removeAttribute('data-available');
 		setPostThumbnailVisibility(false);
+		callback && callback();
 		return;
 	}
 
-	var fr = new FileReader;
-	fr.onload = function () {
-		var img = document[CRE]('img');
-		img.onload = function () {
+	if (file instanceof HTMLCanvasElement) {
+		doDisplayThumbnail(thumbWrap, thumb, file);
+		thumbWrap = thumb = null;
+		callback && callback();
+		return;
+	}
+
+	$t('post-image-thumbnail-info', `${file.type}, ${getReadableSize(file.size)}`);
+
+	getImageFrom(file, img => {
+		if (img) {
 			doDisplayThumbnail(thumbWrap, thumb, img);
-			img = img.onload = thumbWrap = thumb = null;
-		};
-		img.onerror = function () {
-			img = img.onload = thumbWrap = thumb = null;
-		};
-		img.src = fr.result;
-		fr = null;
-	};
-	fr.onerror = function () {
-		thumbWrap.removeAttribute('data-available');
-		setPostThumbnailVisibility(false);
-		fr = null;
-	};
-	fr.readAsDataURL(file);
+		}
+
+		thumbWrap = thumb = null;
+		callback && callback();
+	});
 }
 
 /*
@@ -7807,7 +7970,7 @@ function activatePanelTab (tab) {
 	if (!re) return;
 
 	Array.prototype.forEach.call(
-		$('panel-aside-wrap').querySelectorAll('.panel-tab-wrap .panel-tab'),
+		$qsa('.panel-tab-wrap .panel-tab', 'panel-aside-wrap'),
 		function (node) {
 			node.classList.remove('active');
 			if (node.getAttribute('href') == '#' + re[1]) {
@@ -7818,7 +7981,7 @@ function activatePanelTab (tab) {
 
 	var activePanelContent;
 	Array.prototype.forEach.call(
-		$('panel-aside-wrap').querySelectorAll('.panel-content-wrap > div'),
+		$qsa('.panel-content-wrap > div', 'panel-aside-wrap'),
 		function (node) {
 			node.classList.add('hide');
 			if (node.id == 'panel-content-' + re[1]) {
@@ -7838,13 +8001,14 @@ function activatePanelTab (tab) {
  * <<<1 application commands
  */
 
-var commands = {
+const commands = {
 
 	/*
 	 * general functionalities
 	 */
 
 	activatePostForm: function () {
+		catalogPopup.deleteAll();
 		$('postform-wrap').classList.add('hover');
 		$('com').focus();
 		setPostThumbnailVisibility(true);
@@ -7881,14 +8045,14 @@ var commands = {
 	},
 	summaryBack: function () {
 		if (pageModes[0] != 'summary') return;
-		var current = document.querySelector('.nav .nav-links .current');
+		var current = $qs('.nav .nav-links .current');
 		if (!current || !current.previousSibling) return;
 		historyStateWrapper.pushState(current.previousSibling.href);
 		commands.reload();
 	},
 	summaryNext: function () {
 		if (pageModes[0] != 'summary') return;
-		var current = document.querySelector('.nav .nav-links .current');
+		var current = $qs('.nav .nav-links .current');
 		if (!current || !current.nextSibling) return;
 		historyStateWrapper.pushState(current.nextSibling.href);
 		commands.reload();
@@ -8009,7 +8173,16 @@ var commands = {
 
 							favicon.update();
 							extractTweets();
+							extractSiokaraThumbnails();
+							extractNico2();
 							extractIncompleteFiles();
+
+							sendToBackend(
+								'notify-viewers',
+								{
+									data: $('viewers').textContent - 0,
+									siteInfo: siteInfo
+								});
 
 							timingLogger.endTag();
 						});
@@ -8055,10 +8228,7 @@ var commands = {
 				case 304:
 					showFetchedRepliesStatus('更新なし', true);
 					setBottomStatus('完了: 更新なし');
-					$t('reload-anchor', '続きを読む');
 					return;
-				default:
-					$t('reload-anchor', '続きを読む');
 				}
 
 				if (!doc) {
@@ -8081,6 +8251,7 @@ var commands = {
 					updateMarkedTopic(result.xml, document);
 					updateTopicID(result.xml, document);
 					updateTopicSodane(result.xml, document);
+
 					timingLogger.endTag();
 				}
 				catch (ex) {
@@ -8090,14 +8261,21 @@ var commands = {
 				}
 				timingLogger.endTag();
 
-				var lastNumber = (document.querySelector([
+				var lastNumber = ($qs([
 					'article:nth-of-type(1)',
 					'.reply-wrap:last-child',
 					'[data-number]'
-				].join(' ')) || document.querySelector([
+				].join(' ')) || $qs([
 					'article:nth-of-type(1)',
 					'.topic-wrap'
 				].join(' '))).getAttribute('data-number') - 0;
+
+				sendToBackend(
+					'notify-viewers',
+					{
+						viewers: $('viewers').textContent - 0,
+						siteInfo: siteInfo
+					});
 
 				timingLogger.startTag('processing remaining replies');
 				processRemainingReplies(result.remainingRepliesContext, lastNumber,
@@ -8138,7 +8316,7 @@ var commands = {
 			'#catalog-order-less': {n:4, key:'less'},
 			'#catalog-order-hist': {n:9, key:'hist'}
 		};
-		var p = document.querySelector('#catalog .catalog-options a.active');
+		var p = $qs('#catalog .catalog-options a.active');
 		var sortType = sortMap[p ? p.getAttribute('href') : '#catalog-order-default'];
 		var wrap = $('catalog-threads-wrap-' + sortType.key);
 
@@ -8177,8 +8355,8 @@ var commands = {
 				var newIndicator = wrap.childNodes.length ? 'new' : '';
 				var newClass = wrap.childNodes.length ? 'new' : '';
 				var latestNumber = 0;
-				var horzActual = doc.querySelectorAll('table[align="center"] tr:first-child td').length;
-				var vertActual = doc.querySelectorAll('table[align="center"] tr').length;
+				var horzActual = $qsa('table[align="center"] tr:first-child td', doc).length;
+				var vertActual = $qsa('table[align="center"] tr', doc).length;
 				var currentCs = getCatalogSettings();
 
 				//
@@ -8196,7 +8374,7 @@ var commands = {
 				wrap.style.maxWidth = ((anchorWidth + CATALOG_ANCHOR_MARGIN) * horzActual) + 'px';
 
 				Array.prototype.forEach.call(
-					doc.querySelectorAll('table[align="center"] td a'),
+					$qsa('table[align="center"] td a', doc),
 					function (node) {
 						var repliesCount = 0, from, to;
 						var id = /(\d+)\.htm/.exec(node.getAttribute('href'));
@@ -8207,7 +8385,7 @@ var commands = {
 						}
 
 						// number of replies
-						from = node.parentNode.querySelector('font');
+						from = $qs('font', node.parentNode);
 						if (from) {
 							repliesCount = from.textContent - 0;
 						}
@@ -8220,7 +8398,7 @@ var commands = {
 							}
 							anchor.parentNode.insertBefore(anchor, insertee);
 
-							var info = anchor.querySelector('.info');
+							var info = $qs('.info', anchor);
 							var oldRepliesCount = info.firstChild.textContent - 0;
 							info.firstChild.textContent = repliesCount;
 							if (repliesCount != oldRepliesCount) {
@@ -8252,7 +8430,7 @@ var commands = {
 							anchor.setAttribute(atr.replace('data-', ''), value);
 						});
 
-						from = node.querySelector('img');
+						from = $qs('img', node);
 						if (from) {
 							to = anchor.appendChild(document[CRE]('img'));
 							['data-src', 'width', 'height', 'alt'].forEach(function (atr) {
@@ -8288,7 +8466,7 @@ var commands = {
 						}
 
 						// text
-						from = node.parentNode.querySelector('small');
+						from = $qs('small', node.parentNode);
 						if (from) {
 							to = anchor.appendChild(document[CRE]('div'));
 							to.className = 'text';
@@ -8313,12 +8491,12 @@ var commands = {
 				case 0: case 2:
 					while (insertee) {
 						insertee.className = '';
-						insertee.querySelector('.info').lastChild.textContent = '';
+						$qs('.info', insertee).lastChild.textContent = '';
 						insertee = insertee.nextSibling;
 					}
 
-					var deleteLimit = latestNumber - logSize;
-					var warnLimit = Math.floor(latestNumber - logSize * CATALOG_EXPIRE_WARN_RATIO);
+					var deleteLimit = latestNumber - siteInfo.logSize;
+					var warnLimit = Math.floor(latestNumber - siteInfo.logSize * CATALOG_EXPIRE_WARN_RATIO);
 					var node = wrap.firstChild;
 					while (node) {
 						var n = node.getAttribute('data-number') - 0;
@@ -8379,7 +8557,7 @@ var commands = {
 		if (isRapidAccess()) return;
 
 		setBottomStatus('投稿中...');
-		$('postform').querySelector('fieldset').disabled = true;
+		$qs('fieldset', 'postform').disabled = true;
 
 		postBase(
 			'post',
@@ -8403,7 +8581,7 @@ var commands = {
 						commands.deactivatePostForm();
 						setPostThumbnail();
 						resetForm('com', 'upfile', 'textonly', 'baseform');
-						tegakiForSummary = undefined;
+						overrideUpfile = undefined;
 						setBottomStatus('投稿完了');
 
 						var pageMode = pageModes[0];
@@ -8454,7 +8632,7 @@ var commands = {
 			'/' + window.location.host,
 			'sd.php?' + board + '.' + postNumber
 		].join('/');
-		var xhr = new window.XMLHttpRequest;
+		var xhr = createTransport();
 		xhr.open('GET', url);
 		xhr.onload = function () {
 			setTimeout(function () {
@@ -8478,6 +8656,33 @@ var commands = {
 		};
 		xhr.send();
 	},
+	saveImage: function (e, t) {
+		if (t.getAttribute('data-original-text')) return;
+
+		var href = t.getAttribute('data-href') || t.href;
+		var f = getImageName(href, t);
+		if (f == undefined || f == '') return;
+
+		let id = t.id;
+		if (!id) {
+			do {
+				id = 'save-image-anchor-' +
+					(Math.floor(Math.random() * 0x10000)).toString(16);
+			} while ($(id));
+
+			t.setAttribute('id', id);
+		}
+
+		t.setAttribute('data-original-text', t.textContent);
+		$t(t, '保存中...');
+
+		sendToBackend('save-image', {
+			url:href,
+			path:config.data.storage.value.replace('msonedrive', 'onedrive') + ':' + f,
+			mimeType:getImageMimeType(href),
+			anchorId:id
+		});
+	},
 
 	/*
 	 * dialogs
@@ -8493,7 +8698,7 @@ var commands = {
 				var xml = document.implementation.createDocument(null, 'dialog', null);
 				var checksNode = xml.documentElement.appendChild(xml[CRE]('checks'));
 				Array.prototype.forEach.call(
-					document.querySelectorAll('article input[type="checkbox"]:checked'),
+					$qsa('article input[type="checkbox"]:checked'),
 					function (node) {
 						checksNode.appendChild(xml[CRE]('check')).textContent =
 							getPostNumber(node);
@@ -8504,7 +8709,7 @@ var commands = {
 				dialog.initFromXML(xml, 'delete-dialog');
 			},
 			onopen: function (dialog) {
-				var deleteKey = dialog.content.querySelector('.delete-key');
+				var deleteKey = $qs('.delete-key', dialog.content);
 				if (deleteKey) {
 					deleteKey.focus();
 				}
@@ -8513,8 +8718,8 @@ var commands = {
 				}
 			},
 			onok: function (dialog) {
-				var form = dialog.content.querySelector('form');
-				var status = dialog.content.querySelector('.delete-status');
+				var form = $qs('form', dialog.content);
+				var status = $qs('.delete-status', dialog.content);
 				var board = window.location.pathname.split('/')[1];
 				if (!form || !status) return;
 
@@ -8531,7 +8736,7 @@ var commands = {
 							$t(status, 'リクエストに成功しました');
 
 							Array.prototype.forEach.call(
-								document.querySelectorAll('article input[type="checkbox"]:checked'),
+								$qsa('article input[type="checkbox"]:checked'),
 								function (node) {
 									node.checked = false;
 								}
@@ -8639,7 +8844,7 @@ var commands = {
 					dialog.initFromXML(xml, 'moderate-dialog');
 				},
 				onopen: function (dialog) {
-					var dest = dialog.content.querySelector('.moderate-target');
+					var dest = $qs('.moderate-target', dialog.content);
 					if (dest) {
 						for (var node = anchor; node; node = node.parentNode) {
 							if (node.classList.contains('topic-wrap')
@@ -8647,7 +8852,7 @@ var commands = {
 								node = node.cloneNode(true);
 
 								Array.prototype.forEach.call(
-									node.querySelectorAll('a'),
+									$qsa('a', node),
 									function (node) {
 										node.href = '#void';
 									}
@@ -8659,20 +8864,20 @@ var commands = {
 						}
 					}
 
-					var form = doc.querySelector('form[method="POST"]');
-					var dest = dialog.content.querySelector('.moderate-form');
+					var form = $qs('form[method="POST"]', doc);
+					var dest = $qs('.moderate-form', dialog.content);
 					if (form && dest) {
 						form = form.cloneNode(true);
 
 						form.action = resolveRelativePath(form.getAttribute('action'), baseUrl);
 						Array.prototype.forEach.call(
-							form.querySelectorAll('input[type="submit"]'),
+							$qsa('input[type="submit"]', form),
 							function (node) {
 								node.parentNode.removeChild(node);
 							}
 						);
 						Array.prototype.forEach.call(
-							form.querySelectorAll('table[border]'),
+							$qsa('table[border]', form),
 							function (node) {
 								node.removeAttribute('border');
 							}
@@ -8682,8 +8887,8 @@ var commands = {
 					}
 				},
 				onok: function (dialog) {
-					var form = dialog.content.querySelector('form');
-					var status = dialog.content.querySelector('.moderate-status');
+					var form = $qs('form', dialog.content);
+					var status = $qs('.moderate-status', dialog.content);
 					if (!form || !status) return;
 
 					$t(status, '申請を登録しています...');
@@ -8698,7 +8903,7 @@ var commands = {
 								$t(status, '登録されました');
 
 								Array.prototype.forEach.call(
-									form.querySelectorAll('input[type="radio"]:checked'),
+									$qsa('input[type="radio"]:checked', form),
 									function (node) {
 										node.checked = false;
 									}
@@ -8747,16 +8952,41 @@ var commands = {
 		startDrawing(function (dataURL) {
 			if (!dataURL) return;
 
-			var thumbWrap = $('post-image-thumbnail-wrap');
-			var thumb = $('post-image-thumbnail');
+			let thumbWrap = $('post-image-thumbnail-wrap');
+			let thumb = $('post-image-thumbnail');
 			if (!thumbWrap || !thumb) return;
 
+			getImageFrom(dataURL, img => {
+				if (img) {
+					let baseform = document.getElementsByName('baseform')[0];
+					if (pageModes[0] == 'summary'
+					 || pageModes[0] == 'catalog') {
+						getBlobFrom(dataURL, blob => {
+							overrideUpfile = {
+								name: 'tegaki.png',
+								data: blob
+							};
+						});
+					}
+					else if (baseform) {
+						baseform.value = dataURL.replace(/^[^,]+,/, '');
+					}
+					resetForm('upfile', 'textonly');
+					doDisplayThumbnail(thumbWrap, thumb, img);
+				}
+				thumbWrap = thumb = null;
+			});
+
+			/*
 			var img = document[CRE]('img');
 			img.onload = function () {
 				var baseform = document.getElementsByName('baseform')[0];
 				if (pageModes[0] == 'summary' || pageModes[0] == 'catalog') {
-					dataURLtoBlob(dataURL, function (blob) {
-						tegakiForSummary = blob;
+					getBlobFrom(dataURL, function (blob) {
+						overrideUpfile = {
+							name: 'tegaki.png',
+							data: blob
+						};
 					});
 				}
 				else if (baseform) {
@@ -8770,6 +9000,7 @@ var commands = {
 				img = img.onload = thumbWrap = thumb = null;
 			};
 			img.src = dataURL;
+			*/
 		});
 	},
 
@@ -8919,9 +9150,9 @@ var commands = {
 			ad.classList.add('hide');
 			panel.classList.add('hide');
 			pageModes.unshift('catalog');
-			$t(document.querySelector('#header a[href="#catalog"]'), 'サマリー');
+			$t($qs('#header a[href="#catalog"]'), 'サマリー');
 
-			var active = document.querySelector(
+			var active = $qs(
 				'#catalog .catalog-threads-wrap > div:not([class*="hide"])');
 			if (active && active.childNodes.length == 0) {
 				commands.reloadCatalog();
@@ -8933,7 +9164,7 @@ var commands = {
 			catalog.classList.add('hide');
 			ad.classList.remove('hide');
 			panel.classList.add('hide');
-			$t(document.querySelector('#header a[href="#catalog"]'), 'カタログ');
+			$t($qs('#header a[href="#catalog"]'), 'カタログ');
 			catalogPopup.deleteAll();
 			pageModes.shift();
 			historyStateWrapper.updateHash('');
@@ -8990,23 +9221,23 @@ var commands = {
 	},
 	showPanel: function () {
 		showPanel(function (panel) {
-			activatePanelTab(document.querySelector('.panel-tab.active'));
+			activatePanelTab($qs('.panel-tab.active'));
 		});
 	},
 	activateStatisticsTab: function () {
 		showPanel(function (panel) {
-			activatePanelTab(document.querySelector('.panel-tab[href="#mark"]'));
+			activatePanelTab($qs('.panel-tab[href="#mark"]'));
 		});
 	},
 	activateSearchTab: function () {
 		showPanel(function (panel) {
-			activatePanelTab(document.querySelector('.panel-tab[href="#search"]'));
+			activatePanelTab($qs('.panel-tab[href="#search"]'));
 			$('search-text').focus();
 		});
 	},
 	activateNoticeTab: function () {
 		showPanel(function (panel) {
-			activatePanelTab(document.querySelector('.panel-tab[href="#notice"]'));
+			activatePanelTab($qs('.panel-tab[href="#notice"]'));
 		});
 	},
 
@@ -9026,11 +9257,11 @@ var commands = {
 		empty(result);
 
 		Array.prototype.forEach.call(
-			document.querySelectorAll('article .topic-wrap, article .reply-wrap'),
+			$qsa('article .topic-wrap, article .reply-wrap'),
 			function (node) {
 				var text = [];
 				Array.prototype.forEach.call(
-					node.querySelectorAll('.sub, .name, .postdate, span.user-id, .email, .comment'),
+					$qsa('.sub, .name, .postdate, span.user-id, .email, .comment', node),
 					function (subNode) {
 						var t = subNode.textContent;
 						t = t.replace(/^\s+|\s+$/g, '');
@@ -9047,7 +9278,7 @@ var commands = {
 					div.textContent = text;
 					div.className = 'a';
 					div.setAttribute('data-number',
-						node.getAttribute('data-number') || node.querySelector('[data-number]').getAttribute('data-number'));
+						node.getAttribute('data-number') || $qs('[data-number]', node).getAttribute('data-number'));
 					matched++;
 				}
 			}
@@ -9062,14 +9293,13 @@ var commands = {
  */
 
 if (document.title != NOTFOUND_TITLE) {
-	if (document.querySelector('meta[name="generator"][content="akahukuplus"]')) {
+	if ($qs('meta[name="generator"][content="akahukuplus"]')) {
 		window.location.reload();
 	}
 	else {
 		timingLogger = createTimingLogger();
 		timingLogger.startTag('booting akahukuplus');
 		initialStyle(true);
-		removeAssets('script top');
 		document.addEventListener('DOMContentLoaded', handleDOMContentLoaded, false);
 	}
 }

@@ -66,6 +66,7 @@
 		var throughParam = {cancel: false};
 		var regexFutabaContent = /^https?:\/\/[^.]+\.2chan\.net(:\d+)?\/[^\/]+\/(?:(?:futaba|\d+)|res\/\d+)\.html?/;
 		var regexFutabaAsset = /^https?:\/\/[^.]+\.2chan\.net(:\d+)?\//;
+
 		chrome.webRequest.onBeforeRequest.addListener(
 			function (details) {
 				switch (details.type) {
@@ -77,17 +78,23 @@
 					}
 					break;
 
-				case 'image':
-					if (regexFutabaAsset.test(details.url)) {
-						return throughParam;
-					}
-					break;
+//				case 'image':
+//					if (regexFutabaAsset.test(details.url)) {
+//						return throughParam;
+//					}
+//					break;
+				}
+
+				if (details.url.startsWith('chrome-extension://')) {
+					return throughParam;
 				}
 
 				if (details.tabId in initializingTabIds) {
+					//console.log('cancel: ' + details.type + ' ' + details.url);
 					return cancelParam;
 				}
 				else {
+					//console.log('through: ' + details.type + ' ' + details.url);
 					return throughParam;
 				}
 			},
@@ -172,7 +179,7 @@
 				});
 				break;
 			case 'initialized':
-				delete initializingTabIds[sender];
+				delete initializingTabIds[sender.replace(/_\d+$/, '')];
 				break;
 			case 'iconv':
 				res(sjisUtils.toSjis(data));
@@ -185,6 +192,9 @@
 				break;
 			case 'complete':
 				lateResponse = completeUpfiles.run(data.id, res);
+				break;
+			case 'load-siokara-thumbnail':
+				lateResponse = completeUpfiles.loadSiokaraThumbnail(data.url, res);
 				break;
 			case 'save-image':
 				lateResponse = saveImage.run(
@@ -205,6 +215,13 @@
 				break;
 			case 'play-sound':
 				ext.sound.play(data.key, {volume: data.volume});
+				break;
+			case 'notify-viewers':
+				ext.broadcastToAllTabs({
+					type: 'notify-viewers',
+					data: data.viewers,
+					siteInfo: data.siteInfo
+				});
 				break;
 			}
 		}

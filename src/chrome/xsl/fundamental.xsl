@@ -64,6 +64,10 @@ a:hover {
 	text-decoration:underline;
 }
 
+.comment a {
+	word-break:break-all;
+}
+
 hr {
 	margin:16px 0 16px 0;
 	padding:0;
@@ -72,6 +76,25 @@ hr {
 	border-color:#e0d0c6;
 	border-width:1px;
 	color:silver;
+}
+
+kbd {
+	margin:0 .15em 0 .6em;
+	padding:1px 4px 1px 4px;
+	background-color:#855;
+	color:#ffe;
+	border-radius:3px;
+	white-space:nowrap;
+	font-family:monospace;
+	font-weight:bold;
+}
+
+kbd:first-child {
+	margin-left:0;
+}
+
+a.js kbd {
+	background-color:#682;
 }
 
 .hide {
@@ -102,6 +125,10 @@ hr {
 
 .onedrive-image {
 	background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAACO0lEQVQ4y8WUzUtUURjGf+85Z+7MnSZHrSnJhmgIkwxDbJNBBfYBLsJFEFRTf4HRLoiypdAqCINoEYFEmxL6ACFoY4sEDSoiFAuDMiErLdMZ5957WowNY2NOC8Fne3if8/J8vOK2PbCsIBQrjNUjVEoQWSFCEQgCi7WUJTVLDSsRLOD7lmhEkz6YpGlbnIlvWe4/G2dwZArX0QS21E8pdjm/CWSyPpGIxmjh+bX9NGxZu2jozJUh7j79hNayPGHOC7h0ajud6XoAZuY8QkYxNDLFr6xHNKypq42RqAyz6Xgf33/mSiQoaOgHlhOtSTrT9Xi+JecF+AFcvv0WJ6RIxMMoEa72vude/zhVsRCZjIdWUqqhAJ5vOdScAEArQUToeTxGR3uKdRUOIaOwFhpTFbx894OB7gPc6vvA+ZtvEMAWE1rgzoVmjuzeWHDyxqMxRsdnqV3vLt5AG1oaqrEWOtpTVMUc0l2DuBGdf5/L+Fw/t4tj+2oLZGe7X3PxZB2JeHjZKM17AXt3VhON6MKGCgX1yRh+YDFaGP44Q93mNWyoDC8Zi2I4RrG1Jspkbxsx16BE8qY8GfqCY/L+fP6aocINFbQsB2vBdTRH99Qwm/Ux0bCmq2eYaETT2pQg5hoeDkxw+nCS/20RwODIFOGQyudQBGYzPhFHoxaC1JiK07KjGinTNSXwYnSa/leTGCOlTREEi8VoxXwuKArEvxEyCs+3pV22FuwCQc4LFrYtr+MfsiWPw98frPqB/Q0bN8Ao0JXD9gAAAABJRU5ErkJggg==) left top no-repeat;
+}
+
+.local-image {
+background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAA7DAAAOwwHHb6hkAAAAB3RJTUUH4gkHCyYOL6wLIwAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAEeklEQVQ4y1WUTWhUVxiGn3PvOXfizE0nGTKTNEaS6ow1inXaxLTUWUgghAYE98WNrgWXFjeVFlLszq1LIQtBcFGRSKqlmyq2iT84momjSDqNNT/q/N25v6cLM4M98PHtnvOe733PJ9g++Xw+MTAwcBAwlFLadV1KpRKbm5uMjY2RzWZZW1sjmUwyPDyMlBLHcYRSSgMPZmdnmwCyDYzH418PDg7eLJVK+L7P0NAQZ86cIZfLkU6n6e7upl6vs7q6ytLSEuvr6yilSKfTVCqVaeDm/4BSyk8fPXpEJpPhxIkTFAoFpJSYpolpmsRiMZRSjI2Ncfz4ce7du8eVK1dYWVnBsqwDbaBx5MgRAVCtVvfv2rWLCxcuUCgUCIIArTVCCJRSSPn+7iAICMOQiYkJzp8/T39/P1tbW7m2MMP3fQBSqVT+7NmzpFIphBDE43G6urqIxWJUq1U2NjYwTRMpZQeeSCQ4ffo0tm0f6AB7e3sFwNTU1MFsNqsBYrEYsViMtjG3b9/m+vXrFItFWq0WAFEU4fs+mUyGycnJfe3xGfPz8xHQl8vlbMuyAsuysCyLWCxGs9lEa021WuXly5dorXn79m0H5nkeQRCQSqUypmn2ABgAQ0NDE0oplFKGZVmdZ9m2zdLSEnv27GF6epq7d++ilCIIAjzPw3VdHMfBdV0mJiYOdYCe5+WXl5exLEtsgxFCkE6nOXbsGMlkEikl09PT2LbdgbiuSxiGlMtlarXaF53YxOPx8atXr3Lq1CkjlUoRRRGGYQDQ399PJpMhCAJ836fRaOB5HlprGo0Gm5sb3LhxA9u2v+woPHr06EgymeTkyZPvndqGaa0JwxDHcWi1WjSbTcIwxPM8nj9/zrOVp3z/w08kPurlUD6/H0CMjo5mpJQPtNYDrusyPDzM7Ows+Xye169fU6vVSCQS1Go1ms0m6+vr1Go1/v7nXz6z/uDZk/vMPx9gbctdR4d7xeHDh/OVSmVxcnJSTE1N8fDhQxYWFrh06RLlcpmdO3eyY8cO7t+/z4sXL/B9n3fv3lFcLqMbFX7+Nk464fLjL5b/61PrK6m1/sR1XTE+Pk69Xm/nijt37jAzM0O5XObixYtcu3aNIAg6v+jx4yKqK8F3cwaBEWOr2lIZ28hJx3H2OY5Dd3c3WmtarRa2bVOpVJibm+Py5cusrKzQ1dWFZVkUi0WklAwMZDjxTZ6ewb389fglNxduYRjGbtnT0/P56Ogo586dY2ZmpmNCvV6n0Wjw5s0bRkZGiKKIV69eUavVEELgOC02jV28Wq1y67ff2b17N0KI/aJQKCz39fXtXVxcxPM8pJQYhoEQAq01hmEQj8fRWtNsNjvua61BRximRGvN+Pg4Gxsbf4psNrtmWdZAIpGgHeoP11Yb3gZFUUQURYRh2MlmEATU63V83y/Jer3+RCnV22q1mkqpSEqpTdOMTNPUhmHobaD+QJmIokhEUWSEYSjCMBS+7xue5yV83y8J4GPAAnwgAEIg+qDr7epsqO0yP+gSUEDrP5pXK7Rf/CMSAAAAAElFTkSuQmCC) left top no-repeat;
 }
 
 /*
@@ -320,6 +347,11 @@ hr {
 	color:#447788;
 }
 
+.topic-wrap a .link-completion-notice,
+.reply-wrap a .link-completion-notice {
+	font-size:75%;
+}
+
 /* links */
 .topic-wrap .reply-link a {
 	margin:0 0 0 8px;
@@ -361,7 +393,7 @@ hr {
 	background-color:#fff;
 	font-size:small;
 	text-align:center;
-	line-height:1;
+	line-height:1.5;
 	transition-property:box-shadow;
 	transition-duration:.4s;
 	transition-timing-function:ease;
@@ -602,8 +634,6 @@ hr {
 }
 
 #content .inline-video-container .nico2 {
-	width:312px;
-	height:176px;
 }
 
 /*
@@ -850,11 +880,19 @@ hr {
 	opacity:1;
 }
 
-.post-image-thumbnail {
+.post-image-thumbnail-outer {
+	display:inline-block;
 	margin:0 8px 8px 0;
 	border:8px solid #ffe;
 	border-radius:4px;
 	box-shadow:0 0 8px 2px rgba(0,0,0,.5);
+	background-color:#ffffee;
+	font-size:small;
+	text-align:center;
+}
+
+.post-image-thumbnail-info {
+	white-space:nowrap;
 }
 
 /*
@@ -945,12 +983,12 @@ hr {
 #panel-aside-wrap .panel-tab-wrap > a {
 	display:inline-block;
 	margin:0 4px 0 0;
-	padding:4px 8px 0 8px;
+	padding:4px 8px 4px 8px;
 	background-color:#400;
 	color:#ccc;
 	border-radius:4px 4px 0 0;
-	box-shadow:0 -1px 3px rgba(0,0,0,.25);
-	font-size:x-small;
+	box-shadow:0 -2px 3px rgba(0,0,0,.25);
+	font-size:small;
 	line-height:1;
 	text-decoration:none;
 }
@@ -1709,7 +1747,7 @@ div.catalog-popup span {
 			<div>
 				<a href="{meta/home}" target="_top">ホーム</a>
 				<xsl:if test="meta/board_top"> &#160; <a href="{meta/board_top}">掲示板に戻る</a></xsl:if>
-				&#160; <a class="js" href="#toggle-panel">パネル</a>
+				&#160; <a class="js" href="#toggle-panel"><kbd>p</kbd>パネル</a>
 				&#160; <a class="js" href="#config">設定</a>
 				&#160; <a class="js" href="#help">?</a>
 				&#160; <span data-binding="template:storage"></span>
@@ -1770,6 +1808,7 @@ div.catalog-popup span {
 						<div class="{@class}">
 							<xsl:element name="iframe">
 								<xsl:attribute name="frameborder">0</xsl:attribute>
+								<xsl:attribute name="scrolling">no</xsl:attribute>
 								<xsl:attribute name="width"><xsl:value-of select="@width"/></xsl:attribute>
 								<xsl:attribute name="height"><xsl:value-of select="@height"/></xsl:attribute>
 								<xsl:attribute name="src"><xsl:value-of select="@src"/></xsl:attribute>
@@ -1787,9 +1826,9 @@ div.catalog-popup span {
 		<div id="panel-aside-wrap" class="hide">
 			<div class="panel-header">パネル</div>
 			<div class="panel-tab-wrap">
-				<a class="panel-tab active" href="#mark">集計</a>
-				<a class="panel-tab" href="#search">レス検索</a>
-				<a class="panel-tab" href="#notice">注意書き</a>
+				<a class="panel-tab active" href="#mark"><kbd>s</kbd>集計</a>
+				<a class="panel-tab" href="#search"><kbd>/</kbd>レス検索</a>
+				<a class="panel-tab" href="#notice"><kbd>n</kbd>注意書き</a>
 			</div>
 			<div class="panel-content-wrap">
 				<div id="panel-content-mark" data-stretch="true">
@@ -1841,7 +1880,7 @@ div.catalog-popup span {
 							<xsl:apply-templates select="meta/postform/input[@name='email']" mode="composite"/>
 						</xsl:if>
 						<xsl:apply-templates select="meta/postform/input[@name='sub']"/>
-						<tr><th>コメント</th><td colspan="2"><div class="comment-wrap"><textarea name="com" id="com" resize="false" rows="4"/></div><div id="comment-info" class="comment-info">#</div></td></tr>
+						<tr><th>コメント</th><td colspan="2"><div class="comment-wrap"><textarea name="com" id="com" resize="false" rows="4" placeholder="Shift+Enterで送信"/></div><div id="comment-info" class="comment-info">#</div></td></tr>
 						<xsl:choose>
 							<xsl:when test="meta/postform/input[@name='upfile']">
 								<tr>
@@ -1867,6 +1906,12 @@ div.catalog-popup span {
 			<div class="nav">
 				<xsl:if test="$page_mode!='reply'">
 				<div class="nav-links" data-binding="template:navigator"></div>
+				<div class="tips">
+					<kbd>z</kbd>前
+					<kbd>.</kbd>次
+					<kbd>r</kbd>リロード
+					<kbd>i</kbd>フォームを開く
+				</div>
 				</xsl:if>
 				<xsl:if test="$page_mode='reply'">
 				<div class="status">
@@ -1876,12 +1921,16 @@ div.catalog-popup span {
 					/ <span id="pf-expires" data-binding="xpath:/futaba/thread[1]/topic/expires"></span>
 					<small>(<span id="pf-expires-remains" data-binding="xpath:/futaba/thread[1]/topic/expires/@remains"></span>)</small>
 				</div>
-				</xsl:if>
-				<div>
+				<div class="tips">
+					<kbd>i</kbd>フォームを開く
 				</div>
+				</xsl:if>
 			</div>
 			<div class="post-image-thumbnail-wrap hide" id="post-image-thumbnail-wrap">
-				<img class="post-image-thumbnail" id="post-image-thumbnail"/>
+				<div class="post-image-thumbnail-outer" id="post-image-thumbnail-outer">
+					<img class="post-image-thumbnail" id="post-image-thumbnail"/>
+					<div id="post-image-thumbnail-info"></div>
+				</div>
 			</div>
 			<div id="comment-backend"></div>
 		</div>
@@ -1893,7 +1942,7 @@ div.catalog-popup span {
 			<a class="selmenu l" href="#ss-copy">コピー</a>
 			<a class="selmenu l" href="#ss-copy-with-quote">引用符付きコピー</a>
 			<div/>
-			&#160;<a class="selmenu i" href="#ss-google"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACKklEQVQ4y22STUhVURSFv3PufVctTAs0AqEkJ0GjiP4gGjjIURBNMoqCIAghGjZo0EwahdEDsQbWpLKaSFCNwhLJKEjKiUKjjOhH6+F7pu/evRrce5/P6sDm7HPO2n/rLNczEN+Q6KusiJUqmBkyYQZJIgqBKHhhEpYIke8gqegOD8SqLItzB439nYZJrMSOwBlRCE/fw60xiML/JsB3tBij52MeTzmOFANG33m62o2WdXBnwjE87ohCgUhX7ip1/OCJmKvPPN9KYvMG494kvJx1bNkIrU0QeOEyPKg+DwA+LMD8IgQeLIbGCG6OpY+9+8SvJWohqiXKbiQ8QFe7UY1Tohziw6cU4DJQalnZ7JwvD+LMAeNnOQXJ0pYBHryB5gjM0g5MqyPkjn8y5WhrgWvHjfKSqCyL4ikxMQPDLwzvM+Yt4y2rrvSA23OlomO7RfcO2NkBDRG8moXTQ8am9ZBYCk6ygHyUfDQfODEyCb2DYuR1/ljHukRiqt3XV0fC/66K2ERHK0zPCRzs3Q6PLvh/WwYw1SgQ4C7dXdTFHsfMFzE9B4GDs4ccJvixCN39VQpBVtnWzm8Sbr5U1tHrCZ8XoCEE76CxIO73hWxrg9vjRv9oQlOomgJVZ/7yw4TvJdHcKKJAhF7EiTg5WOVrCTrbHHGd9teYGWF5mfSrbFWeDlgoi6WqePvRCF3O/l8JAG9Ssab1mpDErq0piUPPYxoKaYDVVZYEZsU/L+6lZpeLrzAAAAAASUVORK5CYII="/></a>
+			&#160;<a class="selmenu i" href="#ss-google"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAC4jAAAuIwF4pT92AAAAB3RJTUUH4gkECSgevalNSQAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAChElEQVQ4y5WTS0iUURSAv3v/+8846jxMK6ggjBb2DjOQiNCk0B6EiyKoZVGLAmmX26BNVBBEpQWFFUUvIhIiiV6rAiNNkzIShOglOqPOP84//z0tDHOyTd/mwj2X75xz7z1KRAQAEVAKSSXx7t0k2/maYHAAyfnosjm4S1ZQ0LAdd/lqpqNERLAWtCZ9pYXRc6dRIhAuQBkDSkEQINkJxPcJV68nduwkOlECgEEEtCbZ3ETmcTs6ngDHQTIedmx0MosxqOIoKgjwuzoRPztVgUEpxlvOMvG0A50omQxOZIhsbSRcV4+KRMj1dDPe1op4aUofPEXHEtNayA7Kj4Y6sGVgPfSsUkou30bH4vyNTSVn7gf9zeI/QoYPVMjXypVikyPyPxgZegwaorv7KNx1CBWLT70IwJPeHMm0oHV+YgUUuAqDNwA4iBfgVlX/jqqpg+c7fN5/CQiZfIHREFgwIH+sVmb07RoIm8kVAdcoQg5oDdkcGCKLUNlXOA68/fqGVXP35glqlzosmacxDrgOfPpueTdoCSuIFymMLt2MDL/icHoD97v66a5IEQ/HpgT7akJ5wiNXPawFz4eNyxy0WnCQdUObeO7Pp8woGtsPMzIxyr9oeyG8/JCjIASBFXascSe/8pmu61zovkaRW0g28LFi2VZew5aFNURDhfQNf+ZG/10+91cxO7UfXzJUlitO7YmgrFhRKJqeH+fhwDMS4ShaabKBz7ifxmIJaZditxhxxsgkF1GeOsb9ppI/w2RF0ErR2nOLE50XcbWLqw1aaRRgRQgkYNz3qF2wlpa6o2ii06ZxGumcx6XeO/QMfeRb+ic5G5AIx1gYm8fOxfWsKqvIu5df3PJCIGLbEhcAAAAASUVORK5CYII="/></a>
 			<a class="selmenu i" href="#ss-amazon"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACBklEQVQ4y42TX0uTYRjGf++a7xqyDIocgxpDBqNBlJ1s5In1BQLxyFGdKOzAvoFHfQDxYB+gA4nhwfDMIwuLyWpRvtAgbTkJo5cIme/GfN2fq4Ph0nTlBc/B8zz3/eO5Lp7bAMQZMgyDQCAAQL1ep91u00/6e01NTWl1dVXValWO42h9fV3T09M6q/YUYHZ2VkdqNBrqdDq9fSqV+jfA5/Npc3NTkrSysqLh4WElEgnt7+9LkrLZ7CmA97iXZrPJzMwMwWCQtbU1bNumVquxu7tLLBbD7/efL4OxsTFlMhlZliXHcXoWlpeX/5/B3NxcryGfz2thYUG2bZ8PEI1G5bquJGlxcbF3XiqVJEm5XO4UwHPcSzwexzRNAIrFIgAjIyOEw2EAQqEQHo+nfwbJZLL3fMuylE6nVSgUdFyTk5P9LZimqVwud6LBtm3Nz89LksrlsuK3Rk8ADEDRa14cV/yotjF9fh4/ShGJRNjb22NpaYlKpcLExAQfNyyGDrYYv3mJN19cCl9dDECRq16ePgiw8e2QF4U6bp9v7wHS4wHuhk3e77hkXta6AIDQ5Qs8ezjEnRsmb7cPKVYO2fnVQure3b5uMhoe4PWWy6fvLd5tu5R/tv4AjnQ/dpEn9wYZDZtcGewmbjttPuw0eZ6v8+rzwcmp7TfOvgEDv9cAoNESbvPMMn4DIwWAg1B+uBIAAAAASUVORK5CYII="/></a>
 			<a class="selmenu i" href="#ss-wikipedia"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACeUlEQVQ4y6WTMUsjURCAv5d9WRc3boo0SUA2GCRKIAhK0MKQtIKtWFhoIeRXyJXiPwi2EbEyjWhpJ6hoF1SsrEQUNJJko5s3V0j27uqb6g0M3xtmvlHtdlv4j4jxn6EBtNaICEopjDE/5NgP++989FZKoZQiDEN0EAS8vr7iOA7GGCzLIhaLEQQBlmVh2zYiQrfbZXx8HBFBRAiCgFQqhe50OrRaLS4vL0mlUqyvr/Py8sLh4SGTk5Nsbm5ycXHB9fU1q6urpNNp9vf3mZqaYm1tDe7u7uTp6UlKpZKUy2UREWm327KysiLValVERHZ2dmR3d1fu7+9FRGRpaUlub2/l4eFBrO3t7V/9fp+ZmRkajQalUol8Po/ruhwdHfH+/o5t28zNzZHJZGi1Wvi+Ty6XQ0SIKaXQWjM9PU0+n6fZbKK1plgssry8zN7eHoVCgVwuRyKR4PT0lIWFBRzH+QEYYwjDENu22dra4uzsjMfHR9LpNIuLi3x9ffHx8UEymeTq6opCoYDjOAyHwz8dKKWwbZv5+XmSySTNZhPXdZmYmMBxHE5OTnAch+PjY8rlMp7nRWu36vX6L4AwDHFdl16vx/n5OdlslufnZ2q1GgcHB2QyGeLxeDSfyI/RXo0xjI2NUavVeHt7o9FokM1m2djYoFgsUq/XmZ2dJZ1OE4Zh5IMekQD6/T6+71OpVOj1elQqFYIgoFqtEovF8DwPYwzD4fCPkTc3N9ExGWPQWtPpdPj8/MT3fQaDAd1uF2MMrutiWRZANANtjIncHvnueR6e5/H9/Y1SikQiEX0wqo8Ag8EgAozaExG01sTjcSzLQkT+OahRbozhN+CAQK765F4HAAAAAElFTkSuQmCC"/></a>
 			<a class="selmenu i" href="#ss-youtube"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAB2klEQVQ4y5WTv0vjMRjGP/3aauuvkisngiAahIIgRymKHCeIuAlu/RN0cbcO4uTSxdnFURAnxUVpwV3qLIIUERTpQfA3DrbPDantl0M574GQNyF587yfJBFJAohEIkhq9l9VAFCpVAAoFAqEx1+SGsrn8wKUy+XknJO1VoCstWq4VLlcljFGYTUTOOeaiyTJWivnnIwxKhaLnyYI3p0YY/7ptlQqfV5C2OZHJWSzWQH6a4si+h/kHygKwN4erKxA9TckuyH1HYIA2trg5gaSSRgdhcwP+PkLjIGzM8jlGn76+6Xz85avdFpKJqUgkB4epLExH6fT0uCgtLsrLS+HbiGb9QskaW6u1cbHpUpFOjiQJicl803a3vYJp6ZCDCYm4PQUnp4gk4HjYzg8hIEBuL2F+Xk4OfHx9DTUajAyArWaf4nU6xCPQywG3d1weQnX135DVxcsLcHjI/T1weurp9fTE4LYRBr18KJRcA6s9XE8Dh0dkErB2po/PZVq/QU6O1tJ6nVIJGBjw48TCdjagrc32N+HnR1YXISXl5CDoSG4u4PZWXh+hoUFb71ahfZ22NyEiwu4uvJzR0cwMwNA6yGtr/s7j8U8zPdawUPr7fV87u9heBhWVwH4A2xcVgnnGajtAAAAAElFTkSuQmCC"/></a>
@@ -2032,6 +2081,7 @@ div.catalog-popup span {
 	<xsl:when test="meta/configurations/param[@name='storage']/@value='dropbox'"><a href="https://www.dropbox.com/" target="_blank"><span class="storage-image dropbox-image" title="保存先: dropbox">-</span></a></xsl:when>
 	<xsl:when test="meta/configurations/param[@name='storage']/@value='gdrive'"><a href="http://www.google.com/drive/about.html" target="_blank"><span class="storage-image gdrive-image" title="保存先: Google Drive">-</span></a></xsl:when>
 	<xsl:when test="meta/configurations/param[@name='storage']/@value='onedrive'"><a href="https://onedrive.live.com/" target="_blank"><span class="storage-image onedrive-image" title="保存先: Microsoft OneDrive">-</span></a></xsl:when>
+	<xsl:when test="meta/configurations/param[@name='storage']/@value='local'"><span class="storage-image local-image" title="保存先: ローカル ドライブ">-</span></xsl:when>
 	</xsl:choose>
 	</body>
 </html>
@@ -2087,7 +2137,7 @@ div.catalog-popup span {
 				</div>
 				<xsl:apply-templates select="topic/expires" mode="simple"/>
 				<div class="reloader-wrap">
-					<a class="reloader js" href="#reload" id="reload-anchor">続きを読む</a>
+					<a class="reloader js" href="#reload" id="reload-anchor"><kbd>r</kbd>続きを読む</a>
 					<span class="hide" id="fetch-status"></span>
 				</div>
 			</div>
@@ -2181,12 +2231,8 @@ div.catalog-popup span {
 
 <xsl:template match="comment//a | email//a">
 <xsl:choose>
-<xsl:when test="contains(@class,'link-siokara') and @thumbnail and not(name(..)='q')">
-<a class="{@class}" href="{@href}" title="{@title}" target="_blank">
-	<xsl:value-of select="@basename"/><br/>
-	<img src="{@thumbnail}" onerror="document.dispatchEvent(new CustomEvent('Akahukuplus.imageError', {{detail:{{target:this}}}}))"/><br/>
-	<span class="js save-image" data-href="{@href}">[保存する]</span>
-</a>
+<xsl:when test="contains(@class,'link-siokara') and @thumbnail">
+<a class="{@class}" href="{@href}" title="{@title}" target="_blank" data-basename="{@basename}" data-thumbnail-href="{@thumbnail}"><xsl:value-of select="."/></a>
 </xsl:when>
 <xsl:when test="contains(@class,'link-youtube') and not(name(..)='q')">
 <div class="inline-video-container">
@@ -2197,7 +2243,7 @@ div.catalog-popup span {
 <xsl:when test="contains(@class,'link-nico2') and not(name(..)='q')">
 <div class="inline-video-container">
 	<a href="{@href}" target="_blank"><xsl:value-of select="."/></a>
-	<div class="inline-video nico2" data-markup="&lt;iframe width='312' height='176' src='http://ext.nicovideo.jp/thumb/{@nico2-key}' scrolling='no' style='border:solid 1px #CCC;' frameborder='0'&gt;&lt;/iframe&gt;"></div>
+	<div class="inline-video nico2" data-nico2-key="{@nico2-key}"></div>
 </div>
 </xsl:when>
 <xsl:when test="contains(@class,'link-futaba') and not (name(..)='q')">

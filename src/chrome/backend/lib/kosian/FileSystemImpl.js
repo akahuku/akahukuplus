@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2016 akahuku, akahuku@gmail.com
+ * Copyright 2012-2017 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,13 +23,21 @@
 	'use strict';
 
 	/*
+	 * consts
+	 */
+
+	const DEBUG = false;
+	const AUTHORIZE_RETRY_MAX = 1;
+	const PSEUDO_MIME_DIRECTORY = 'application/x-kosian-directory';
+	const PSEUDO_MIME_GENERIC = 'application/octet-stream';
+	const u = require('./Utils').Utils;
+	const _ = u._;
+
+	/*
 	 * vars
 	 */
 
-	var authorizeRetryMax = 3;
 	var writeDelaySecsDefault = 10;
-	var u = require('./Utils').Utils;
-	var _ = u._;
 
 	/*
 	 * task queue class
@@ -48,25 +56,31 @@
 			switch (top.task) {
 			case 'authorize':
 				if (!fs.needAuthentication || fs.isAuthorized) {
+					DEBUG && console.log('TaskQueue#process: nothing to do');
 					run();
 					break;
 				}
 				if (top.state == 'error') {
+					DEBUG && console.log('TaskQueue#process: error');
 					queue.shift();
 					authorize(top);
 				}
 				else {
+					DEBUG && console.log('TaskQueue#process: calling authroize');
 					queue.unshift(top);
 					authorize(top);
 				}
 				break;
 			case 'ls':
+				DEBUG && console.log('TaskQueue#process: calling ls');
 				ls(top);
 				break;
 			case 'read':
+				DEBUG && console.log('TaskQueue#process: calling read');
 				read(top);
 				break;
 			case 'write':
+				DEBUG && console.log('TaskQueue#process: calling write');
 				write(top);
 				break;
 			}
@@ -219,13 +233,16 @@
 		var locale = '';
 
 		var handleError = this.handleError = function (task, status) {
+			DEBUG && console.log('handleError: task:' + task.task + ', status:' + status);
+
+			// 400 Bad Request
 			// 401 Unauthorized
 			// 403 Forbidden
 			if ((status == 400 || status == 401 || status == 403) &&
 				(refreshToken || task.refreshToken)) {
 				if (self.taskQueue.topTask &&
 					self.taskQueue.topTask.task == 'authorize' &&
-					self.taskQueue.topTask.retryCount >= authorizeRetryMax) {
+					self.taskQueue.topTask.retryCount >= AUTHORIZE_RETRY_MAX) {
 					return false;
 				}
 
@@ -245,6 +262,8 @@
 		};
 
 		var handleAuthError = this.handleAuthError = function (task, message, status) {
+			DEBUG && console.log('handleAuthError: task:' + task.task + ', message:' + message + ', status:' + status);
+
 			self.isAuthorized = false;
 			accessToken = refreshToken = tokenType = uid = locale = '';
 
@@ -254,7 +273,7 @@
 			delete task.uid;
 
 			if ((status == 400 || status == 401 || status == 403) &&
-				task.retryCount < authorizeRetryMax) {
+				task.retryCount < AUTHORIZE_RETRY_MAX) {
 				task.state = 'initial-state';
 				task.retryCount++;
 			}
@@ -305,7 +324,7 @@
 						_('Not a authentication task: {0}', task.task));
 				}
 
-				console.log('Kosian#authorize: ' + task.state);
+				DEBUG && console.log('FileSystem#authorize: state: ' + task.state);
 
 				switch (task.state) {
 				case 'error':
@@ -359,6 +378,7 @@
 								}
 
 								var q = u.queryToObject(newUrl);
+								DEBUG && console.log('FileSystem#authorize: tabwatcher callback: q: ' + JSON.stringify(q));
 								if ('error' in q) {
 									return handleAuthError(
 										task,
@@ -381,6 +401,7 @@
 								task.state = 'got-code';
 								task.code = q.code;
 								self.taskQueue.run();
+								DEBUG && console.log('FileSystem#authorize: state switched to ' + task.state);
 							});
 						}
 					);
@@ -419,6 +440,8 @@
 							responseType: 'json'
 						},
 						function (data, status) {
+							DEBUG && console.log('FileSystem#authorize: ' + task.state + ' on ' + task.task + ' task succeed: ' + JSON.stringify(data));
+
 							if (task.state != 'fetching-access-token') {
 								return handleAuthError(
 									task,
@@ -453,8 +476,11 @@
 							}
 
 							self.taskQueue.run();
+							DEBUG && console.log('FileSystem#authorize: state switched to ' + task.state);
 						},
 						function () {
+							DEBUG && console.log('FileSystem#authorize: ' + task.state + ' on ' + task.task + ' task fail: ' + JSON.stringify(data));
+
 							handleAuthError(task);
 						}
 					);
@@ -468,11 +494,14 @@
 					extension.request(
 						authOpts.validateUrl,
 						{
+							method: authOpts.validateMethod || 'POST',
 							accessToken: task.accessToken,
 							tokenType: task.tokenType,
 							responseType: 'json'
 						},
 						function (data, status) {
+							DEBUG && console.log('FileSystem#authorize: ' + task.state + ' on ' + task.task + ' task succeed: ' + JSON.stringify(data));
+
 							if (task.state != 'fetching-account-info') {
 								return handleAuthError(
 									task,
@@ -511,8 +540,11 @@
 
 							self.isAuthorized = true;
 							self.taskQueue.run();
+							DEBUG && console.log('FileSystem#authorize: authorized');
 						},
 						function (data, status) {
+							DEBUG && console.log('FileSystem#authorize: ' + task.state + ' on ' + task.task + ' task fail: ' + JSON.stringify(data));
+
 							if (handleError(task, status)) return;
 
 							handleAuthError(
@@ -674,7 +706,7 @@
 		function getListItem (item) {
 			/*
 			 * the file list item which this library provides has following structure
-			 * (this is based on dropbox metadata).
+			 * (this is based on dropbox metadata v2).
 			 *
 			 *   name       type    description
 			 *   ----       ----    -----------
@@ -695,30 +727,27 @@
 			 */
 
 			return {
-				name:       u.splitPath(item.path).pop(),
-				size:       u.readableSize(item.bytes),
-				bytes:      item.bytes,
-				path:       item.path,
-				is_dir:     !!item.is_dir,
-				is_deleted: !!item.is_deleted,
-				id:         item.rev || '',
-				modified:   new Date(item.modified),
-				created:    new Date(item.client_mtime || item.modified),
-				mime_type:  item.mime_type || 'application/x-kosian-directory'
+				name:       item.name,
+				size:       u.readableSize(item.size || 0),
+				bytes:      item.size || 0,
+				path:       item.path_display.charAt(0) == '/' ? item.path_display :
+																 '/' + item.path_display,
+				is_dir:     item['.tag'] == 'folder',
+				is_deleted: item['.tag'] == 'deleted',
+				id:         item.id,
+				modified:   new Date(item.server_modified),
+				created:    new Date(item.client_modified || item.server_modified),
+				mime_type:  item['.tag'] == 'folder' ? PSEUDO_MIME_DIRECTORY :
+													   PSEUDO_MIME_GENERIC
 			};
 		}
 
-		function getListItems (data) {
-			var result = getListItem(data);
-			result.contents = [];
-
-			if ('contents' in data) {
-				for (var i = 0, goal = data.contents.length; i < goal; i++) {
-					result.contents.push(getListItem(data.contents[i]));
-				}
+		function getCanonicalPath (path) {
+			if (path.substr(-1) == '/') {
+				path = path.substring(0, path.length - 1);
 			}
 
-			return result;
+			return path;
 		}
 
 		/*
@@ -726,52 +755,87 @@
 		 */
 
 		function ls (task) {
-			var path = u.getCanonicalPath(task.path);
-			var q = {locale: self.locale, list: 'true'};
-			var key = path || '/';
+			var key = fileSystemRoot + task.path;
+			var count = 0;
+			var result;
+			var endpoint;
+			var cursor;
 
-			if (key in lsCache) {
-				q.hash = lsCache[key].hash;
+			function lsCore () {
+				var param = {};
+
+				switch (count) {
+				case 0:
+					if (key != '/') {
+						endpoint = 'files/get_metadata';
+						param.path = getCanonicalPath(key);
+						break;
+					}
+
+					count = 1;
+					result = getListItem({
+						'.tag': 'folder',
+						name: '*root*',
+						size: 0,
+						path_display: '/',
+						id: '*root*',
+						server_modified: new Date,
+						client_modified: new Date
+					});
+					/* FALLTHRU */
+
+				case 1:
+					endpoint = 'files/list_folder';
+					param.path = getCanonicalPath(key);
+					break;
+
+				default:
+					endpoint = 'files/list_folder/continue';
+					param.cursor = cursor;
+					break;
+				}
+
+				self.request(
+					API_BASE_URL + endpoint,
+					{
+						method: 'POST',
+						headers: {'Content-Type': 'application/json'},
+						content: JSON.stringify(param),
+						responseType: 'json'
+					},
+					function (data, status) {
+						if (count++ == 0) {
+							result = getListItem(data);
+							lsCore();
+						}
+						else {
+							if (result.contents) {
+								result.contents.push.apply(
+									result.contents, data.entries.map(getListItem));
+							}
+							else {
+								result.contents = data.entries.map(getListItem);
+							}
+
+							if (data.has_more) {
+								cursor = data.cursor;
+								lsCore();
+							}
+							else {
+								self.response(task, {data: result});
+								extension.emit(task.options.onload, result);
+							}
+						}
+					},
+					function (data, status) {
+						DEBUG && console.error('dropbox#ls: ' + JSON.stringify(data));
+						if (handleError(task, status)) return;
+						self.responseError(task, _('Invalid path.'));
+					}
+				);
 			}
 
-			self.request(
-				API_BASE_URL + 'metadata/' + fileSystemRoot + path,
-				{
-					query: q,
-					responseType: 'json'
-				},
-				function (data, status) {
-					if (status == 304) {
-						data = lsCache[key].data;
-						lsCache[key].timestamp = Date.now();
-					}
-					else {
-						var hash = data.hash;
-						data = getListItems(data);
-						lsCache[key] = {
-							hash: hash,
-							data: data,
-							timestamp: Date.now()
-						};
-					}
-
-					Object.keys(lsCache)
-						.filter(function (p) {
-							return Date.now() - lsCache[p].timestamp > LS_CACHE_TTL_MSECS;
-						})
-						.forEach(function (p) {
-							delete lsCache[p];
-						});
-
-					self.response(task, {data: data});
-					extension.emit(task.options.onload, data);
-				},
-				function (data, status) {
-					if (handleError(task, status)) return;
-					self.responseError(task, _('Invalid path.'));
-				}
-			);
-
+			lsCore();
 			taskQueue.run();
 		}
 
@@ -779,7 +843,7 @@
 			self.response(task, {state: 'reading', progress: 0, tag:0});
 
 			self.request(
-				API_CONTENT_URL + 'files/' + fileSystemRoot + u.getCanonicalPath(task.path),
+				API_CONTENT_URL + 'files/download',
 				{
 					beforesend: function (t) {
 						t.onprogress = function (e) {
@@ -787,27 +851,30 @@
 							self.response(task, {state: 'reading', progress: e.loaded / e.total, tag:1});
 						};
 					},
+					method: 'POST',
+					query: {
+						arg: JSON.stringify({
+							path: getCanonicalPath(fileSystemRoot + task.path)
+						})
+					},
 					responseType: task.options.responseType || 'text'
 				},
 				function (data, status, xhr) {
 					try {
-						var meta = u.parseJson(xhr.getResponseHeader('x-dropbox-metadata'));
+						var meta = getListItem(u.parseJson(xhr.getResponseHeader('Dropbox-API-Result')));
+
 						if (meta.is_dir) {
 							return self.responseError(
 								task, _('Cannot read a directory content.')
 							);
 						}
-						/*if (!/^text\//.test(meta.mime_type)) {
-							return self.responseError(
-								task, _('Unknown MIME type: {0}', meta.mime_type)
-							);
-						}*/
 
+						meta.path = self.getExternalPath(meta.path);
 						self.response(task, {
 							state: 'complete',
 							status: status,
 							content: data,
-							meta: getListItem(meta)
+							meta: meta
 						});
 					}
 					finally {
@@ -815,6 +882,7 @@
 					}
 				},
 				function (data, status) {
+					DEBUG && console.error('dropbox#read: ' + JSON.stringify(data));
 					if (handleError(task, status)) return;
 
 					self.response(task, {
@@ -832,12 +900,8 @@
 			self.response(task, {state: 'writing', progress: 0});
 
 			self.request(
-				API_CONTENT_URL + 'files_put/' + fileSystemRoot + u.getCanonicalPath(task.path),
+				API_CONTENT_URL + 'files/upload',
 				{
-					method: 'PUT',
-					headers: {
-						'Content-Type':task.options.mimeType || 'text/plain'
-					},
 					beforesend: function (t) {
 						if (!t.upload) return;
 						t.upload.onprogress = function (e) {
@@ -845,7 +909,14 @@
 							self.response(task, {state: 'writing', progress: e.loaded / e.total});
 						};
 					},
-					query: {locale: self.locale},
+					method: 'POST',
+					headers: {'Content-Type': task.options.mimeType || 'application/octet-stream'},
+					query: {
+						arg: JSON.stringify({
+							path: getCanonicalPath(fileSystemRoot + task.path),
+							mode: 'overwrite'
+						})
+					},
 					content: task.content,
 					responseType: 'json'
 				},
@@ -858,6 +929,7 @@
 					taskQueue.run();
 				},
 				function (data, status) {
+					DEBUG && console.error('dropbox#write: ' + JSON.stringify(data));
 					if (handleError(task, status)) return;
 					self.responseError(task, _('Failed to save ({0})', status));
 					taskQueue.run();
@@ -869,9 +941,8 @@
 		 * consts
 		 */
 
-		var API_BASE_URL = 'https://api.dropbox.com/1/';
-		var API_CONTENT_URL = 'https://api-content.dropbox.com/1/';
-		var LS_CACHE_TTL_MSECS = 1000 * 60 * 15;
+		const API_BASE_URL = 'https://api.dropboxapi.com/2/';
+		const API_CONTENT_URL = 'https://content.dropboxapi.com/2/';
 
 		/*
 		 * init
@@ -885,17 +956,16 @@
 		var authorize = this.authorizeOAuth2({
 			consumerKey: options.key,
 			consumerSecret: options.secret,
-			startUrl: 'https://www.dropbox.com/1/oauth2/authorize',
+			startUrl: 'https://www.dropbox.com/oauth2/authorize',
 			callbackUrl: options.callback,
-			exchangeUrl: 'https://api.dropbox.com/1/oauth2/token',
-			validateUrl: 'https://api.dropbox.com/1/account/info',
-			validateUserIdKey: 'uid'
+			exchangeUrl: 'https://api.dropbox.com/oauth2/token',
+			validateUrl: 'https://api.dropboxapi.com/2/users/get_current_account',
+			validateUserIdKey: 'account_id'
 		});
 		var taskQueue = this.taskQueue = new TaskQueue(this, authorize, ls, read, writeBinder.write);
 		var handleError = this.handleError;
 
-		var fileSystemRoot = options.root || 'sandbox';
-		var lsCache = {};
+		var fileSystemRoot = options.root || '';
 
 		taskQueue.initCredentials(
 			['token', 'refresh', 'type', 'uid'],
@@ -1205,7 +1275,7 @@
 						self.response(task, {
 							state: 'complete',
 							status: 404,
-							meta: {path: task.path}
+							meta: {path: self.getExternalPath(task.path)}
 						});
 						taskQueue.run();
 						return;
@@ -1268,7 +1338,7 @@
 							self.response(task, {
 								state: 'complete',
 								status: status || 404,
-								meta: {path: task.path}
+								meta: {path: self.getExternalPath(task.path)}
 							});
 							taskQueue.run();
 						}
@@ -1417,7 +1487,8 @@
 			startUrl: 'https://accounts.google.com/o/oauth2/auth?approval_prompt=force&access_type=offline',
 			callbackUrl: options.callback,
 			exchangeUrl: 'https://accounts.google.com/o/oauth2/token',
-			validateUrl: 'https://www.googleapis.com/oauth2/v1/userinfo',
+			validateUrl: 'https://www.googleapis.com/userinfo/v2/me?fields=id',
+			validateMethod: 'GET',
 			validateUserIdKey: 'id',
 			scopes: [
 				'https://www.googleapis.com/auth/drive',
@@ -1665,7 +1736,7 @@
 						self.response(task, {
 							state: 'complete',
 							status: 404,
-							meta: {path: task.path}
+							meta: {path: self.getExternalPath(task.path)}
 						});
 						taskQueue.run();
 						return;
@@ -1723,7 +1794,7 @@
 							self.response(task, {
 								state: 'complete',
 								status: status || 404,
-								meta: {path: task.path}
+								meta: {path: self.getExternalPath(task.path)}
 							});
 							taskQueue.run();
 						}
@@ -1840,6 +1911,7 @@
 			callbackUrl: options.callback,
 			exchangeUrl: 'https://login.live.com/oauth20_token.srf',
 			validateUrl: API_BASE_URL + 'me',
+			validateMethod: 'GET',
 			validateUserIdKey: 'id',
 			scopes: [
 				'wl.skydrive_update',
@@ -1907,7 +1979,7 @@
 						id: null,
 						modified: null,
 						created: null,
-						mime_type: 'application/x-kosian-directory',
+						mime_type: PSEUDO_MIME_DIRECTORY,
 						contents: response.entries
 					};
 
@@ -1950,13 +2022,13 @@
 								name: response.name,
 								size: u.readableSize(response.size),
 								bytes: response.size,
-								path: response.path,
+								path: self.getExternalPath(response.path),
 								is_dir: false,
 								is_deleted: false,
 								id: null,
 								modified: new Date(response.lastModified),
 								created: null,
-								mime_type: 'application/octet-stream',
+								mime_type: PSEUDO_MIME_GENERIC,
 							}
 						});
 					}
@@ -1999,13 +2071,13 @@
 								name: response.name,
 								size: u.readableSize(response.size),
 								bytes: response.size,
-								path: response.path,
+								path: self.getExternalPath(response.path),
 								is_dir: false,
 								is_deleted: false,
 								id: null,
 								modified: null,
 								created: null,
-								mime_type: 'application/octet-stream'
+								mime_type: PSEUDO_MIME_GENERIC
 							}
 						});
 					}
@@ -2033,186 +2105,6 @@
 	FileSystemLocalFileChrome.prototype.constructor = FileSystemLocalFileChrome;
 
 	/*
-	 * file system class for local file system
-	 * this class is dedicated to Firefox.
-	 */
-
-	function FileSystemLocalFileFirefox (extension, options) {
-
-		function initClasses () {
-			var osfile = require('chrome').Cu.import(
-				'resource://gre/modules/osfile.jsm', {});
-			TextDecoder = osfile.TextDecoder;
-			TextEncoder = osfile.TextEncoder;
-			OS = osfile.OS;
-		}
-
-		/*
-		 * tasks
-		 */
-
-		function ls (task) {
-			var entries = [];
-			var iter = new OS.File.DirectoryIterator(task.path);
-
-			iter.forEach(function (entry) {
-				entries.push({
-					name: OS.Path.basename(entry.name),
-					size: '',
-					bytes: 0,
-					path: entry.path.replace(/\/{2,}/g, '/'),
-					is_dir: entry.isDir,
-					is_deleted: false,
-					id: null,
-					modified: null,
-					created: null,
-					mime_type: entry.isDir ?
-						'application/x-kosian-directory' :
-						'application/octet-stream'
-				});
-			})
-			.then(
-				function () {
-					var data = {
-						name: OS.Path.basename(task.path),
-						size: '',
-						bytes: 0,
-						path: task.path,
-						is_dir: true,
-						is_deleted: false,
-						id: null,
-						modified: null,
-						created: null,
-						mime_type: 'application/x-kosian-directory',
-						contents: entries
-					};
-
-					self.response(task, {data: data});
-					extension.emit(task.options.onload, data);
-				},
-				function (reason) {
-					self.responseError(task, reason);
-				}
-			)
-			.then(function () {
-				iter.close();
-			});
-			taskQueue.run();
-		}
-
-		function read (task) {
-			self.response(task, {state: 'reading', progress: 0});
-
-			OS.File.read(task.path).then(
-				function (data) {
-					return OS.File.stat(task.path).then(function (stat) {
-						var content = data;
-
-						if ('encoding' in task.options) {
-							var decoder;
-							try {
-								decoder = new TextDecoder(task.options.encoding);
-							}
-							catch (ex) {
-								return self.responseError(
-									task, 'Cannot create decoder: ' + task.options.encoding);
-							}
-							content = decoder.decode(content);
-						}
-
-						self.response(task, {
-							state: 'complete',
-							status: 200,
-							content: content,
-							meta: {
-								name: OS.Path.basename(task.path),
-								size: u.readableSize(stat.size),
-								bytes: stat.size,
-								path: task.path,
-								is_dir: false,
-								is_deleted: false,
-								id: null,
-								modified: stat.lastModificationDate,
-								created: stat.creationDate,
-								mime_type: 'application/octet-stream'
-							}
-						});
-					});
-				},
-				function (err) {
-					self.responseError(task, _('Failed to read'));
-				}
-			).then(function () {
-				taskQueue.run();
-			});
-		}
-
-		function write (task) {
-			self.response(task, {state: 'writing', progress: 0});
-
-			var content = task.content;
-
-			if (typeof content == 'string') {
-				var encoder;
-				try {
-					encoder = new TextEncoder(task.options.encoding || 'UTF-8');
-				}
-				catch (ex) {
-					self.responseError(
-						task, 'Cannot create encoder: ' + task.options.encoding);
-					taskQueue.run();
-					return;
-				}
-				content = encoder.encode(content);
-			}
-
-			OS.File.writeAtomic(task.path, content, {tmpPath: task.path + '.tmp'}).then(
-				function () {
-					return OS.File.stat(task.path).then(function (stat) {
-						self.response(task, {
-							state: 'complete',
-							status: 200,
-							meta: {
-								name: OS.Path.basename(task.path),
-								size: u.readableSize(stat.size),
-								bytes: stat.size,
-								path: task.path,
-								is_dir: false,
-								is_deleted: false,
-								id: null,
-								modified: stat.lastModificationDate,
-								created: stat.creationDate,
-								mime_type: 'application/octet-stream'
-							}
-						});
-					});
-				},
-				function (err) {
-					self.responseError(task, _('Failed to write'));
-				}
-			).then(function () {
-				taskQueue.run();
-			});
-		}
-
-		/*
-		 * init
-		 */
-
-		FileSystem.apply(this, arguments);
-		this.backend = 'file';
-		this.needAuthentication = false;
-		var self = this;
-		var taskQueue = this.taskQueue = new TaskQueue(this, null, ls, read, write);
-		var TextDecoder, TextEncoder, OS;
-
-		initClasses();
-	}
-
-	FileSystemLocalFileFirefox.prototype = Object.create(FileSystem.prototype);
-	FileSystemLocalFileFirefox.prototype.constructor = FileSystemLocalFileFirefox;
-
-	/*
 	 * export
 	 */
 
@@ -2225,13 +2117,7 @@
 		case 'onedrive':
 			return new FileSystemOneDrive(ext, options);
 		case 'file':
-			switch (ext.kind) {
-			case 'Chrome':
-				return new FileSystemLocalFileChrome(ext, options);
-			case 'Firefox':
-				return new FileSystemLocalFileFirefox(ext, options);
-			}
-			// FALLTHRU
+			return new FileSystemLocalFileChrome(ext, options);
 		default:
 			return new FileSystem(ext, options);
 		}

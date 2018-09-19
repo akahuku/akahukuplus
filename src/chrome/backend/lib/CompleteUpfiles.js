@@ -9,77 +9,88 @@
 
 	var TTL_MSECS = 1000 * 60 * 60;
 
-	var cache = require('./SimpleCache').SimpleCache(TTL_MSECS);
+	var cache = {
+		completeFiles: require('./SimpleCache').SimpleCache(TTL_MSECS),
+		siokaraThumbs: require('./SimpleCache').SimpleCache(TTL_MSECS)
+	};
 
 	function completeSiokaraLink (id, baseUrl, callback) {
-		cache.purge();
+		cache.completeFiles.purge();
 
 		if (!/^s[apsuq]\d+$/.test(id)) {
 			callback(null);
 			return;
 		}
 
-		if (cache.exists(id)) {
-			callback(cache.get(id));
+		if (cache.completeFiles.exists(id)) {
+			callback(cache.completeFiles.get(id));
 			return;
 		}
 		
-		this.ext.request(
-			baseUrl + 'jsonp/_/' + id + '/complete/' + id,
-			function (data, status) {
+		var self = this;
+		self.ext.request(
+			baseUrl + 'jsonp/_/' + id + '/complete/' + id, {},
+			function (response, status) {
+				var data = null;
 				try {
-					data = JSON.parse(data.replace(/^_\(|\);$/g, ''));
+					data = JSON.parse(response.replace(/^_\(|\);$/g, ''));
 					data.base = data.url.match(/[^\/]+$/)[0];
 					data.thumbnail = baseUrl + 'misc/' + id + '.thumb.jpg';
 				}
 				catch (e) {
 					data = null;
 				}
-				callback(cache.set(id, TTL_MSECS, data));
+
+				if (data) {
+					self.loadSiokaraThumbnail(
+						data.thumbnail, function (thumb) {
+							data.thumbnail = thumb;
+							callback(cache.completeFiles.set(id, TTL_MSECS, data));
+						});
+				}
+				else {
+					callback(cache.completeFiles.set(id, TTL_MSECS, null));
+				}
 			},
 			function () {
-				cache.set(id, TTL_MSECS, null);
-				callback(cache.get(id));
+				callback(cache.completeFiles.set(id, TTL_MSECS, null));
 			}
 		);
 	}
 
 	function completeUpLink (id, baseUrl, callback) {
-		cache.purge();
+		cache.completeFiles.purge();
 
 		if (!/^fu?\d+$/.test(id)) {
 			callback(null);
 			return;
 		}
 
-		if (cache.exists(id)) {
-			callback(cache.get(id));
+		if (cache.completeFiles.exists(id)) {
+			callback(cache.completeFiles.get(id));
 			return;
 		}
 
-		var xhr = this.ext.createTransport();
-		xhr.open('GET', baseUrl + 'up.htm');
-		xhr.onload = function () {
-			var re, regex = /\[<a[^>]+href="([^"]+)"[^>]*>(fu?\d+)(\.[^.]+)<\/a>\]/g;
-			var data = null;
-			while ((re = regex.exec(xhr.responseText))) {
-				if (re[2] == id) {
-					data = {
-						url: re[1],
-						base: re[2] + re[3]
-					};
-					break;
+		this.ext.request(
+			baseUrl + 'up.htm', {},
+			function (response, status) {
+				var re, regex = /\[<a[^>]+href="([^"]+)"[^>]*>(fu?\d+)(\.[^.]+)<\/a>\]/g;
+				var data = null;
+				while ((re = regex.exec(response))) {
+					if (re[2] == id) {
+						data = {
+							url: re[1],
+							base: re[2] + re[3]
+						};
+						break;
+					}
 				}
+				callback(cache.completeFiles.set(id, TTL_MSECS, data));
+			},
+			function () {
+				callback(cache.completeFiles.set(id, TTL_MSECS, null));
 			}
-			callback(cache.set(id, TTL_MSECS, data));
-			xhr = xhr.onload = xhr.onerror = null;
-		};
-		xhr.onerror = function () {
-			cache.set(id, TTL_MSECS, null);
-			callback(cache.get(id));
-			xhr = xhr.onload = xhr.onerror = null;
-		};
-		xhr.send();
+		);
 	}
 
 	var map = {
@@ -101,15 +112,42 @@
 	}
 
 	CompleteUpfiles.prototype.run = function run (id, callback) {
-console.log('CompleteUpfile: got id ' + id);
 		var re = /^(s[apsuq]|fu|f)\d+$/.exec(id);
-
-		if (!re || !re[1]) {
+		if (!re) {
 			callback(null);
 			return;
 		}
 
 		map[re[1]].method.call(this, id, map[re[1]].base, callback);
+
+		return true;
+	};
+
+	CompleteUpfiles.prototype.loadSiokaraThumbnail = function loadSiokaraThumbnail (url, callback) {
+		cache.siokaraThumbs.purge();
+
+		if (cache.siokaraThumbs.exists(url)) {
+			callback(cache.siokaraThumbs.get(url));
+			return;
+		}
+		
+		this.ext.request(
+			url, {responseType: 'blob'},
+			function (response, status) {
+				var r = new FileReader;
+				r.onload = function () {
+					callback(cache.siokaraThumbs.set(url, TTL_MSECS, r.result));
+					r = null;
+				};
+				r.onerror = function () {
+					callback(cache.siokaraThumbs.set(url, TTL_MSECS, null));
+				};
+				r.readAsDataURL(response);
+			},
+			function () {
+				callback(cache.siokaraThumbs.set(url, TTL_MSECS, null));
+			}
+		);
 
 		return true;
 	};

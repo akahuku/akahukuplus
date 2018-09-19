@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2016 akahuku, akahuku@gmail.com
+ * Copyright 2012-2017 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@
 				instance.setOptions(options);
 			}
 			catch (e) {
-				console.error(e.message);
+				console.error(e.stack);
 				instance = null;
 			}
 		}
@@ -275,7 +275,7 @@
 					}
 				}
 				catch (ex) {
-					self.isDev && console.error(ex.toString());
+					self.isDev && console.error(ex.stack);
 				}
 				finally {
 					if (xhr) {
@@ -296,7 +296,7 @@
 					failure && failure.call(opts.bind || self, getResponse(), getStatus(), xhr);
 				}
 				catch (ex) {
-					self.isDev && console.error(ex.toString());
+					self.isDev && console.error(ex.stack);
 				}
 				finally {
 					if (xhr) {
@@ -375,7 +375,7 @@
 			// invoke beforesend callback
 			if ('beforesend' in opts) {
 				try {opts.beforesend(xhr)} catch (e) {
-					this.isDev && console.error(e.toString());
+					this.isDev && console.error(e.stack);
 				}
 			}
 
@@ -384,7 +384,7 @@
 				xhr.send(content);
 			}
 			catch (e) {
-				this.isDev && console.error(e.toString());
+				this.isDev && console.error(e.stack);
 				xhr && xhr.onerror && xhr.onerror();
 			}
 		}},
@@ -425,8 +425,7 @@
 		createFormData: {value: noimpl},
 		createBlob: {value: noimpl},
 		postMessage: {value: noimpl},
-		broadcast: {value: noimpl},
-		dumpInternalIds: {value: noimpl}
+		broadcast: {value: noimpl}
 	});
 
 	Kosian.register = function (abearer) {

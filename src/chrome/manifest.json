@@ -57,6 +57,11 @@
 			"all_frames": true
 		}
 	],
+	"web_accessible_resources": [
+		"images/*",
+		"sounds/*",
+		"xsl/*"
+	],
 	"homepage_url": "http://akahuku.github.io/akahukuplus/",
 	"update_url":"https://github.com/akahuku/akahukuplus/raw/master/dist/chrome.xml"
 }

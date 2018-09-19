@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2016 akahuku, akahuku@gmail.com
+ * Copyright 2012-2017 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,6 +97,8 @@
 
 			var a = this.pool[key];
 			if (!a.audio || !a.enabled) return;
+			if (typeof opts.volume != 'number') return;
+			if (isNaN(opts.volume)) return;
 
 			var vol = Math.max(0, Math.min(opts.volume, 100));
 			if (vol == 0) return;
@@ -116,52 +118,8 @@
 		}
 	};
 
-	function SoundJetpack () {
-		Sound.apply(this, arguments);
-
-		var that = this;
-
-		this.hiddenFrameReady = false;
-		this.blocked = null;
-
-		var hf = require('sdk/frame/hidden-frame');
-		this.hiddenFrame = hf.add(hf.HiddenFrame({
-			onReady: function () {
-				that.hiddenFrameReady = true;
-				if (that.blocked) {
-					that.play(that.blocked.key, that.blocked.opts);
-					that.blocked = null;
-				}
-			}
-		}));
-	}
-
-	SoundJetpack.prototype = Object.create(Sound.prototype, {
-		createAudio: {value: function () {
-			return this.hiddenFrame
-				.element.contentWindow
-				.document.createElement('audio');
-		}},
-		play: {value: function (key, opts) {
-			if (this.hiddenFrameReady) {
-				this.doPlay(key, opts);
-			}
-			else {
-				this.blocked = {
-					key: key,
-					opts: opts
-				};
-			}
-		}}
-	});
-
 	function create () {
-		if (require('sdk/self')) {
-			return new SoundJetpack;
-		}
-		else {
-			return new Sound;
-		}
+		return new Sound;
 	}
 
 	exports.Sound = create;

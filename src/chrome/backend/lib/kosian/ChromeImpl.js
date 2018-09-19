@@ -4,7 +4,7 @@
  * @author akahuku@gmail.com
  */
 /**
- * Copyright 2012-2016 akahuku, akahuku@gmail.com
+ * Copyright 2012-2017 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,23 +80,31 @@
 		});
 	}
 
+	function getNativeTabIdFromComplexTabId (id) {
+		return (id + '').split('_')[0] - 0;
+	}
+
 	function isTabExist (id) {
-		return id in this.tabIds || id in this.ports;
+		id = getNativeTabIdFromComplexTabId(id);
+		return id in this.tabIds;
 	}
 
 	function closeTab (id) {
+		id = getNativeTabIdFromComplexTabId(id);
 		chrome.tabs.get(id, function (tab) {
 			!chrome.runtime.lastError && tab && chrome.tabs.remove(id);
 		});
 	}
 
 	function focusTab (id) {
+		id = getNativeTabIdFromComplexTabId(id);
 		chrome.tabs.get(id, function (tab) {
 			!chrome.runtime.lastError && tab && chrome.tabs.update(id, {active:true});
 		});
 	}
 
 	function nextTab (id) {
+		id = getNativeTabIdFromComplexTabId(id);
 		chrome.tabs.query({}, function (tabs) {
 			tabs.some(function (t, i) {
 				if (t.id == id) {
@@ -108,6 +116,7 @@
 	}
 
 	function prevTab (id) {
+		id = getNativeTabIdFromComplexTabId(id);
 		chrome.tabs.query({}, function (tabs) {
 			tabs.some(function (t, i) {
 				if (t.id == id) {
@@ -120,6 +129,7 @@
 
 	function getTabTitle (id, callback) {
 		var that = this;
+		id = getNativeTabIdFromComplexTabId(id);
 		chrome.tabs.get(id, function (tab) {
 			that.emit(
 				callback,
@@ -128,11 +138,12 @@
 	}
 
 	function broadcastToAllTabs (message, exceptId) {
+		exceptId = (exceptId + '').split('_')[0];
 		chrome.tabs.query({}, function (tabs) {
 			tabs.forEach(function (tab) {
 				if (exceptId !== undefined && tab.id == exceptId) return;
 
-				doSendRequest(tab.id, message);
+				doSendMessageToTab(tab.id, message);
 			});
 		});
 	}
@@ -161,9 +172,19 @@
 		}
 	}
 
-	function doSendRequest (tabId, message) {
+	function doSendMessageToTab (tabId, message, callback) {
 		try {
-			chrome.tabs.sendMessage(tabId, message);
+			var pair = (tabId + '').split('_');
+			if (pair.length == 1) {
+				chrome.tabs.sendMessage(tabId, message, res => {
+					callback && callback(res);
+				});
+			}
+			else {
+				chrome.tabs.sendMessage(pair[0] - 0, message, {frameId: pair[1] - 0}, res => {
+					callback && callback(res);
+				});
+			}
 			return true;
 		}
 		catch (e) {
@@ -171,26 +192,21 @@
 		}
 	}
 
-	function doPostMessage (port, message) {
-		try {
-			port.postMessage(message);
-			return true;
-		}
-		catch (e) {
-			return false;
-		}
-	}
+	function postMessage (/*[id,] message [,callback]*/) {
+		var id, message, callback;
+		var args = Array.prototype.slice.call(arguments);
 
-	function postMessage (/*[id,] message*/) {
-		var id, message;
+		if (args.length && typeof args[args.length - 1] == 'function') {
+			callback = args.pop();
+		}
 
-		switch (arguments.length) {
+		switch (args.length) {
 		case 1:
-			message = arguments[0];
+			message = args[0];
 			break;
 		default:
-			id = arguments[0];
-			message = arguments[1];
+			id = args[0];
+			message = args[1];
 			break;
 		}
 
@@ -198,67 +214,40 @@
 			return;
 		}
 
-		if (typeof id == 'string' && id in this.ports) {
-			doPostMessage(this.ports[id].port, message);
-		}
-		else if (id === undefined) {
+		if (id === undefined) {
 			chrome.tabs.query({active: true}, function (tabs) {
-				doSendRequest(tabs[0].id, message);
+				doSendMessageToTab(tabs[0].id, message, callback);
 			});
 		}
 		else {
-			doSendRequest(id, message);
+			doSendMessageToTab(id, message, callback);
 		}
 	}
 
 	function broadcast (message, exceptId) {
-		for (var id in this.ports) {
-			if (id == exceptId) continue;
-
-			doPostMessage(this.ports[id].port, message);
+		for (var tabId in this.tabIds) {
+			doSendMessageToTab(tabId, message);
 		}
-	}
-
-	function dumpInternalIds () {
-		var log = ['*** Internal Ids ***'];
-		for (var id in this.ports) {
-			log.push('id #' + id + ': ' + this.ports[id].url);
-		}
-		return log;
 	}
 
 	function ChromeImpl () {
 		var that = this;
 		var tabIds = {};
-		var ports = {};
 
 		// tab handlers
 		function handleTabCreated (tab) {
-			tabIds[tab.id] = 1;
+			if (tab.id in tabIds) {
+				if ('frameId' in tab && tab.frameId > 0) {
+					tabIds[tab.id][tab.frameId] = 1;
+				}
+			}
+			else {
+				tabIds[tab.id] = {};
+			}
 		}
 
 		function handleTabRemoved (id) {
 			delete tabIds[id];
-		}
-
-		// handlers of a message via long-lived port
-		function handleConnect (port) {
-			ports[port.name] = {port: port};
-			port.onMessage.addListener(function (req) {
-				if (!that.receiver) return;
-
-				var data = req.data;
-				delete req.data;
-
-				if (/^init\b/.test(req.type) && port.name in ports) {
-					ports[port.name].url = data.url;
-				}
-
-				that.receiver(req, data, port.sender.tab.id, function () {});
-			});
-			port.onDisconnect.addListener(function () {
-				delete ports[port.name];
-			});
 		}
 
 		// single message handlers
@@ -268,15 +257,12 @@
 			var data = req.data;
 			delete req.data;
 
-			if (/^init\b/.test(req.type)
-			&& 'internalId' in req
-			&& req.internalId in ports) {
-				ports[req.internalId].url = data.url;
-			}
-
 			var id;
 			if (sender && 'tab' in sender && 'id' in sender.tab) {
 				id = sender.tab.id;
+				if ('frameId' in sender) {
+					id += '_' + sender.frameId;
+				}
 			}
 
 			return !!that.receiver(req, data, id, res);
@@ -285,10 +271,8 @@
 		base.apply(this, arguments);
 		chrome.tabs.onCreated.addListener(handleTabCreated);
 		chrome.tabs.onRemoved.addListener(handleTabRemoved);
-		chrome.runtime.onConnect.addListener(handleConnect);
 		chrome.runtime.onMessage.addListener(handleMessage);
 		Object.defineProperties(this, {
-			ports: {value: ports},
 			tabIds: {value: tabIds}
 		});
 	}
@@ -313,8 +297,7 @@
 		createFormData: {value: createFormData},
 		createBlob: {value: createBlob},
 		postMessage: {value: postMessage},
-		broadcast: {value: broadcast},
-		dumpInternalIds: {value: dumpInternalIds}
+		broadcast: {value: broadcast}
 	});
 	ChromeImpl.prototype.constructor = base;
 
