@@ -38,7 +38,10 @@ const CATALOG_COOKIE_LIFE_DAYS = 100;
 const CATALOG_POPUP_DELAY = 500;
 const CATALOG_POPUP_TEXT_WIDTH = 150;
 const CATALOG_POPUP_THUMBNAIL_ZOOM_FACTOR = 3;
-const IDEOGRAPH_CONVERSION = false;
+const IDEOGRAPH_CONVERSION_CONTENT = false;
+const IDEOGRAPH_CONVERSION_POST = false;
+const IDEOGRAPH_CONVERSION_UI = false;
+const FALLBACK_LAST_MODIFIED = 'Fri, 01 Jan 2010 00:00:00 GMT';
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
@@ -108,6 +111,7 @@ var version = '0.1.0';
 var devMode = false;
 var viewportRect;
 var lastScrollTop;
+var lastDelReason;
 
 /*
  * <<<1 bootstrap functions
@@ -210,6 +214,7 @@ function initCustomEventHandler () {
 	document.addEventListener('Akahukuplus.bottomStatus', function (e) {
 		var ws = $('wheel-status');
 		if (!ws) return;
+		if ($qs('#dialog-wrap:not(.hide)')) return;
 
 		var s = e.detail.message;
 		if (!s || s == '') {
@@ -322,6 +327,11 @@ function boot () {
 
 			try {
 				timingLogger.startTag('parsing xsl');
+
+				if (IDEOGRAPH_CONVERSION_UI) {
+					xsl = 新字体の漢字を旧字体に変換(xsl);
+				}
+
 				xsl = (new window.DOMParser()).parseFromString(xsl, "text/xml");
 				timingLogger.endTag();
 			}
@@ -416,7 +426,7 @@ function boot () {
 
 						install(pageModes[0]);
 
-						timingLogger.endTag('(' + e.type + ')');
+						timingLogger.endTag(`(${e.type})`);
 						timingLogger.endTag('!');
 						timingLogger.locked = true;
 
@@ -477,8 +487,8 @@ function applyDataBindings (xml) {
 			}
 			catch (e) {
 				console.error(
-					'applyDataBindings: failed to apply the data "' + re[2] + '"' +
-					'\n(' + e.message + ')');
+					`applyDataBindings: failed to apply the data "${re[2]}"` +
+					`\n(${e.message})`);
 			}
 		}
 		else if ((re = /^xpath-class(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
@@ -491,8 +501,8 @@ function applyDataBindings (xml) {
 			}
 			catch (e) {
 				console.error(
-					'applyDataBindings: failed to apply the data "' + re[2] + '" to class' +
-					'\n(' + e.message + ')');
+					`applyDataBindings: failed to apply the data "${re[2]}" to class` +
+					`\n(${e.message})`);
 			}
 		}
 		else if ((re = /^template(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
@@ -506,8 +516,8 @@ function applyDataBindings (xml) {
 			}
 			catch (e) {
 				console.error(
-					'applyDataBindings: failed to apply the template "' + re[2] + '"' +
-					'\n(' + e.message + ')');
+					`applyDataBindings: failed to apply the template "${re[2]}"` +
+					`\n(${e.message})`);
 			}
 		}
 	}
@@ -560,7 +570,7 @@ function createResourceManager () {
 	}
 
 	function getResKey (key) {
-		return 'resource:' + key;
+		return `resource:${key}`;
 	}
 
 	function get (key) {
@@ -850,36 +860,36 @@ function createXMLGenerator () {
 		else if (/^h?t?t?p?$/.test(scheme)) {
 			scheme = 'http';
 		}
-		url = url.replace(/^[^:]*:\/\//, scheme + '://');
+		url = url.replace(/^[^:]*:\/\//, `${scheme}://`);
 		return url;
 	};
 	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
 			if (/\.(?:jpg|gif|png|webm|mp4)$/.test(re[2])) {
-				anchor.setAttribute('class', this.className + ' incomplete-siokara-thumbnail lightbox');
-				anchor.setAttribute('thumbnail', baseUrl + 'misc/' + re[1] + '.thumb.jpg');
+				anchor.setAttribute('class', `${this.className} incomplete-siokara-thumbnail lightbox`);
+				anchor.setAttribute('thumbnail', `${baseUrl}misc/${re[1]}.thumb.jpg`);
 			}
-			return baseUrl + 'src/' + re[1] + re[2];
+			return `${baseUrl}src/${re[1]}${re[2]}`;
 		}
 		else {
 			anchor.setAttribute('basename', re[1]);
-			anchor.setAttribute('class', this.className + ' incomplete');
-			return baseUrl + 'index.html';
+			anchor.setAttribute('class', `${this.className} incomplete`);
+			return `${baseUrl}index.html`;
 		}
 	};
 	LinkTarget.prototype.upProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
 			if (/\.(?:jpg|gif|png|webm|mp4)$/.test(re[2])) {
-				anchor.setAttribute('class', this.className + ' lightbox');
+				anchor.setAttribute('class', `${this.className} lightbox`);
 			}
-			return baseUrl + 'src/' + re[1] + re[2];
+			return `${baseUrl}src/${re[1]}${re[2]}`;
 		}
 		else {
 			anchor.setAttribute('basename', re[1]);
-			anchor.setAttribute('class', this.className + ' incomplete');
-			return baseUrl + 'up.htm';
+			anchor.setAttribute('class', `${this.className} incomplete`);
+			return `${baseUrl}up.htm`;
 		}
 	};
 	var linkTargets = [
@@ -957,7 +967,7 @@ function createXMLGenerator () {
 			].join('|') + ')\\S*)',
 			function (re, anchor) {
 				anchor.setAttribute('youtube-key', re[2] || re[3] || re[4]);
-				return 'https://' + re[1];
+				return `https://${re[1]}`;
 			}
 		),
 		new LinkTarget(
@@ -965,7 +975,7 @@ function createXMLGenerator () {
 			'\\b((?:h?t?t?p?:s?//)?([^.]+\\.nicovideo\\.jp/watch/(sm\\w+)\\S*))',
 			function (re, anchor) {
 				anchor.setAttribute('nico2-key', re[2]);
-				return 'http://' + re[1];
+				return `http://${re[1]}`;
 			}
 		),
 		new LinkTarget(
@@ -1060,7 +1070,7 @@ function createXMLGenerator () {
 	}
 
 	function reduceURL (url) {
-		var LIMIT = 100;
+		const LIMIT = 100;
 
 		if (url.length <= LIMIT) {
 			return url;
@@ -1221,7 +1231,7 @@ function createXMLGenerator () {
 				remainsString[0] += 'と';
 			}
 
-			return 'あと' + remainsString.join('') + 'くらい';
+			return `あと${remainsString.join('')}くらい`;
 		}
 	}
 
@@ -1279,14 +1289,14 @@ function createXMLGenerator () {
 		content = content.replace(/&amp;/g, '&');
 
 		// experimental feature
-		if (IDEOGRAPH_CONVERSION) {
+		if (IDEOGRAPH_CONVERSION_CONTENT) {
 			content = 新字体の漢字を旧字体に変換(content);
 		}
 
 		// base url
 		re = /<base[^>]+href="([^"]+)"/i.exec(content);
 		if (re) {
-			baseUrl = resolveRelativePath(re[1], window.location.protocol + '//' + window.location.host + '/');
+			baseUrl = resolveRelativePath(re[1], `${window.location.protocol}//${window.location.host}/`);
 			element(metaNode, 'base').appendChild(text(re[1]));
 		}
 
@@ -1303,10 +1313,10 @@ function createXMLGenerator () {
 			var re = />([^<>]+)(＠ふたば)/.exec(content);
 			if (!re) return;
 			var title = re[1]
-				.replace(/二次元裏$/, '虹裏' + window.location.hostname.split('.')[0])
+				.replace(/二次元裏$/, `虹裏${window.location.hostname.split('.')[0]}`)
 				+ re[2];
 			if (!isReplyMode && (re = /(\d+)\.htm$/.exec(window.location.pathname))) {
-				title += ' [ページ ' + re[1] + ']';
+				title += ` [ページ ${re[1]}]`;
 			}
 			element(metaNode, 'title').appendChild(text(title));
 		})();
@@ -1451,7 +1461,7 @@ function createXMLGenerator () {
 				i = i.replace(/\bsrc=/, 'src="about:blank" data-src=');
 
 				adNode.appendChild(text(i));
-				adNode.setAttribute('class', 'size-' + className);
+				adNode.setAttribute('class', `size-${className}`);
 				adNode.setAttribute('width', width);
 				adNode.setAttribute('height', height);
 				adNode.setAttribute('src', src);
@@ -2085,7 +2095,7 @@ function createClickDispatcher () {
 			result = keys[fragment](e, t);
 		}
 		catch (e) {
-			console.error('exception in clickDispatcher: ' + e.toString() + '\n' + e.stack);
+			console.error(`exception in clickDispatcher: ${e.toString()}\n${e.stack}`);
 			result = undefined;
 		}
 
@@ -2142,7 +2152,7 @@ function createKeyManager () {
 		}
 		catch (ex) {
 			console.error(
-				'exception in keyManager: ' + ex.toString() + '\n' + e.stack);
+				`exception in keyManager: ${ex.toString()}\n${e.stack}`);
 			result = undefined;
 		}
 		if (result === 'passthrough') {
@@ -2287,7 +2297,7 @@ function createMarkStatistics () {
 		var key = KEY_MAP[content];
 		if (key) {
 			if (!(number in marks[key])) {
-				newEntries[key + '_' + number] = 1;
+				newEntries[`${key}_${number}`] = 1;
 			}
 			marks[key][number] = 1;
 		}
@@ -2296,7 +2306,7 @@ function createMarkStatistics () {
 				otherMarks[content] = {};
 			}
 			if (!(number in otherMarks[content])) {
-				newEntries['other_' + number] = 1;
+				newEntries[`other_${number}`] = 1;
 			}
 			otherMarks[content][number] = 1;
 		}
@@ -2307,7 +2317,7 @@ function createMarkStatistics () {
 			ids[id] = {};
 		}
 		if (!(number in ids[id])) {
-			newEntries['id_' + number] = 1;
+			newEntries[`id_${number}`] = 1;
 		}
 		ids[id][number] = 1;
 	}
@@ -2342,7 +2352,7 @@ function createMarkStatistics () {
 			for (var i in marks) {
 				result[i] = [];
 				for (var num in marks[i]) {
-					var isNew = (i + '_' + num) in newEntries;
+					var isNew = (`${i}_${num}`) in newEntries;
 					if (isNew) {
 						newMarks[num] = 1;
 					}
@@ -2364,7 +2374,7 @@ function createMarkStatistics () {
 			for (var host in otherMarks) {
 				result[host] = [];
 				for (var num in otherMarks[host]) {
-					var isNew = ('other_' + num) in newEntries;
+					var isNew = (`other_${num}`) in newEntries;
 					if (isNew) {
 						newMarks[num] = 1;
 					}
@@ -2387,7 +2397,7 @@ function createMarkStatistics () {
 				result[id] = [];
 
 				for (var num in ids[id]) {
-					var isNew = ('id_' + num) in newEntries;
+					var isNew = (`id_${num}`) in newEntries;
 					if (isNew) {
 						newIds[id] = 1;
 					}
@@ -2445,7 +2455,7 @@ function createMarkStatistics () {
 			p.textContent = label;
 
 			var pp = p.appendChild(document[CRE]('span'));
-			pp.appendChild(document.createTextNode('(' + count + ' 回)'));
+			pp.appendChild(document.createTextNode(`(${count} 回)`));
 		}
 
 		function outputArray (container, a) {
@@ -2453,7 +2463,7 @@ function createMarkStatistics () {
 				container.appendChild(document.createTextNode(' '));
 				var span = container.appendChild(document[CRE]('span'));
 				span.classList.add('a');
-				span.textContent = 'No.' + a[i].number;
+				span.textContent = `No.${a[i].number}`;
 				span.setAttribute('data-number', a[i].number);
 				a[i].isNew && span.classList.add('new');
 			}
@@ -2464,7 +2474,7 @@ function createMarkStatistics () {
 		var idData = statistics.idData;
 
 		for (var i in markData) {
-			var container = $('stat-' + i);
+			var container = $(`stat-${i}`);
 			if (!container) continue;
 
 			empty(container);
@@ -2474,7 +2484,7 @@ function createMarkStatistics () {
 				if (li) {
 					var header = $qs('p span', li);
 					if (header) {
-						header.textContent = ' (' + markData[i].length + ')';
+						header.textContent = ` (${markData[i].length})`;
 					}
 				}
 				outputArray(container, markData[i]);
@@ -2504,7 +2514,7 @@ function createMarkStatistics () {
 			empty(container);
 			var idKeys = Object.keys(idData);
 			if (idKeys.length) {
-				$t('stat-id-header', '(' + idKeys.length + ' ID)');
+				$t('stat-id-header', `(${idKeys.length} ID)`);
 				for (var i in idData) {
 					var li = container.appendChild(document[CRE]('li'));
 					outputSubHeader(li, i, idData[i].length);
@@ -2528,15 +2538,15 @@ function createMarkStatistics () {
 			var diff;
 
 			if (!statistics.delta || (diff = statistics.delta[i]) == undefined || diff == 0) {
-				$t('replies-' + i, current);
-				$t('pf-replies-' + i, current);
+				$t(`replies-${i}`, current);
+				$t(`pf-replies-${i}`, current);
 				continue;
 			}
 
 			result = true;
-			var s = current + '(' + (diff > 0 ? '+' : '') + diff + ')';
-			$t('replies-' + i, s);
-			$t('pf-replies-' + i, s);
+			var s = current + `(${diff > 0 ? '+' : ''}${diff})`;
+			$t(`replies-${i}`, s);
+			$t(`pf-replies-${i}`, s);
 
 			if (i == 'mark') {
 				marked = true;
@@ -2662,7 +2672,7 @@ function createQueryCompiler () {
 			if (v != ')') {
 				throw new Error('括弧がつり合っていません');
 			}
-			return '(' + a + ')';
+			return `(${a})`;
 		}
 		else if (v == '-(') {
 			var a = or(next());
@@ -2670,7 +2680,7 @@ function createQueryCompiler () {
 			if (v != ')') {
 				throw new Error('括弧がつり合っていません');
 			}
-			return '!(' + a + ')';
+			return `!(${a})`;
 		}
 		else if (v !== null) {
 			var op = '>=';
@@ -2687,7 +2697,7 @@ function createQueryCompiler () {
 			if (v == '') {
 				return '';
 			}
-			return 'target.indexOf("' + v.replace(/"/g, '\\"') + '")' + op + '0';
+			return `target.indexOf("${v.replace(/"/g, '\\"')}")${op}0`;
 		}
 		else {
 			return '';
@@ -2730,7 +2740,7 @@ function createQueryCompiler () {
 			try {
 				var f = window[FUN];
 				result = {
-					test: new f('target', 'return ' + source)
+					test: new f('target', `return ${source}`)
 				};
 			}
 			catch (e) {
@@ -2779,7 +2789,7 @@ function createUrlStorage () {
 
 	function getKey (url) {
 		return siteInfo.resno ?
-			(siteInfo.server + '-' + siteInfo.board + '-' + siteInfo.resno) :
+			`${siteInfo.server}-${siteInfo.board}-${siteInfo.resno}` :
 			null;
 	}
 
@@ -2979,12 +2989,12 @@ function createCatalogPopup (container) {
 	function open (target) {
 		var index = typeof target == 'number' ? target : indexOf(target);
 		if (index < 0 || target >= popups.length) {
-			_log('open: index is ' + index + ' invalid. exit.');
+			_log(`open: index ${index} is invalid. exit.`);
 			return;
 		}
 
 		var item = popups[index];
-		_log('open: ' + item.text.textContent);
+		_log(`open: ${item.text.textContent}`);
 		if (item.thumbnail) {
 			if (!item.zoomedRect) {
 				item.zoomedRect = {
@@ -3025,7 +3035,7 @@ function createCatalogPopup (container) {
 	function close (target) {
 		var index = typeof target == 'number' ? target : indexOf(target);
 		if (index < 0 || index >= popups.length) {
-			_log('close: index ' + index + ' is invalid. exit.');
+			_log(`close: index ${index} is invalid. exit.`);
 			return;
 		}
 
@@ -3047,7 +3057,7 @@ function createCatalogPopup (container) {
 				}
 			}
 		};
-		_log('close: ' + item.text.textContent);
+		_log(`close: ${item.text.textContent}`);
 
 		var count = 0;
 		if (item.thumbnail) {
@@ -3071,7 +3081,7 @@ function createCatalogPopup (container) {
 	}
 
 	function closeAll (except) {
-		_log('closeAll: closing ' + popups.length + ' popup(s)');
+		_log(`closeAll: closing ${popups.length} popup(s)`);
 		var elms = Array.prototype.slice.call($qsa('body > .catalog-popup'));
 		for (var i = 0; i < popups.length; i++) {
 			['thumbnail', 'text'].forEach(function (p) {
@@ -3196,7 +3206,7 @@ function createQuotePopup () {
 			return;
 		}
 
-		quote.setAttribute(ORIGIN_CACHE_ATTR, id + '|' + index);
+		quote.setAttribute(ORIGIN_CACHE_ATTR, `${id}|${index}`);
 	}
 
 	function getQuoteOrigin (quote, sentinelComment, sentinelWrap, singleLine) {
@@ -3222,8 +3232,8 @@ function createQuotePopup () {
 			}
 
 			var origin = $qs([
-				'article .topic-wrap[data-number="' + quotedNo + '"]',
-				'article .reply-wrap > [data-number="' + quotedNo + '"]'
+				`article .topic-wrap[data-number="${quotedNo}"]`,
+				`article .reply-wrap > [data-number="${quotedNo}"]`
 			].join(','));
 			if (!origin) {
 				return null;
@@ -3333,7 +3343,7 @@ function createQuotePopup () {
 	function createPopup (quoteOrigin) {
 		var no = quoteOrigin.element.getAttribute('data-number') ||
 			$qs('[data-number]', quoteOrigin.element).getAttribute('data-number');
-		quoteOrigin.element.id = '_' + no;
+		quoteOrigin.element.id = `_${no}`;
 
 		// create new popup
 		var div = $(POOL_ID).appendChild(document[CRE]('div'));
@@ -3564,7 +3574,7 @@ function createSelectionMenu () {
 
 	function getQuoted (s) {
 		return s.split('\n')
-			.map(function (line) {return '>' + line})
+			.map(line => `>${line}`)
 			.join('\n');
 	}
 
@@ -3583,7 +3593,7 @@ function createSelectionMenu () {
 			target.value = s.replace(/\n$/, '');
 		}
 		else {
-			target.value = target.value.replace(/\n$/, '') + '\n' + s;
+			target.value = `${target.value.replace(/\n$/, '')}\n${s}`;
 		}
 
 		target.value += '\n';
@@ -3731,7 +3741,7 @@ function createHistoryStateWrapper (popstateHandler) {
 			window.history.pushState(null, '', url);
 		},
 		updateHash: function (hash) {
-			hash = '#' + hash.replace(/^#/, '');
+			hash = `#${hash.replace(/^#/, '')}`;
 			window.removeEventListener('popstate', popstateHandler, false);
 			window.location.hash = hash;
 			window.addEventListener('popstate', popstateHandler, false);
@@ -3950,10 +3960,10 @@ function setupTextFieldEvent (items) {
 		var span = $('comment-info').appendChild(document[CRE]('span'));
 		linesOvered || bytesOvered && span.classList.add('warn');
 		$t(span, [
-			item.head  ? (item.head + ':') : '',
-			item.lines ? (lines.length + '/' + item.lines + '行') : '',
+			item.head  ? `${item.head}:` : '',
+			item.lines ? `${lines.length}/${item.lines}行` : '',
 			item.lines ? ' (' : '',
-			item.bytes ? (bytes + '/' + item.bytes) : '',
+			item.bytes ? `${bytes}/${item.bytes}` : '',
 			item.lines ? ')' : ''
 		].join(''));
 	}
@@ -3975,6 +3985,7 @@ function setupTextFieldEvent (items) {
 	}
 
 	function handlePaste (e) {
+		if (e.target.getAttribute('data-pasting')) return;
 		if (!e.clipboardData.files) return;
 		if (e.clipboardData.files.length == 0) return;
 		if (!$qs('#upfile:not([disabled])')) return;
@@ -3992,6 +4003,7 @@ function setupTextFieldEvent (items) {
 		}, null);
 		if (!file) return;
 
+		e.target.setAttribute('data-pasting', '1');
 		setBottomStatus('画像を貼り付けています...', true);
 		resetForm('baseform', 'upfile', 'textonly');
 		overrideUpfile = {
@@ -4001,7 +4013,10 @@ function setupTextFieldEvent (items) {
 
 		if (siteInfo.maxAttachSize && file.size > siteInfo.maxAttachSize) {
 			getImageFrom(file, img => {
-				if (!img) return;
+				if (!img) {
+					e.target.removeAttribute('data-pasting');
+					return;
+				}
 
 				let canvas = document[CRE]('canvas');
 				canvas.width = img.naturalWidth;
@@ -4015,11 +4030,15 @@ function setupTextFieldEvent (items) {
 
 				getBlobFrom(canvas.toDataURL('image/jpeg', 0.8), blob => {
 					overrideUpfile.data = blob;
+					e.target.removeAttribute('data-pasting');
 				});
 			});
 		}
 		else {
-			setPostThumbnail(file, () => setBottomStatus());
+			setPostThumbnail(file, () => {
+				setBottomStatus();
+				e.target.removeAttribute('data-pasting');
+			});
 		}
 	}
 
@@ -4119,8 +4138,8 @@ function setupPostShadowMouseEvent (tabContent, nodeName, className) {
 		if (!number) return;
 
 		var unit = $qs([
-			'article .topic-wrap[data-number="' + number + '"]',
-			'article .reply-wrap > [data-number="' + number + '"]'
+			`article .topic-wrap[data-number="${number}"]`,
+			`article .reply-wrap > [data-number="${number}"]`
 		].join(','));
 		if (!unit) return;
 
@@ -4424,16 +4443,16 @@ function install (mode) {
 			var rect = text.getBoundingClientRect();
 			style.appendChild(document.createTextNode([
 				'.reply-wrap > div:last-child {',
-				'  max-width:' + Math.floor(rect.width * 0.9) + 'px;',
+				`  max-width:${Math.floor(rect.width * 0.9)}px;`,
 				'}'
 			].join('\n')));
 		}
 
 		style.appendChild(document.createTextNode([
-			'.dialog-wrap .dialog-content {',
-			'  max-width:' + Math.floor(viewportRect.width * 0.8) + 'px;',
-			'  max-height:' + Math.floor(viewportRect.height * 0.8) + 'px;',
-			'  min-width:' + Math.floor(viewportRect.width * 0.25) + 'px;',
+			`.dialog-wrap .dialog-content {`,
+			`  max-width:${Math.floor(viewportRect.width * 0.8)}px;`,
+			`  max-height:${Math.floor(viewportRect.height * 0.8)}px;`,
+			`  min-width:${Math.floor(viewportRect.width * 0.25)}px;`,
 			'}'
 		].join('\n')));
 	});
@@ -4837,7 +4856,7 @@ function lightbox (anchor, ignoreThumbnail) {
 	function updateGeometoryInfo () {
 		if (image.naturalWidth && image.naturalHeight) {
 			$t('lightbox-ratio',
-				image.naturalWidth + 'x' + image.naturalHeight + ', ' +
+				`${image.naturalWidth}x${image.naturalHeight}, ` +
 				(image.offsetWidth / image.naturalWidth * 100).toFixed(2) + '%');
 		}
 	}
@@ -5188,12 +5207,13 @@ function lightbox (anchor, ignoreThumbnail) {
 	function handleSearch (e) {
 		if (isInTransition) return;
 		if (!image) return;
+		let lang = window.navigator.browserLanguage
+			|| window.navigator.language
+			|| window.navigator.userLanguage;
 		var url = 'http://www.google.com/searchbyimage'
 			+ '?sbisrc=akahukuplus'
-			+ '&hl=' +  (window.navigator.browserLanguage
-				|| window.navigator.language
-				|| window.navigator.userLanguage).toLowerCase()
-			+ '&image_url=' + encodeURIComponent(image.src);
+			+ `&hl=${lang.toLowerCase()}`
+			+ `&image_url=${encodeURIComponent(image.src)}`;
 			sendToBackend('open', {url:url, selfUrl:window.location.href});
 	}
 
@@ -5397,14 +5417,14 @@ function startColorPicker (target, options) {
 		c.clearRect(0, 0, canvas.width, canvas.height);
 
 		var g = c.createLinearGradient(0, 0, canvas.width, 0);
-		g.addColorStop(0, 'hsl(' + hueValue + ',100%,100%)');
-		g.addColorStop(1, 'hsl(' + hueValue + ',100%, 50%)');
+		g.addColorStop(0, `hsl(${hueValue},100%,100%)`);
+		g.addColorStop(1, `hsl(${hueValue},100%, 50%)`);
 		c.fillStyle = g;
 		c.fillRect(0, 0, canvas.width, canvas.height);
 
 		var g = c.createLinearGradient(0, 0, 0, canvas.height);
-		g.addColorStop(0, 'hsla(' + hueValue + ',100%,50%,0)');
-		g.addColorStop(1, 'hsla(' + hueValue + ',100%, 0%,1)');
+		g.addColorStop(0, `hsla(${hueValue},100%,50%,0)`);
+		g.addColorStop(1, `hsla(${hueValue},100%, 0%,1)`);
 		c.fillStyle = g;
 		c.fillRect(0, 0, canvas.width, canvas.height);
 	}
@@ -6100,7 +6120,7 @@ function modalDialog (opts) {
 		(opt || '').split(/\s*,\s*/).forEach(function (opt) {
 			buttons.forEach(function (button, i) {
 				if (!button) return;
-				if (button.getAttribute('href') != '#' + opt + '-dialog') return;
+				if (button.getAttribute('href') != `#${opt}-dialog`) return;
 				button.classList.remove('hide');
 				footer.appendChild(button);
 				buttons[i] = null;
@@ -6118,7 +6138,7 @@ function modalDialog (opts) {
 		if (state != 'initializing') return;
 		if (isPending) return;
 		resources.get(
-			'/xsl/' + xslName + '.xsl',
+			`/xsl/${xslName}.xsl`,
 			{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 60},
 			function (xsl) {
 				var p = new window.XSLTProcessor;
@@ -6127,10 +6147,14 @@ function modalDialog (opts) {
 					var f;
 
 					try {
+						if (IDEOGRAPH_CONVERSION_UI) {
+							xsl = 新字体の漢字を旧字体に変換(xsl);
+						}
+
 						xsl = (new window.DOMParser()).parseFromString(xsl, "text/xml");
 					}
 					catch (e) {
-						console.error('xsl parsing failed: ' + e.message);
+						console.error(`xsl parsing failed: ${e.message}`);
 						return;
 					}
 
@@ -6138,7 +6162,7 @@ function modalDialog (opts) {
 						p.importStylesheet(xsl);
 					}
 					catch (e) {
-						console.error('importStylesheet failed: ' + e.message);
+						console.error(`importStylesheet failed: ${e.message}`);
 						return;
 					}
 
@@ -6146,7 +6170,7 @@ function modalDialog (opts) {
 						f = fixFragment(p.transformToFragment(xml, document));
 					}
 					catch (e) {
-						console.error('transformToFragment failed: ' + e.message);
+						console.error(`transformToFragment failed: ${e.message}`);
 						return;
 					}
 
@@ -6318,7 +6342,7 @@ function resolveRelativePath (url, baseUrl) {
 
 	// absolute path
 	else if (/^\//.test(url)) {
-		return window.location.protocol + '//' + window.location.host + url;
+		return `${window.location.protocol}//${window.location.host}${url}`;
 	}
 
 	// relative path
@@ -6358,7 +6382,7 @@ function getCookie (key) {
 
 function setCookie (key, value, lifeDays, path) {
 	var s = [];
-	s.push(key + '=' + escape(value));
+	s.push(`${key}=${escape(value)}`);
 	if (lifeDays) {
 		var d = new Date;
 		d.setDate(d.getDate() + lifeDays);
@@ -6371,7 +6395,7 @@ function setCookie (key, value, lifeDays, path) {
 }
 
 function setBoardCookie (key, value, lifeDays) {
-	setCookie(key, value, lifeDays, '/' + siteInfo.board);
+	setCookie(key, value, lifeDays, `/${siteInfo.board}`);
 }
 
 function getCatalogSettings () {
@@ -6475,7 +6499,7 @@ function getImageName (href, targetNode) {
 	let p = targetNode;
 	while (p) {
 		if (p.nodeName == 'ARTICLE') {
-			let topicWrap = $qs('.text [data-number]', p);
+			let topicWrap = $qs('.topic-wrap', p);
 			if (topicWrap) {
 				threadNumber = topicWrap.getAttribute('data-number') - 0 || 0;
 			}
@@ -6532,10 +6556,10 @@ function getWrapElement (element) {
 }
 
 function getPostNumber (element) {
-	var result;
+	let result;
 
 	for (; element; element = element.parentNode) {
-		var n = element.getAttribute('data-number');
+		let n = element.getAttribute('data-number');
 		if (n) {
 			result = n - 0;
 		}
@@ -6734,8 +6758,8 @@ function displayInlineVideo (anchor) {
 	}
 }
 
-var 新字体の漢字を旧字体に変換 = (function () {
-	var map = {
+const 新字体の漢字を旧字体に変換 = (function () {
+	const map = {
 		亜:'亞',悪:'惡',圧:'壓',囲:'圍',為:'爲',医:'醫',壱:'壹',稲:'稻',飲:'飮',隠:'隱',
 		営:'營',栄:'榮',衛:'衞',駅:'驛',悦:'悅',閲:'閱',円:'圓',縁:'緣',艶:'艷',塩:'鹽',
 		奥:'奧',応:'應',横:'橫',欧:'歐',殴:'毆',黄:'黃',温:'溫',穏:'穩',仮:'假',価:'價',
@@ -6782,22 +6806,20 @@ var 新字体の漢字を旧字体に変換 = (function () {
 		賓:'賓',頻:'頻',敏:'敏',侮:'侮',福:'福',塀:'塀',勉:'勉',墨:'墨',免:'免',祐:'祐',
 		欄:'欄',隆:'隆',虜:'虜',旅:'旅',類:'類',廉:'廉',練:'練',廊:'廊',朗:'朗'
 	};
-	var key = new RegExp('[' +
-		'亜悪圧囲為医壱稲飲隠営栄衛駅悦閲円縁艶塩奥応横欧殴黄温穏仮価画会回壊懐絵概拡殻覚' +
-		'学岳楽渇鎌勧巻寛歓缶観間関陥巌顔帰気亀偽戯犠却糾旧拠挙虚峡挟教強狭郷尭暁区駆勲薫' +
-		'群径恵掲携渓経継茎蛍軽鶏芸撃欠倹剣圏検権献県研険顕験厳呉娯効広恒鉱号国黒歳済砕斎' +
-		'剤冴桜冊雑産参惨桟蚕賛残糸姉歯児辞湿実舎写釈寿収従渋獣縦粛処緒叙尚奨将床渉焼称証' +
-		'乗剰壌嬢条浄状畳穣譲醸嘱触寝慎晋真刃尽図粋酔随髄数枢瀬清青声静斉税跡説摂窃絶専戦' +
-		'浅潜繊践銭禅曽双痩遅壮捜挿巣争窓総聡荘装騒増臓蔵即属続堕体対帯滞台滝択沢単担胆団' +
-		'弾断痴昼虫鋳庁徴聴勅鎮脱逓鉄転点伝党盗灯当闘徳独読届縄弐妊粘悩脳覇廃拝売麦発髪抜' +
-		'晩蛮秘彦姫浜瓶払仏併並変辺弁弁弁舗歩穂宝萌褒豊没翻槙毎万満麺黙餅歴恋戻弥薬訳予余' +
-		'与誉揺様謡遥瑶欲来頼乱覧略竜両猟緑隣凛塁涙励礼隷霊齢暦錬炉労楼郎禄録亘湾' +
-		'逸羽鋭益謁禍悔海慨喝褐漢館器既既祈響勤謹契戸穀殺祉視飼煮社者臭祝暑署諸祥神晴精節' +
-		'祖僧層憎贈琢嘆着猪懲塚都闘突難梅繁飯卑碑賓頻敏侮福塀勉墨免祐欄隆虜旅類廉練廊朗' +
-		']', 'g');
-	return function (s) {
-		return s.replace(key, function ($0) {return map[$0]});
-	};
+	const key = new RegExp('[\
+亜悪圧囲為医壱稲飲隠営栄衛駅悦閲円縁艶塩奥応横欧殴黄温穏仮価画会回壊懐絵概拡殻覚\
+学岳楽渇鎌勧巻寛歓缶観間関陥巌顔帰気亀偽戯犠却糾旧拠挙虚峡挟教強狭郷尭暁区駆勲薫\
+群径恵掲携渓経継茎蛍軽鶏芸撃欠倹剣圏検権献県研険顕験厳呉娯効広恒鉱号国黒歳済砕斎\
+剤冴桜冊雑産参惨桟蚕賛残糸姉歯児辞湿実舎写釈寿収従渋獣縦粛処緒叙尚奨将床渉焼称証\
+乗剰壌嬢条浄状畳穣譲醸嘱触寝慎晋真刃尽図粋酔随髄数枢瀬清青声静斉税跡説摂窃絶専戦\
+浅潜繊践銭禅曽双痩遅壮捜挿巣争窓総聡荘装騒増臓蔵即属続堕体対帯滞台滝択沢単担胆団\
+弾断痴昼虫鋳庁徴聴勅鎮脱逓鉄転点伝党盗灯当闘徳独読届縄弐妊粘悩脳覇廃拝売麦発髪抜\
+晩蛮秘彦姫浜瓶払仏併並変辺弁弁弁舗歩穂宝萌褒豊没翻槙毎万満麺黙餅歴恋戻弥薬訳予余\
+与誉揺様謡遥瑶欲来頼乱覧略竜両猟緑隣凛塁涙励礼隷霊齢暦錬炉労楼郎禄録亘湾\
+逸羽鋭益謁禍悔海慨喝褐漢館器既既祈響勤謹契戸穀殺祉視飼煮社者臭祝暑署諸祥神晴精節\
+祖僧層憎贈琢嘆着猪懲塚都闘突難梅繁飯卑碑賓頻敏侮福塀勉墨免祐欄隆虜旅類廉練廊朗\
+]', 'g');
+	return s => ('' + s).replace(key, $0 => map[$0]);
 })();
 
 /*
@@ -6841,7 +6863,13 @@ function postBase (type, form, callback) {
 		var payload = {};
 
 		populateTextFormItems(form, function (node) {
-			payload[node.name] = node.value;
+			let content = node.value;
+
+			if (IDEOGRAPH_CONVERSION_POST) {
+				content = 新字体の漢字を旧字体に変換(content);
+			}
+
+			payload[node.name] = content;
 		});
 
 		return payload;
@@ -6860,19 +6888,19 @@ function postBase (type, form, callback) {
 		for (var i in items) {
 			var item = new Uint8Array(items[i]);
 			data.push(
-				'--' + boundary + '\r\n' +
-				'Content-Disposition: form-data; name="' + i + '"\r\n' +
-				'\r\n', item, '\r\n'
+				`--${boundary}\r\n` +
+				`Content-Disposition: form-data; name="${i}"\r\n\r\n`,
+				item, '\r\n'
 			);
 		};
 
 		populateFileFormItems(form, function (node) {
 			data.push(
-				'--' + boundary + '\r\n' +
-				'Content-Disposition: form-data' +
-				'; name="' + node.name + '"' +
-				'; filename="' + node.files[0].name.replace(/"/g, '`') + '"\r\n' +
-				'Content-Type: ' + node.files[0].type + '\r\n' +
+				`--${boundary}\r\n` +
+				`Content-Disposition: form-data` +
+				`; name="${node.name}"` +
+				`; filename="${node.files[0].name.replace(/"/g, '`')}"\r\n` +
+				`Content-Type: ${node.files[0].type}\r\n` +
 				'\r\n',
 				node.files[0],
 				'\r\n'
@@ -6881,7 +6909,7 @@ function postBase (type, form, callback) {
 
 		if (overrideUpfile) {
 			data.push(
-				'--' + boundary + '\r\n' +
+				`--${boundary}\r\n` +
 				'Content-Disposition: form-data' +
 				'; name="upfile"' +
 				`; filename="${overrideUpfile.name}"\r\n` +
@@ -6892,7 +6920,7 @@ function postBase (type, form, callback) {
 			);
 		}
 
-		data.push('--' + boundary + '--\r\n');
+		data.push(`--${boundary}--\r\n`);
 		data = new window.Blob(data);
 
 		return data;
@@ -6940,8 +6968,8 @@ function postBase (type, form, callback) {
 
 	function multipartPost (data, boundary) {
 		transport.open('POST', form.action);
-		transport.setRequestHeader('Content-Type', 'multipart/form-data;boundary=' + boundary);
-		transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
+		transport.setRequestHeader('Content-Type', `multipart/form-data;boundary=${boundary}`);
+		transport.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 
 		transport.onload = function () {
 			try {
@@ -6969,7 +6997,7 @@ function postBase (type, form, callback) {
 	function urlEncodedPost (data) {
 		transport.open('POST', form.action);
 		transport.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-		transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
+		transport.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 
 		transport.onload = function () {
 			callback && callback(transport.responseText);
@@ -7098,9 +7126,9 @@ function reloadBase (callback, errorCallback) {
 	transport = createTransport();
 	transportType = 'reload';
 	transport.open('GET', window.location.href);
-	transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
+	transport.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 	DEBUG_IGNORE_LAST_MODIFIED && (siteInfo.lastModified = 0);
-	transport.setRequestHeader('If-Modified-Since', siteInfo.lastModified || 'Fri, 01 Jan 2010 00:00:00 GMT');
+	transport.setRequestHeader('If-Modified-Since', siteInfo.lastModified || FALLBACK_LAST_MODIFIED);
 
 	transport.onload = function (e) {
 		timingLogger.endTag();
@@ -7188,7 +7216,7 @@ function reloadBase (callback, errorCallback) {
 		try {
 			errorCallback && errorCallback(new Error(
 				'ネットワークエラーにより内容を取得できません。' +
-				'\n(' + transport.status + ')'));
+				`\n(${transport.status})`));
 		}
 		finally {
 			transport = null;
@@ -7203,17 +7231,12 @@ function reloadBase (callback, errorCallback) {
 function reloadCatalogBase (query, callback, errorCallback) {
 	timingLogger.startTag('reloadCatalogBase');
 	var now = Date.now();
-	var url = [
-		window.location.protocol,
-		'/' + window.location.host,
-		window.location.pathname.split('/')[1],
-		'futaba.php?mode=cat' + query
-	].join('/');
+	var url = `${location.protocol}//${location.host}/${siteInfo.board}/futaba.php?mode=cat${query}`
 
 	transport = createTransport();
 	transportType = 'reload';
 	transport.open('GET', url);
-	transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
+	transport.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 
 	transport.onload = function (e) {
 		timingLogger.endTag();
@@ -7224,7 +7247,7 @@ function reloadCatalogBase (query, callback, errorCallback) {
 			doc = transport.responseText;
 
 			// experimental feature
-			if (IDEOGRAPH_CONVERSION) {
+			if (IDEOGRAPH_CONVERSION_CONTENT) {
 				doc = 新字体の漢字を旧字体に変換(doc);
 			}
 
@@ -7254,7 +7277,7 @@ function reloadCatalogBase (query, callback, errorCallback) {
 		try {
 			errorCallback && errorCallback(new Error(
 				'ネットワークエラーにより内容を取得できません。' +
-				'\n(' + transport.status + ')'));
+				`\n(${transport.status})`));
 		}
 		finally {
 			transport = null;
@@ -7290,7 +7313,7 @@ function extractTweets () {
 			scriptNode.id = 'tweet-loader-' + Math.floor(Math.random() * 0x80000000);
 			scriptNode.src = 'data:text/javascript,' +
 				'window.twttr&&window.twttr.widgets.load();' +
-				'document.head.removeChild(document.getElementById("' + scriptNode.id + '"));';
+				`document.head.removeChild(document.getElementById("${scriptNode.id}"));`;
 		}
 	}
 
@@ -7434,7 +7457,7 @@ function extractNico2 () {
 		var key = files[i].getAttribute('data-nico2-key');
 		var scriptNode = files[i].appendChild(document[CRE]('script'));
 		scriptNode.type = 'text/javascript';
-		scriptNode.src = 'https://embed.nicovideo.jp/watch/' + key + '/script?w=640&h=360';
+		scriptNode.src = `https://embed.nicovideo.jp/watch/${key}/script?w=640&h=360`;
 		scriptNode.onload = function () {
 			this.parentNode.removeChild(this);
 		};
@@ -7621,7 +7644,7 @@ function updateIdFrequency (stat) {
 			].join(','));
 			if (!unit) continue;
 
-			$t(unit.nextSibling, '(' + (i + 1) + '/' + stat.idData[id].length + ')');
+			$t(unit.nextSibling, `(${i + 1}/${stat.idData[id].length})`);
 		}
 	}
 }
@@ -7631,8 +7654,8 @@ function getParentSelector (start, end) {
 
 	// start and end are 1-based.
 	if (typeof start == 'number' && typeof end == 'number') {
-		parentSelector += ':nth-child(n+' + start + ')';
-		parentSelector += ':nth-child(-n+' + end + ')';
+		parentSelector += `:nth-child(n+${start})`;
+		parentSelector += `:nth-child(-n+${end})`;
 	}
 
 	return parentSelector;
@@ -8145,11 +8168,11 @@ const commands = {
 				catch (ex) {
 					throw new Error(
 						'内部 xml からの html への変形に失敗しました。' +
-						'\n(' + ex.message + ')');
+						`\n(${ex.message})`);
 				}
 				timingLogger.endTag();
 
-				timingLogger.startTag('waiting (max ' + WAIT_AFTER_RELOAD + 'msecs)');
+				timingLogger.startTag(`waiting (max ${WAIT_AFTER_RELOAD}msecs)`);
 				setTimeout(function () {
 					timingLogger.endTag();
 
@@ -8232,7 +8255,7 @@ const commands = {
 				}
 
 				if (!doc) {
-					showFetchedRepliesStatus('内容が変だよ (' + status + ')');
+					showFetchedRepliesStatus(`内容が変だよ (${status})`);
 					setBottomStatus('完了: エラー ' + status);
 					return;
 				}
@@ -8257,7 +8280,7 @@ const commands = {
 				catch (ex) {
 					throw new Error(
 						'内部 xml からの html への変形に失敗しました。' +
-						'\n(' + ex.message + ')');
+						`\n(${ex.message})`);
 				}
 				timingLogger.endTag();
 
@@ -8285,7 +8308,7 @@ const commands = {
 							timingLogger.endTag();
 							setBottomStatus(
 								'完了: ' + (newStat.delta.total ?
-											'新着 ' + newStat.delta.total + ' レス' :
+											`新着 ${newStat.delta.total} レス` :
 											'新着レスなし'));
 							scrollToNewReplies();
 						}
@@ -8349,7 +8372,7 @@ const commands = {
 		catalogPopup.deleteAll();
 		wrap.classList.add('run');
 		reloadCatalogBase(
-			sortType ? '&sort=' + sortType.n : '',
+			sortType ? `&sort=${sortType.n}` : '',
 			function (doc, now, status) {
 				var insertee = wrap.firstChild;
 				var newIndicator = wrap.childNodes.length ? 'new' : '';
@@ -8391,7 +8414,7 @@ const commands = {
 						}
 
 						// anchor cell
-						var anchor = $('c-' + sortType.key + '-' + id);
+						var anchor = $(`c-${sortType.key}-${id}`);
 						if (anchor) {
 							if (anchor == insertee) {
 								insertee = insertee.nextSibling;
@@ -8416,7 +8439,7 @@ const commands = {
 						}
 						else {
 							anchor = wrap.insertBefore(document[CRE]('a'), insertee);
-							anchor.id = 'c-' + sortType.key + '-' + id;
+							anchor.id = `c-${sortType.key}-${id}`;
 							anchor.setAttribute('data-number', id);
 						}
 						anchor.style.width = anchorWidth + 'px';
@@ -8619,48 +8642,43 @@ const commands = {
 		if (!t) return;
 		if (t.getAttribute('data-busy')) return;
 
-		var postNumber = getPostNumber(t);
+		let postNumber = getPostNumber(t);
 		if (!postNumber) return;
 
 		t.setAttribute('data-busy', '1');
 		t.setAttribute('data-text', t.textContent);
 		t.textContent = '...';
 
-		var board = window.location.pathname.split('/')[1];
-		var url = [
-			window.location.protocol,
-			'/' + window.location.host,
-			'sd.php?' + board + '.' + postNumber
-		].join('/');
-		var xhr = createTransport();
+		let url = `${location.protocol}//${location.host}/sd.php?${siteInfo.board}.${postNumber}`
+		let xhr = createTransport();
 		xhr.open('GET', url);
-		xhr.onload = function () {
-			setTimeout(function () {
-				var n = parseInt(xhr.responseText, 10) || 0;
-				t.textContent = 'そうだね × ' + n;
+		xhr.onload = () => {
+			setTimeout(() => {
+				let n = parseInt(xhr.responseText, 10) || 0;
+				t.textContent = `そうだね × ${n}`;
 				t.removeAttribute('data-busy');
 				t.removeAttribute('data-text');
 				t.classList.remove('sodane-null');
 				t.classList.add('sodane');
 				t = xhr = xhr.onload = xhr.onerror = null;
-			}, 1000);
+			}, WAIT_AFTER_POST);
 		};
-		xhr.onerror = function () {
+		xhr.onerror = () => {
 			t.textContent = 'なんかエラー';
-			setTimeout(function () {
+			setTimeout(() => {
 				t.textContent = t.getAttribute('data-text');
 				t.removeAttribute('data-busy');
 				t.removeAttribute('data-text');
 				t = xhr = xhr.onload = xhr.onerror = null;
-			}, 1000);
+			}, WAIT_AFTER_POST);
 		};
 		xhr.send();
 	},
 	saveImage: function (e, t) {
 		if (t.getAttribute('data-original-text')) return;
 
-		var href = t.getAttribute('data-href') || t.href;
-		var f = getImageName(href, t);
+		let href = t.getAttribute('data-href') || t.href;
+		let f = getImageName(href, t);
 		if (f == undefined || f == '') return;
 
 		let id = t.id;
@@ -8688,18 +8706,18 @@ const commands = {
 	 * dialogs
 	 */
 
-	openDeleteDialog: function () {
-		if (transport) return;
+	openDeleteDialog: () => {
+		if (transport && transportType == 'delete') return;
 
 		modalDialog({
 			title: '記事削除',
 			buttons: 'ok, cancel',
-			oninit: function (dialog) {
-				var xml = document.implementation.createDocument(null, 'dialog', null);
-				var checksNode = xml.documentElement.appendChild(xml[CRE]('checks'));
+			oninit: dialog => {
+				let xml = document.implementation.createDocument(null, 'dialog', null);
+				let checksNode = xml.documentElement.appendChild(xml[CRE]('checks'));
 				Array.prototype.forEach.call(
 					$qsa('article input[type="checkbox"]:checked'),
-					function (node) {
+					node => {
 						checksNode.appendChild(xml[CRE]('check')).textContent =
 							getPostNumber(node);
 					}
@@ -8708,8 +8726,8 @@ const commands = {
 					getCookie('pwdc')
 				dialog.initFromXML(xml, 'delete-dialog');
 			},
-			onopen: function (dialog) {
-				var deleteKey = $qs('.delete-key', dialog.content);
+			onopen: dialog => {
+				let deleteKey = $qs('.delete-key', dialog.content);
 				if (deleteKey) {
 					deleteKey.focus();
 				}
@@ -8717,46 +8735,41 @@ const commands = {
 					dialog.initButtons('cancel');
 				}
 			},
-			onok: function (dialog) {
-				var form = $qs('form', dialog.content);
-				var status = $qs('.delete-status', dialog.content);
-				var board = window.location.pathname.split('/')[1];
+			onok: dialog => {
+				let form = $qs('form', dialog.content);
+				let status = $qs('.delete-status', dialog.content);
 				if (!form || !status) return;
 
-				form.action = '/' + board + '/futaba.php';
+				form.action = `/${siteInfo.board}/futaba.php`;
 				$t(status, '削除をリクエストしています...');
-				postBase(
-					'delete',
-					form,
-					function (response) {
+				postBase('delete', form,
+					response => {
 						response = response.replace(/\r\n|\r|\n/g, '\t');
-						var result = parsePostResponse(response);
+						let result = parsePostResponse(response);
 
-						if (result.redirect) {
-							$t(status, 'リクエストに成功しました');
-
-							Array.prototype.forEach.call(
-								$qsa('article input[type="checkbox"]:checked'),
-								function (node) {
-									node.checked = false;
-								}
-							);
-
-							setTimeout(function () {
-								dialog.isPending = false;
-								dialog.close();
-								form = status = dialog = null;
-								commands.reload();
-							}, WAIT_AFTER_POST);
-
+						if (!result.redirect) {
+							$t(status, result.error || 'なんかエラー？');
+							dialog.isPending = false;
+							form = status = dialog = null;
 							return;
 						}
 
-						$t(status, result.error || 'なんかエラー？');
-						dialog.isPending = false;
-						form = status = dialog = null;
+						$t(status, 'リクエストに成功しました');
+
+						Array.prototype.forEach.call(
+							$qsa('article input[type="checkbox"]:checked'),
+							node => {
+								node.checked = false;
+							}
+						);
+
+						setTimeout(() => {
+							dialog.isPending = false;
+							dialog.close();
+							form = status = dialog = null;
+						}, WAIT_AFTER_POST);
 					},
-					function () {
+					() => {
 						$t(status, 'ネットワークエラーです');
 						dialog.isPending = false;
 						form = status = dialog = null;
@@ -8767,32 +8780,32 @@ const commands = {
 			}
 		});
 	},
-	openConfigDialog: function () {
-		if (transport) return;
-
+	openConfigDialog: () => {
 		modalDialog({
 			title: '設定',
 			buttons: 'ok, cancel',
-			oninit: function (dialog) {
-				var xml = document.implementation.createDocument(null, 'dialog', null);
-				var itemsNode = xml.documentElement.appendChild(xml[CRE]('items'));
+			oninit: dialog => {
+				let xml = document.implementation.createDocument(null, 'dialog', null);
+				let itemsNode = xml.documentElement.appendChild(xml[CRE]('items'));
 				itemsNode.setAttribute('prefix', 'config-item.');
 
-				var data = config.data;
-				for (var i in data) {
-					var item = itemsNode.appendChild(xml[CRE]('item'));
+				let data = config.data;
+				let f = IDEOGRAPH_CONVERSION_UI ?
+					新字体の漢字を旧字体に変換 : s => s;
+				for (let i in data) {
+					let item = itemsNode.appendChild(xml[CRE]('item'));
 					item.setAttribute('internal', i);
-					item.setAttribute('name', data[i].name);
+					item.setAttribute('name', f(data[i].name));
 					item.setAttribute('value', data[i].value);
 					item.setAttribute('type', data[i].type);
-					'desc' in data[i] && item.setAttribute('desc', data[i].desc);
+					'desc' in data[i] && item.setAttribute('desc', f(data[i].desc));
 					'min' in data[i] && item.setAttribute('min', data[i].min);
 					'max' in data[i] && item.setAttribute('max', data[i].max);
 
 					if ('list' in data[i]) {
-						for (var j in data[i].list) {
-							var li = item.appendChild(xml[CRE]('li'));
-							li.textContent = data[i].list[j];
+						for (let j in data[i].list) {
+							let li = item.appendChild(xml[CRE]('li'));
+							li.textContent = f(data[i].list[j]);
 							li.setAttribute('value', j);
 							j == data[i].value && li.setAttribute('selected', 'true');
 						}
@@ -8800,9 +8813,9 @@ const commands = {
 				}
 				dialog.initFromXML(xml, 'config-dialog');
 			},
-			onok: function (dialog) {
-				var storage = {};
-				populateTextFormItems(dialog.content, function (item) {
+			onok: dialog => {
+				let storage = {};
+				populateTextFormItems(dialog.content, item => {
 					storage[item.name.replace(/^config-item\./, '')] = item.value;
 				});
 				config.assign(storage);
@@ -8811,118 +8824,136 @@ const commands = {
 			}
 		});
 	},
-	openModerateDialog: function (e, anchor) {
-		if (transport) return;
-		if (isRapidAccess()) return;
+	openModerateDialog: (e, anchor) => {
+		if (!anchor || anchor.getAttribute('data-busy')) return;
 
-		var re = /(^[^:]+:\/\/[^\/]+\/)([^\/]+)\//.exec(window.location.href);
-		if (!re) return;
+		let postNumber = getPostNumber(anchor);
+		if (!postNumber) return;
 
-		var baseUrl = re[1];
-		var moderatorUrl = baseUrl +
-			'del.php' +
-			'?b=' + encodeURIComponent(re[2]) +
-			'&d=' + encodeURIComponent(getPostNumber(anchor));
+		anchor.setAttribute('data-busy', '1');
 
-		transport = createTransport();
-		transportType = 'moderate-pre';
-		transport.open('GET', moderatorUrl);
-		transport.overrideMimeType('text/html;charset=' + FUTABA_CHARSET);
-		transport.onload = function () {
-			var doc;
-			if (!(transport.status >= 400 && transport.status <= 499)) {
-				doc = getDOMFromString(transport.responseText);
-			}
-			transport = null;
-			if (!doc) return;
+		let baseUrl = `${location.protocol}//${location.host}/`;
+		let moderatorUrl = `${baseUrl}del.php?b=${siteInfo.board}&d=${getPostNumber(anchor)}`;
+		let xhr = createTransport();
+		xhr.open('GET', moderatorUrl);
+		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
+		xhr.onload = () => {
+			anchor.removeAttribute('data-busy');
+
+			if (xhr.status < 200 || xhr.status >= 300) return;
+
+			let doc = getDOMFromString(
+				IDEOGRAPH_CONVERSION_UI ?
+					新字体の漢字を旧字体に変換(xhr.responseText) :
+					xhr.responseText);
 
 			modalDialog({
 				title: 'del の申請',
 				buttons: 'ok, cancel',
-				oninit: function (dialog) {
-					var xml = document.implementation.createDocument(null, 'dialog', null);
+				oninit: dialog => {
+					let xml = document.implementation.createDocument(null, 'dialog', null);
 					dialog.initFromXML(xml, 'moderate-dialog');
 				},
-				onopen: function (dialog) {
-					var dest = $qs('.moderate-target', dialog.content);
-					if (dest) {
-						for (var node = anchor; node; node = node.parentNode) {
-							if (node.classList.contains('topic-wrap')
-							||  node.classList.contains('reply-wrap')) {
-								node = node.cloneNode(true);
-
-								Array.prototype.forEach.call(
-									$qsa('a', node),
-									function (node) {
-										node.href = '#void';
-									}
-								);
-
-								dest.appendChild(node);
-								break;
-							}
+				onopen: dialog => {
+					let moderateTarget = $qs('.moderate-target', dialog.content);
+					if (moderateTarget) {
+						let wrapElement = getWrapElement(anchor);
+						if (wrapElement) {
+							wrapElement = wrapElement.cloneNode(true);
+							// replace anchors to text
+							Array.prototype.forEach.call(
+								$qsa('a', wrapElement),
+								node => {
+									node.parentNode.replaceChild(
+										document.createTextNode(node.textContent),
+										node);
+								}
+							);
+							// TODO: strip external contents such as youtube, tweet
+							moderateTarget.appendChild(wrapElement);
 						}
 					}
 
-					var form = $qs('form[method="POST"]', doc);
-					var dest = $qs('.moderate-form', dialog.content);
-					if (form && dest) {
+					let form = $qs('form[method="POST"]', doc);
+					let moderateList = $qs('.moderate-form', dialog.content);
+					if (form && moderateList) {
 						form = form.cloneNode(true);
 
 						form.action = resolveRelativePath(form.getAttribute('action'), baseUrl);
+						// strip submit buttons
 						Array.prototype.forEach.call(
 							$qsa('input[type="submit"]', form),
-							function (node) {
+							node => {
 								node.parentNode.removeChild(node);
 							}
 						);
+
+						// strip tab borders
 						Array.prototype.forEach.call(
 							$qsa('table[border]', form),
-							function (node) {
+							node => {
 								node.removeAttribute('border');
 							}
 						);
 
-						dest.appendChild(form);
+						// make reason-text clickable
+						Array.prototype.forEach.call(
+							$qsa('input[type="radio"][name="reason"]', form),
+							node => {
+								let r = node.ownerDocument.createRange();
+								let label = node.ownerDocument[CRE]('label');
+								r.setStartBefore(node);
+								r.setEndAfter(node.nextSibling);
+								r.surroundContents(label);
+							}
+						);
+
+						// select last used reason, if available
+						if (lastDelReason) {
+							let node = $qs(`input[type="radio"][value="${lastDelReason}"`, form);
+							if (node) {
+								node.checked = true;
+							}
+						}
+
+						moderateList.appendChild(form);
 					}
 				},
-				onok: function (dialog) {
-					var form = $qs('form', dialog.content);
-					var status = $qs('.moderate-status', dialog.content);
+				onok: dialog => {
+					let form = $qs('form', dialog.content);
+					let status = $qs('.moderate-status', dialog.content);
 					if (!form || !status) return;
 
 					$t(status, '申請を登録しています...');
-					postBase(
-						'moderate',
-						form,
-						function (response) {
+					postBase('moderate', form,
+						response => {
 							response = response.replace(/\r\n|\r|\n/g, '\t');
-							var result = parseModerateResponse(response);
+							let result = parseModerateResponse(response);
 
-							if (result.registered) {
-								$t(status, '登録されました');
-
-								Array.prototype.forEach.call(
-									$qsa('input[type="radio"]:checked', form),
-									function (node) {
-										node.checked = false;
-									}
-								);
-
-								setTimeout(function () {
-									dialog.isPending = false;
-									dialog.close();
-									form = status = dialog = null;
-								}, WAIT_AFTER_POST);
-
+							if (!result.registered) {
+								$t(status, result.error || 'なんかエラー？');
+								dialog.isPending = false;
+								form = status = dialog = null;
 								return;
 							}
 
-							$t(status, result.error || 'なんかエラー？');
-							dialog.isPending = false;
-							form = status = dialog = null;
+							$t(status, '登録されました');
+
+							Array.prototype.forEach.call(
+								$qsa('input[type="radio"]:checked', form),
+								node => {
+									lastDelReason = node.value;
+									node.checked = false;
+								}
+							);
+
+							setTimeout(() => {
+								dialog.isPending = false;
+								dialog.close();
+								form = status = dialog = null;
+							}, WAIT_AFTER_POST);
 						},
-						function () {
+						() => {
 							$t(status, 'ネットワークエラーです');
 							dialog.isPending = false;
 							form = status = dialog = null;
@@ -8933,23 +8964,24 @@ const commands = {
 				}
 			});
 		};
-		transport.onerror = function () {
-			transport = null;
+		xhr.onerror = () => {
+			anchor.removeAttribute('data-busy');
+			xhr = null;
 		};
-		transport.send();
+		xhr.send();
 	},
-	openHelpDialog: function (e, anchor) {
+	openHelpDialog: (e, anchor) => {
 		modalDialog({
 			title: 'キーボード ショートカット',
 			buttons: 'ok',
-			oninit: function (dialog) {
-				var xml = document.implementation.createDocument(null, 'dialog', null);
+			oninit: dialog => {
+				let xml = document.implementation.createDocument(null, 'dialog', null);
 				dialog.initFromXML(xml, 'help-dialog');
 			}
 		});
 	},
-	openDrawDialog: function (e, anchor) {
-		startDrawing(function (dataURL) {
+	openDrawDialog: (e, anchor) => {
+		startDrawing(dataURL => {
 			if (!dataURL) return;
 
 			let thumbWrap = $('post-image-thumbnail-wrap');
@@ -8976,31 +9008,6 @@ const commands = {
 				}
 				thumbWrap = thumb = null;
 			});
-
-			/*
-			var img = document[CRE]('img');
-			img.onload = function () {
-				var baseform = document.getElementsByName('baseform')[0];
-				if (pageModes[0] == 'summary' || pageModes[0] == 'catalog') {
-					getBlobFrom(dataURL, function (blob) {
-						overrideUpfile = {
-							name: 'tegaki.png',
-							data: blob
-						};
-					});
-				}
-				else if (baseform) {
-					baseform.value = dataURL.replace(/^[^,]+,/, '');
-				}
-				resetForm('upfile', 'textonly');
-				doDisplayThumbnail(thumbWrap, thumb, img);
-				img = img.onload = thumbWrap = thumb = null;
-			};
-			img.onerror = function () {
-				img = img.onload = thumbWrap = thumb = null;
-			};
-			img.src = dataURL;
-			*/
 		});
 	},
 
@@ -9013,7 +9020,7 @@ const commands = {
 		if (!email) return;
 		email.value = /\bsage\b/.test(email.value) ?
 			email.value.replace(/\s*\bsage\b\s*/g, '') :
-			'sage ' + email.value;
+			`sage ${email.value}`;
 		email.setSelectionRange(email.value.length, email.value.length);
 	},
 	cursorPrev: function (e, t) {
@@ -9284,7 +9291,7 @@ const commands = {
 			}
 		);
 
-		$t('search-result-count', matched + ' 件を抽出');
+		$t('search-result-count', `${matched} 件を抽出`);
 	}
 };
 
