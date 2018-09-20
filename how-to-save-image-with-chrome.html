@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="chrome=1">
+		<link rel="shortcut icon" href="ap-images/akahukuplus.ico" type="image/vnd.microsoft.icon">
+		<link rel="icon" href="ap-images/akahukuplus.ico" type="image/vnd.microsoft.icon">
+
+
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+		<link href='https://fonts.googleapis.com/css?family=Architects+Daughter' rel='stylesheet' type='text/css'>
+		<link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen" />
+		<link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen" />
+		<link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print" />
+
+		<!--[if lt IE 9]>
+			<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+			<![endif]-->
+
+		<title>Akahukuplus by akahuku</title>
+		<style>
+		.button-container {
+			margin:2em 0 0 0;
+		}
+		.button-container .header {
+			margin:0 0 1em 0;
+			font-weight:bold;
+			font-family:sans-serif;
+			text-align:center;
+		}
+		</style>
+	</head>
+
+	<body>
+		<header>
+			<div class="inner">
+				<h2>ふたばライフを豊かにする</h2>
+				<h1>Akahukuplus</h1>
+				<a href="https://github.com/akahuku/akahukuplus" class="button"><small>View project on</small>GitHub</a>
+			</div>
+		</header>
+
+		<div id="content-wrapper">
+			<div class="inner clearfix">
+				<section id="main-content">
+					<h2>Chrome 版の赤福プラスで画像を直接ローカルに保存する</h2>
+					<p>Chrome 版の赤福プラスでは、画像を Dropbox/Google Drive/OneDrive といったオンラインストレージに加え、直接ローカルに保存することができます。</p>
+
+					<h2>LFO のインストール</h2>
+					<p>画像を直接保存するためには、赤福プラス本体以外に「<a href="https://chrome.google.com/webstore/detail/lfo-local-file-operator-l/dkbdmkncpnepdbaneikhbbeiboehjnol">LFO - ローカルファイル操作ライブラリ</a>」が必要です。まずこれを Chrome にインストールします。</p>
+					<p><img class="left noshadow" src="ap-images/lfo-icon.png"><b>LFO - ローカルファイル操作ライブラリ</b><br><a href="https://chrome.google.com/webstore/detail/lfo-local-file-operator-l/dkbdmkncpnepdbaneikhbbeiboehjnol" target="_blank">https://chrome.google.com/webstore/detail/lfo-local-file-operator-l/dkbdmkncpnepdbaneikhbbeiboehjnol</a></p>
+
+					<h2>LFO の設定</h2>
+					<p>LFO はインストールしたあとの設定が重要です。</p>
+					<p><img src="ap-images/chrome-app.png" class="left">まず LFO を起動します。新しいタブを開いて左上のアプリボタンを押します。または、直接 <kbd>chrome://apps</kbd> ページを開きます。</p>
+					<p><img src="ap-images/chrome-app-2.png"></p>
+					<p>LFO のアイコンがあるので、クリックします。</p>
+					<p><img src="ap-images/lfo-screenshot.png"></p>
+					<p>LFO が起動します。</p>
+					<p>「変更...」ボタンを押して、ホームフォルダを指定します。</p>
+					<p>次に指定したホームフォルダの絶対パスを、下のテキストボックスに入力します。絶対パスは、Windows であれば<kbd>[ドライブ名]:\</kbd>から、Linux などでは<kbd>/</kbd>から始まる文字列です。Windows の場合はパスの区切り文字は<kbd>\</kbd>でも<kbd>/</kbd>でもかまいません。いずれの場合もパスの最後はパスの区切り文字で終えてください。</p>
+					<p>最後に「更新」ボタンを押して設定を適用します。LFO 側の設定は以上です。LFO のウィンドウは閉じてかまいません。</p>
+
+					<h2>赤福プラスの設定</h2>
+					<p>赤福プラスが有効な状態でふたばの任意の板へ行き、設定リンクを押して設定ダイアログを開きます。</p>
+					<p><img src="ap-images/akahukuplus-settings.png"></p>
+					<p>以下の設定が画像保存に関わります:</p>
+					<ul>
+						<li>使用するストレージ
+							<p>LFO を用いてローカルに画像を保存するには、<kbd>local</kbd> を選択します。</p></li>
+						<li>保存するファイル名のテンプレート
+							<p>この値が LFO に設定したルートフォルダからの相対パスを含んだ画像ファイル名になります。</p>
+							<p>ルートフォルダを<kbd>C:\Users\foo\</Kbd>とし、テンプレートを<kbd>ピクチャ\ふたば\$SERIAL.$EXT</kbd>とした場合、最終的に生成される画像ファイル名は例えば<kbd>C:\Users\foo\ピクチャ\ふたば\1536921478249.jpg</kbd>などとなります。<kbd>$</kbd>で始まるマクロには以下のものがあります:</p>
+							<ul>
+								<li><kbd>$SERVER</kbd> 画像があるサーバ名に展開されます。例えば<kbd>img</kbd>や<kbd>may</kbd>など。</li>
+								<li><kbd>$BOARD</kbd> 画像がある板名に展開されます。例えば虹裏なら<kbd>b</kbd>など。</li>
+								<li><kbd>$THREAD</kbd> 画像があるスレッド番号に展開されます。</li>
+								<li><kbd>$YEAR</kbd> 画像が投稿された西暦年数に展開されます。</li>
+								<li><kbd>$MONTH</kbd> 画像が投稿された月に展開されます。</li>
+								<li><kbd>$DAY</kbd> 画像が投稿された日に展開されます。</li>
+								<li><kbd>$SERIAL</kbd> 画像に与えられた番号に展開されます。</li>
+								<li><kbd>$DIST</kbd> 画像に与えられた番号の最後の3桁に展開されます。</li>
+								<li><kbd>$EXT</kbd> 画像の拡張子に展開されます。ドットは含みません。</li>
+							</ul>
+						</li>
+						<li>画像を開いた際に自動的に保存する
+							<p>これをONにすると自分が思っているより遥かに多くのスケベな絵が貯まっていきます。</p></li>
+						<li>画像保存が成功した際のベルの音量
+							<p>0〜100で指定します。0 にすると無音になります。</p></li>
+					</ul>
+				</section>
+
+				<aside id="sidebar">
+					<script async src="//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+					<!-- ghp-akahukuplus-1 -->
+					<ins class="adsbygoogle" style="display:inline-block;width:200px;height:200px" data-ad-client="ca-pub-5825700137064158" data-ad-slot="6801623263"></ins>
+					<script>
+(adsbygoogle = window.adsbygoogle || []).push({});
+					</script>
+
+					<div class="button-container">
+						<div class="header">ダウンロード</div>
+						<a href="https://chrome.google.com/webstore/detail/%E8%B5%A4%E7%A6%8F%E3%83%97%E3%83%A9%E3%82%B9/gjbboehfbnlimbdpljoegcgoidokacno?hl=ja" class="button">
+							<small>Download for</small>
+							Chrome
+						</a>
+						<a href="https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.nex" class="button">
+							<small>Download for</small>
+							Opera
+						</a>
+						<a href="https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.xpi" class="button">
+							<small>Download for</small>
+							Firefox
+						</a>
+					</div>
+
+					<p class="repo-owner"><a href="https://github.com/akahuku/akahukuplus">akahukuplus</a> is maintained by <a href="https://github.com/akahuku">akahuku</a>.</p>
+
+					<p>This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the Architect theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.</p>
+				</aside>
+			</div>
+		</div>
+
+
+	</body>
+</html>
