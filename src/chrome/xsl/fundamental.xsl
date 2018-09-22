@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-	The XSL file, which translates internal xml into content for akahukuplus extreme
+	The XSL file, which translates internal xml into content for akahukuplus
 
 	@author akahuku@gmail.com
 -->
@@ -919,6 +919,7 @@ background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0
 
 #ad-aside-wrap iframe {
 	background-color:#f0e0d6;
+	outline:1px solid #eee;
 }
 
 #ad-aside-wrap:hover {
@@ -1740,7 +1741,7 @@ div.catalog-popup span {
 			</div>
 			<div>
 				現在<span id="viewers" data-binding="xpath:/futaba/meta/viewers"></span>人くらいが見てます.
-				&#160; <a class="js" href="#catalog">カタログ</a>
+				&#160; <a class="js" href="#toggle-catalog"><kbd>c</kbd><span>カタログ</span></a>
 				&#160; <a class="js" href="#delete-post">記事削除</a>
 				<xsl:if test="$page_mode='reply'"> &#160; <a class="js" href="#track">自動追尾</a></xsl:if>
 			</div>
@@ -1749,7 +1750,7 @@ div.catalog-popup span {
 				<xsl:if test="meta/board_top"> &#160; <a href="{meta/board_top}">掲示板に戻る</a></xsl:if>
 				&#160; <a class="js" href="#toggle-panel"><kbd>p</kbd>パネル</a>
 				&#160; <a class="js" href="#config">設定</a>
-				&#160; <a class="js" href="#help">?</a>
+				&#160; <a class="js" href="#help"><kbd>?</kbd></a>
 				&#160; <span data-binding="template:storage"></span>
 			</div>
 		</header>
@@ -1796,8 +1797,8 @@ div.catalog-popup span {
 			<div class="amazon" data-binding="template:amazon"></div>
 			<div class="credit">—
 			<a href="http://php.s3.to" target="_top">GazouBBS</a>
-			+ <a href="http://www.2chan.net/" target="_top">futaba</a>
-			/ This page is under control of <a href="http://akahuku.github.io/akahukuplus/" target="_blank">akahukuplus/<xsl:value-of select="meta/version"/></a>
+			+ <a href="//www.2chan.net/" target="_top">futaba</a>
+			/ This page is under control of <a href="https://akahuku.github.io/akahukuplus/" target="_blank">akahukuplus/<xsl:value-of select="meta/version"/></a>
 			—</div>
 		</footer>
 		<div class="wheel-status hide" id="wheel-status"><span>wow</span><img width="10" height="2" src="data:image/gif;base64,R0lGODlhCgACAKECAIAAAP//7v///////yH/C05FVFNDQVBFMi4wAwEAAAAh+QQBGQABACwAAAAACgACAAACBISPmQUAIfkEARkAAAAsAAAAAAoAAgAAAgSMj5kFADs="/></div>

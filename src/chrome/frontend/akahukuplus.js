@@ -1312,8 +1312,7 @@ function createXMLGenerator () {
 		(function () {
 			var re = />([^<>]+)(＠ふたば)/.exec(content);
 			if (!re) return;
-			var title = re[1]
-				.replace(/二次元裏$/, `虹裏${window.location.hostname.split('.')[0]}`)
+			var title = re[1].replace(/二次元裏$/, `虹裏${siteInfo.server}`)
 				+ re[2];
 			if (!isReplyMode && (re = /(\d+)\.htm$/.exec(window.location.pathname))) {
 				title += ` [ページ ${re[1]}]`;
@@ -1523,7 +1522,7 @@ function createXMLGenerator () {
 				topicInfo += ' ' + threadRest;
 				threadRest = '';
 			}
-			
+
 			var htmlref;
 			if (isReplyMode) {
 				htmlref = /\b(res\/(\d+)\.htm|futaba\.php\?res=(\d+))/.exec(window.location.href);
@@ -1848,7 +1847,7 @@ function createConfigurator () {
 			desc:'以下のマクロを使用できます: ' +
 				'$SERVER (サーバ名)、$BOARD (板名)、$THREAD (スレッド番号)、' +
 				'$YEAR (画像の投稿年)、$MONTH (画像の投稿月)、$DAY (画像の投稿日)、' +
-				'$SERIAL (画像番号)、$DIST (画像の分散キー)、$EXT (拡張子)'
+				'$SERIAL (画像番号)、$DIST (画像の分散キー)、$TEXT (スレッド本文)、$EXT (拡張子)'
 		},
 		auto_save_image: {
 			type:'bool',
@@ -3294,7 +3293,7 @@ function createQuotePopup () {
 				return result;
 			});
 		}
-			
+
 		quoteTextForSearch = quoteTextForSearch
 			.replace(/^(?:>|&gt;)/, '')
 			.replace(/\n(?:>|&gt;)/g, '\n');
@@ -3741,10 +3740,11 @@ function createHistoryStateWrapper (popstateHandler) {
 			window.history.pushState(null, '', url);
 		},
 		updateHash: function (hash) {
-			hash = `#${hash.replace(/^#/, '')}`;
-			window.removeEventListener('popstate', popstateHandler, false);
-			window.location.hash = hash;
-			window.addEventListener('popstate', popstateHandler, false);
+			if (hash != '') {
+				hash = '#' + hash.replace(/^#/, '');
+			}
+			let url = `${location.protocol}//${location.host}${location.pathname}${hash}${location.search}`;
+			window.history.replaceState(null, '', url);
 		}
 	};
 }
@@ -4262,45 +4262,55 @@ function install (mode) {
 
 	clickDispatcher = createClickDispatcher();
 	clickDispatcher
-		.add('#void',        function () {})
+		.add('#void',        () => {})
 
-		.add('#delete-post', commands.openDeleteDialog)
-		.add('#config',      commands.openConfigDialog)
-		.add('#help',        commands.openHelpDialog)
-		.add('#draw',        commands.openDrawDialog)
-		.add('#toggle-panel',commands.togglePanelVisibility)
-		.add('#reload',      commands.reload)
-		.add('#sage',        commands.toggleSage)
-		.add('#search-start',commands.search)
-		.add('#clear-upfile',commands.clearUpfile)
-		.add('#catalog',     commands.toggleCatalogVisibility)
-		.add('#track',       commands.registerTrack)
+		.add('#delete-post',    commands.openDeleteDialog)
+		.add('#config',         commands.openConfigDialog)
+		.add('#help',           commands.openHelpDialog)
+		.add('#draw',           commands.openDrawDialog)
+		.add('#toggle-panel',   commands.togglePanelVisibility)
+		.add('#reload',         commands.reload)
+		.add('#sage',           commands.toggleSage)
+		.add('#search-start',   commands.search)
+		.add('#clear-upfile',   commands.clearUpfile)
+		.add('#toggle-catalog', commands.toggleCatalogVisibility)
+		.add('#track',          commands.registerTrack)
 
-		.add('.del', function (e, t) {
+		.add('.del', (e, t) => {
 			commands.openModerateDialog(e, t);
 		})
-		.add('.postno', function (e, t) {
-			var wrap = getWrapElement(t);
+		.add('.postno', (e, t) => {
+			let wrap = getWrapElement(t);
 			if (!wrap) return;
-			var comment = $qs('.comment', wrap);
+			let comment = $qs('.comment', wrap);
 			if (!comment) return;
-			selectionMenu.dispatch('quote', nodeToString(comment));
+
+			comment = nodeToString(comment);
+
+			if ($qs('.reply-image', wrap) && /^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
+				comment = $qs('.postno', wrap).textContent;
+			}
+
+			selectionMenu.dispatch('quote', comment);
 		})
-		.add('.save-image',  function (e, t) {
+		.add('.save-image',  (e, t) => {
 			commands.saveImage(e, t);
 		})
-		.add('.panel-tab',   function (e, t) {
-			showPanel(function (panel) {
+		.add('.panel-tab',   (e, t) => {
+			showPanel(panel => {
 				activatePanelTab(t);
 			});
 		})
-		.add('.switch-to', function (e, t) {
+		.add('.switch-to', (e, t) => {
 			historyStateWrapper.pushState(t.href);
+			if (pageModes[0] == 'catalog') {
+				toggleCatalogVisibility();
+			}
 			commands.reload();
 		})
-		.add('.lightbox', function (e, t) {
+		.add('.lightbox',  (e, t) => {
 			if (config.data.auto_save_image.value) {
-				setTimeout(function (e, t) {
+				setTimeout((e, t) => {
 					let saveLink = $qs(`.save-image[href="${t.href}"]`);
 					if (!saveLink) return;
 					if (saveLink.getAttribute('data-image-saved')) return;
@@ -4324,12 +4334,12 @@ function install (mode) {
 				return 'passthrough';
 			}
 		})
-		.add('.catalog-order', function (e, t) {
-			var newActive;
+		.add('.catalog-order', (e, t) => {
+			let newActive;
 
 			Array.prototype.forEach.call(
 				$qsa('#catalog .catalog-options a'),
-				function (node) {
+				node => {
 					node.classList.remove('active');
 					if (node == t) {
 						node.classList.add('active');
@@ -4343,10 +4353,10 @@ function install (mode) {
 				newActive.classList.add('active');
 			}
 
-			var contentId = 'catalog-threads-wrap-' + newActive.href.match(/\w+$/)[0];
+			let contentId = 'catalog-threads-wrap-' + newActive.href.match(/\w+$/)[0];
 			Array.prototype.forEach.call(
 				$qsa('#catalog .catalog-threads-wrap > div'),
-				function (node) {
+				node => {
 					node.classList.add('hide');
 					if (node.id == contentId) {
 						node.classList.remove('hide');
@@ -4356,15 +4366,15 @@ function install (mode) {
 
 			commands.reload();
 		})
-		.add('.sodane', function (e, t) {
+		.add('.sodane', (e, t) => {
 			commands.sodane(e, t);
 		})
-		.add('.sodane-null', function (e, t) {
+		.add('.sodane-null', (e, t) => {
 			commands.sodane(e, t);
 		})
-		.add('*noclass*', function (e, t) {
-			var re1 = /(.*)#[^#]*$/.exec(t.href);
-			var re2 = /(.*)(#[^#]*)?$/.exec(window.location.href);
+		.add('*noclass*', (e, t) => {
+			let re1 = /(.*)#[^#]*$/.exec(t.href);
+			let re2 = /(.*)(#[^#]*)?$/.exec(window.location.href);
 			if (t.target != '_blank') return;
 			if (re1 && re2 && re1[1] == re2[1]) return;
 
@@ -4385,7 +4395,6 @@ function install (mode) {
 		.addStroke('command', 'z', commands.summaryBack)
 		.addStroke('command', '.', commands.summaryNext)
 		.addStroke('command', '?', commands.openHelpDialog)
-
 		.addStroke('command', 'c', commands.toggleCatalogVisibility)
 		.addStroke('command', 'p', commands.togglePanelVisibility)
 		.addStroke('command', 's', commands.activateStatisticsTab)
@@ -4404,7 +4413,7 @@ function install (mode) {
 		//.addStroke('command.edit', 'C-n', commands.cursorNext)
 		.addStroke('command.edit', '\u0002', commands.cursorBack)
 		.addStroke('command.edit', '\u0006', commands.cursorForward)
-		.addStroke('command.edit', '\u000d', function (e, t) {
+		.addStroke('command.edit', '\u000d', (e, t) => {
 			switch (t.id) {
 			case 'search-text':
 				commands.search(e, t);
@@ -4472,8 +4481,56 @@ function install (mode) {
 	 * history handler
 	 */
 
-	historyStateWrapper = createHistoryStateWrapper(function () {
-		commands.reload();
+	historyStateWrapper = createHistoryStateWrapper(e => {
+		/*
+		console.log([
+			`  previous page mode: ${pageModes[0]}`,
+			`current page address: ${location.href}`
+		].join('\n'));
+		*/
+
+		let isCatalog = window.location.hash == '#mode=cat';
+
+		if (pageModes[0] == 'catalog' && !isCatalog
+		||  pageModes[0] != 'catalog' && isCatalog) {
+			commands.toggleCatalogVisibility();
+		}
+
+		if (pageModes[0] == 'summary') {
+			commands.reload();
+		}
+		else if (pageModes[0] == 'catalog' && pageModes[1] == 'summary') {
+			let re = /(\d+)\.htm$/.exec(window.location.pathname);
+			let summaryIndex = re ? re[1] : 0;
+
+			// title sync
+			let titleElement = $qs('#header h1 a');
+			let title = titleElement
+				.textContent
+				.replace(/\s*\[ページ\s*\d+\]/, '');
+			if (summaryIndex) {
+				title += ` [ページ ${summaryIndex}]`;
+			}
+			$t(titleElement, title);
+
+			// page navigator sync
+			let navElement = $qs('#postform-wrap .nav-links');
+			let pageCount = navElement.childElementCount;
+			empty(navElement);
+			for (let i = 0; i < pageCount; i++) {
+				if (i == summaryIndex) {
+					let span = navElement.appendChild(document[CRE]('span'));
+					span.className = 'current';
+					$t(span, i);
+				}
+				else {
+					let a = navElement.appendChild(document[CRE]('a'));
+					a.className = 'switch-to';
+					a.href = `${location.protocol}//${location.host}/${siteInfo.board}/${i == 0 ? 'futaba' : i}.htm`;
+					$t(a, i);
+				}
+			}
+		}
 	});
 
 	/*
@@ -4713,7 +4770,7 @@ function install (mode) {
 
 	switch (queries.mode) {
 	case 'cat':
-		setTimeout(function () {
+		setTimeout(() => {
 			commands.toggleCatalogVisibility();
 		}, 1);
 		break;
@@ -6116,7 +6173,7 @@ function modalDialog (opts) {
 			}
 			footer.removeChild(footer.firstChild);
 		}
-		
+
 		(opt || '').split(/\s*,\s*/).forEach(function (opt) {
 			buttons.forEach(function (button, i) {
 				if (!button) return;
@@ -6494,8 +6551,9 @@ function getImageName (href, targetNode) {
 		imageDate = new Date;
 	}
 
-	// retrieve thread number
+	// retrieve thread number and first comment text
 	let threadNumber = 0;
+	let firstCommentText = '';
 	let p = targetNode;
 	while (p) {
 		if (p.nodeName == 'ARTICLE') {
@@ -6503,6 +6561,47 @@ function getImageName (href, targetNode) {
 			if (topicWrap) {
 				threadNumber = topicWrap.getAttribute('data-number') - 0 || 0;
 			}
+
+			Array.prototype.some.call(
+				$qsa('.comment', p),
+				node => {
+					let comment = node.textContent;
+					if (/^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
+						return false;
+					}
+
+					// substitute control characters
+					comment = comment.replace(/[\u0000-\u001f]+/g, ' ');
+					// strip Unicode BiDi overrides
+					comment = comment.replace(/[\u202d\u202e]/g, '');
+					// substitute reserved characters on some platforms
+                    // @see: https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file
+					const map = {
+						'<': '＜',
+						'>': '＞',
+						':': '：',
+						'/': '／',
+						'\\': '＼',
+						'?': '？',
+						'*': '＊'
+					};
+					comment = comment.replace(
+						/[<>:\/\\?*]/g, $0 => map[$0]);
+
+					// limit length of comment
+					// (it may have to be configurable?)
+					comment = comment.substring(0, 50);
+					comment = comment.replace(/[\ud800-\udbff]$/, '');
+
+					// trim surrounding spaces
+					comment = comment.replace(/^\s*|\s*$/g, '');
+
+					firstCommentText = comment;
+
+					return true;
+				}
+			);
+
 			break;
 		}
 		else {
@@ -6532,6 +6631,8 @@ function getImageName (href, targetNode) {
 				return re[3].substr(-3);
 			case 'EXT':
 				return re[4];
+			case 'TEXT':
+				return firstCommentText;
 			default:
 				return $0;
 			}
@@ -6539,7 +6640,12 @@ function getImageName (href, targetNode) {
 	);
 
 	f = '/' + f;
+	f = f.replace(/\\/g, '/');
 	f = f.replace(/\/\/+/g, '/');
+
+	// check imcompatible patterns
+	if (/\.\./.test(f)) return;
+	if (/\/(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])/i.test(f)) return;
 
 	return f;
 }
@@ -8396,6 +8502,35 @@ const commands = {
 
 				wrap.style.maxWidth = ((anchorWidth + CATALOG_ANCHOR_MARGIN) * horzActual) + 'px';
 
+				const attributeConverter1 = {
+					'href': (anchor, name, value) => {
+						anchor.setAttribute(name, `/${siteInfo.board}/${value}`);
+					},
+					'target': (anchor, name, value) => {
+						anchor.setAttribute(name, value);
+					}
+				};
+
+				const attributeConverter2 = {
+					'data-src': (img, pad, name, value) => {
+						img.src = restoreDistributedImageURL(
+							config.data.catalog_thumbnail_scale.value >= 1.5 ?
+								value.replace('/cat/', '/thumb/') : value);
+					},
+					'width': (img, pad, name, value) => {
+						value = Math.floor((value - 0) * config.data.catalog_thumbnail_scale.value);
+						img.style.width = value + 'px';
+					},
+					'height': (img, pad, name, value) => {
+						value = Math.floor((value - 0) * config.data.catalog_thumbnail_scale.value);
+						img.style.height = value + 'px';
+						pad.style.height = (cellImageHeight - value) + 'px';
+					},
+					'alt': (img, pad, name, value) => {
+						img.setAttribute('alt', value);
+					}
+				};
+
 				Array.prototype.forEach.call(
 					$qsa('table[align="center"] td a', doc),
 					function (node) {
@@ -8447,42 +8582,23 @@ const commands = {
 						// image
 						var pad = anchor.appendChild(document[CRE]('div'));
 
-						['href', 'target'].forEach(function (atr) {
-							var value = node.getAttribute(atr);
-							if (value == null) return;
-							anchor.setAttribute(atr.replace('data-', ''), value);
-						});
+						// attribute conversion #1
+						for (let atr in attributeConverter1) {
+							let value = node.getAttribute(atr);
+							if (value == null) continue;
+							attributeConverter1[atr](anchor, atr, value);
+						}
 
 						from = $qs('img', node);
 						if (from) {
 							to = anchor.appendChild(document[CRE]('img'));
-							['data-src', 'width', 'height', 'alt'].forEach(function (atr) {
-								var value = from.getAttribute(atr);
-								if (value == null) return;
 
-								switch (atr) {
-								case 'data-src':
-									to.src = restoreDistributedImageURL(
-										config.data.catalog_thumbnail_scale.value >= 1.5 ?
-											value.replace('/cat/', '/thumb/') : value);
-									break;
-
-								case 'width':
-									value = Math.floor((value - 0) * config.data.catalog_thumbnail_scale.value);
-									to.style.width = value + 'px';
-									break;
-
-								case 'height':
-									value = Math.floor((value - 0) * config.data.catalog_thumbnail_scale.value);
-									to.style.height = value + 'px';
-									pad.style.height = (cellImageHeight - value) + 'px';
-									break;
-
-								case 'alt':
-									to.setAttribute('alt', value);
-									break;
-								}
-							});
+							// attribute conversion #2
+							for (let atr in attributeConverter2) {
+								let value = from.getAttribute(atr);
+								if (value == null) continue;
+								attributeConverter2[atr](to, pad, atr, value);
+							}
 						}
 						else {
 							pad.style.height = cellImageHeight + 'px';
@@ -9146,32 +9262,36 @@ const commands = {
 	 */
 
 	toggleCatalogVisibility: function (e, t) {
-		var threads = $('content');
-		var catalog = $('catalog');
-		var ad = $('ad-aside-wrap');
-		var panel = $('panel-aside-wrap');
+		let threads = $('content');
+		let catalog = $('catalog');
+		let ad = $('ad-aside-wrap');
+		let panel = $('panel-aside-wrap');
 
+		// activate catalog
 		if (pageModes.length == 1) {
 			threads.classList.add('hide');
 			catalog.classList.remove('hide');
 			ad.classList.add('hide');
 			panel.classList.add('hide');
 			pageModes.unshift('catalog');
-			$t($qs('#header a[href="#catalog"]'), 'サマリー');
+			$t($qs('#header a[href="#toggle-catalog"] span'), siteInfo.resno ? 'スレッド' : 'サマリー');
 
-			var active = $qs(
+			let active = $qs(
 				'#catalog .catalog-threads-wrap > div:not([class*="hide"])');
 			if (active && active.childNodes.length == 0) {
 				commands.reloadCatalog();
 			}
-			historyStateWrapper.updateHash('#mode=cat');
+
+			historyStateWrapper.updateHash('mode=cat');
 		}
+
+		// deactivate catalog
 		else {
 			threads.classList.remove('hide');
 			catalog.classList.add('hide');
 			ad.classList.remove('hide');
 			panel.classList.add('hide');
-			$t($qs('#header a[href="#catalog"]'), 'カタログ');
+			$t($qs('#header a[href="#toggle-catalog"] span'), 'カタログ');
 			catalogPopup.deleteAll();
 			pageModes.shift();
 			historyStateWrapper.updateHash('');

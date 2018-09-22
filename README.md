@@ -7,11 +7,9 @@
 
 ## インストール
 
-* Opera 12 の場合
+* Opera の場合
 
-  1. エクステンションファイルを
-  https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.oex
-  からダウンロードします。
+  1. エクステンションファイルを [ダウンロード](https://github.com/akahuku/akahukuplus/raw/master/dist/akahukuplus.nex) します。
 
   2. Opera 上のエクステンション管理ページを開きます。
 
@@ -19,13 +17,15 @@
   インストールしてよいかどうかのダイアログが開くので、
   インストールを指示します。
 
-  * version 3.0 以降の赤福プラスは、2.60 までのそれとは別エクステンションの
-  扱いになります。2.60 をすでにインストールしてある場合は無効にするか、または
-  アンインストールしてください。
+  * version 3.1.238 以降の赤福プラスは、Opera 12.x をサポートしなくなりました。
+  最終版のアーカイブ は [有効](https://github.com/akahuku/akahukuplus/blob/master/dist/akahukuplus.oex) です。
 
 ## 使い方
 
 だいたい見ればわかるようになっている。
+
+Chrome に限り、画像を直接ローカルに保存することができますが、これにはとても
+難しい事前設定が必要です。[説明](https://akahuku.github.io/akahukuplus/how-to-save-image-with-chrome.html)をよく読んでください。
 
 ## ライセンス
 
