@@ -60,6 +60,7 @@
 	"web_accessible_resources": [
 		"images/*",
 		"sounds/*",
+		"styles/*",
 		"xsl/*"
 	],
 	"homepage_url": "http://akahuku.github.io/akahukuplus/",

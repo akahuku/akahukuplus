@@ -43,7 +43,7 @@ const IDEOGRAPH_CONVERSION_POST = false;
 const IDEOGRAPH_CONVERSION_UI = false;
 const FALLBACK_LAST_MODIFIED = 'Fri, 01 Jan 2010 00:00:00 GMT';
 
-const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
+const DEBUG_ALWAYS_LOAD_XSL = true;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
 const DEBUG_IGNORE_LAST_MODIFIED = false;	// default: false
 
@@ -364,6 +364,7 @@ function boot () {
 				document.body[IHTML] = '';
 				xsltProcessor.setParameter(null, 'page_mode', pageModes[0]);
 				xsltProcessor.setParameter(null, 'render_mode', 'full');
+				xsltProcessor.setParameter(null, 'platform', WasaviExtensionWrapper.IS_GECKO ? 'moz' : 'chrome');
 
 				var fragment = xsltProcessor.transformToFragment(xml, document);
 				if (!fragment) {
@@ -1272,6 +1273,8 @@ function createXMLGenerator () {
 			.appendChild(text(url));
 		element(metaNode, 'version')
 			.appendChild(text(version));
+		element(metaNode, 'extension_id')
+			.appendChild(text(getExtensionId()));
 
 		// strip control characters, include LF and CR
 		content = content.replace(/[\u0000-\u001f]/g, ' ');
@@ -2705,17 +2708,17 @@ function createQueryCompiler () {
 
 	function compile (q) {
 		query = q.replace(/^\s+|\s+$/g, '');
-		var result;
+		let result;
 		if (query.charAt(0) == '/' && query.substr(-1) == '/') {
 			try {
-				regex = new RegExp(query.substring(1, query.length - 1), 'i');
+				let regex = new RegExp(query.substring(1, query.length - 1), 'i');
 				result = {
-					test: function (target) {return regex.test(target)}
+					test: target => regex.test(target)
 				};
 			}
 			catch (e) {
 				result = {
-					test: function () {return false},
+					test: () => false,
 					message: '正規表現に誤りがあります'
 				};
 			}
@@ -2723,7 +2726,7 @@ function createQueryCompiler () {
 		else {
 			lex.lastIndex = lastIndex = 0;
 			reachedToEof = false;
-			var source;
+			let source;
 
 			try {
 				source = or(next());
@@ -2731,21 +2734,21 @@ function createQueryCompiler () {
 			}
 			catch (e) {
 				result = {
-					test: function () {return false},
-					message:e.message
+					test: () => false,
+					message: e.message
 				};
 			}
 
 			try {
-				var f = window[FUN];
+				let f = window[FUN];
 				result = {
 					test: new f('target', `return ${source}`)
 				};
 			}
 			catch (e) {
 				result = {
-					test: function () {return false},
-					message:e.message
+					test: () => false,
+					message: e.message
 				};
 			}
 		}
@@ -6554,6 +6557,7 @@ function getImageName (href, targetNode) {
 	// retrieve thread number and first comment text
 	let threadNumber = 0;
 	let firstCommentText = '';
+	let defaultCommentText = '';
 	let p = targetNode;
 	while (p) {
 		if (p.nodeName == 'ARTICLE') {
@@ -6567,38 +6571,13 @@ function getImageName (href, targetNode) {
 				node => {
 					let comment = node.textContent;
 					if (/^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
+						defaultCommentText = comment;
 						return false;
 					}
-
-					// substitute control characters
-					comment = comment.replace(/[\u0000-\u001f]+/g, ' ');
-					// strip Unicode BiDi overrides
-					comment = comment.replace(/[\u202d\u202e]/g, '');
-					// substitute reserved characters on some platforms
-                    // @see: https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file
-					const map = {
-						'<': '＜',
-						'>': '＞',
-						':': '：',
-						'/': '／',
-						'\\': '＼',
-						'?': '？',
-						'*': '＊'
-					};
-					comment = comment.replace(
-						/[<>:\/\\?*]/g, $0 => map[$0]);
-
-					// limit length of comment
-					// (it may have to be configurable?)
-					comment = comment.substring(0, 50);
-					comment = comment.replace(/[\ud800-\udbff]$/, '');
-
-					// trim surrounding spaces
-					comment = comment.replace(/^\s*|\s*$/g, '');
-
-					firstCommentText = comment;
-
-					return true;
+					else {
+						firstCommentText = comment;
+						return true;
+					}
 				}
 			);
 
@@ -6608,6 +6587,39 @@ function getImageName (href, targetNode) {
 			p = p.parentNode;
 		}
 	}
+	if (firstCommentText == '') {
+		firstCommentText = defaultCommentText;
+	}
+	if (firstCommentText == '') {
+		firstCommentText = 'NA';
+	}
+	// substitute control characters
+	firstCommentText = firstCommentText.replace(/[\u0000-\u001f]+/g, ' ');
+	// strip Unicode BiDi overrides
+	firstCommentText = firstCommentText.replace(/[\u202d\u202e]/g, '');
+	// substitute reserved characters on some platforms
+	// @see: https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file
+	const map = {
+		'<': '＜',
+		'>': '＞',
+		':': '：',
+		'/': '／',
+		'\\': '＼',
+		'?': '？',
+		'*': '＊'
+	};
+	firstCommentText = firstCommentText.replace(
+		/[<>:\/\\?*]/g, $0 => map[$0]);
+
+	// limit length of firstCommentText
+	// (it may have to be configurable?)
+	firstCommentText = firstCommentText.substring(0, 50);
+	firstCommentText = firstCommentText.replace(/[\ud800-\udbff]$/, '');
+
+	// trim surrounding spaces
+	firstCommentText = firstCommentText.replace(/^\s*|\s*$/g, '');
+
+
 
 	let f = config.data.save_image_name_template.value.replace(
 		/\$([A-Z]+)/g,
@@ -6835,9 +6847,9 @@ function getReadableSize (s) {
 }
 
 function displayInlineVideo (anchor) {
-	var thumbnail = $qs('img', anchor);
-	var video = document[CRE]('video');
-	var props = {
+	let thumbnail = $qs('img', anchor);
+	let video = document[CRE]('video');
+	let props = {
 		autoplay: true,
 		controls: true,
 		//loop: true,
@@ -6846,20 +6858,43 @@ function displayInlineVideo (anchor) {
 		volume: 0.2
 	};
 
-	for (var i in props) {
+	for (let i in props) {
 		video[i] = props[i];
 	}
 
-	anchor.parentNode.insertBefore(video, anchor);
+	// video file on siokara
+	if (/\/\/www\.nijibox\d+\.com\//.test(anchor.href)) {
+		/*
+		 * div.link-siokara
+		 *   a.lightbox
+		 *   div
+		 *     a.lightbox.siokara-thumbnail
+		 *       img
+		 *   div
+		 *     [保存する]
+		 */
+		thumbnail = $qs('img', anchor.parentNode);
+		anchor = thumbnail.parentNode;
+		anchor.parentNode.insertBefore(video, anchor);
+		thumbnail.classList.add('hide');
 
-	if (thumbnail) {
-		var r = thumbnail.getBoundingClientRect();
-		thumbnail.style.display = 'none';
+		video.style.width = '250px';
+	}
+	// video file on futaba
+	else if (thumbnail) {
+		anchor.parentNode.insertBefore(video, anchor);
+
+		let r = thumbnail.getBoundingClientRect();
+		thumbnail.classList.add('hide');
 
 		video.style.width = r.width + 'px';
 		video.style.height = r.height + 'px';
 	}
+	// other
 	else {
+		let container = anchor.parentNode.insertBefore(
+			document[CRE]('div'), anchor.nextSibling);
+		container.appendChild(video);
 		video.style.width = '250px';
 	}
 }
@@ -7513,6 +7548,9 @@ function extractSiokaraThumbnails () {
 
 	function getHandler (node) {
 		return function (data) {
+			if (!data && /\.(webm|mp4)$/.test(node.href)) {
+				data = chrome.extension.getURL('images/siokara-video.png');
+			}
 			if (data) {
 				let div = document[CRE]('div');
 				div.className = 'link-siokara';
@@ -8049,6 +8087,15 @@ function setPostThumbnail (file, callback) {
 		thumbWrap = thumb = null;
 		callback && callback();
 	});
+}
+
+function getExtensionId () {
+	// extension id can be retrieved by chrome.runtime.id in chrome,
+	// but Firefox's WebExtensions distinguishes extension id from
+	// runtime UUID.
+	let url = chrome.extension.getURL('README.md');
+	let re = /^[^:]+:\/\/([^\/]+)/.exec(url);
+	return re[1];
 }
 
 /*
@@ -9375,12 +9422,13 @@ const commands = {
 	search: function () {
 		var tester = createQueryCompiler().compile($('search-text').value);
 		if (tester.message) {
-			log(tester.message);
+			$t('search-result-count', tester.message);
 			return;
 		}
 
 		var result = $('search-result');
 		var matched = 0;
+		$('search-guide').classList.add('hide');
 		empty(result);
 
 		Array.prototype.forEach.call(
