@@ -8,10 +8,13 @@
 <xsl:output method="html" version="5" encoding="UTF-8"/>
 <xsl:variable name="sub_default" select="/futaba/meta/sub_default"/>
 <xsl:variable name="name_default" select="/futaba/meta/name_default"/>
+<xsl:param name="app_name"/>
+<xsl:param name="dev_mode"/>
 <xsl:param name="page_mode"/>
 <xsl:param name="render_mode"/>
 <xsl:param name="low_bound_number"/>
 <xsl:param name="platform"/>
+<xsl:param name="sort_order"/>
 
 <!-- transform entry point -->
 <xsl:template match="/">
@@ -31,7 +34,7 @@
 <xsl:template match="futaba" mode="full">
 <html lang="ja">
 	<head>
-		<meta name="generator" content="akahukuplus"/>
+		<meta name="generator" content="{$app_name}"/>
 		<meta http-equiv="Content-type" content="text/html; charset=UTF-8"/>
 		<meta http-equiv="Content-Script-Type" content="text/javascript"/>
 		<meta http-equiv="Content-Style-Type" content="text/css"/>
@@ -45,7 +48,7 @@
 
 body {
 	margin:0;
-	padding:8px;
+	padding:0 8px 8px 8px;
 	background-color:#ffe;
 	color:#800;
 	overflow-x:hidden;
@@ -98,6 +101,10 @@ a.js kbd {
 	background-color:#682;
 }
 
+a.js:hover kbd {
+	background-color:#d44;
+}
+
 .hide {
 	display:none !important;
 }
@@ -122,7 +129,8 @@ a.js kbd {
 
 #header {
 	position:fixed;
-	display:table;
+	display:flex;
+	align-items:center;
 	left:0;
 	right:0;
 	top:0;
@@ -138,20 +146,24 @@ a.js kbd {
 }
 
 #header > div {
-	display:table-cell;
-	vertical-align:middle;
-	padding:8px 12px 8px 8px;
 	font-size:small;
 	text-align:left;
 }
 
-#header > div:first-child {
+#header > div:nth-child(1) {
+	padding:8px 12px 8px 8px;
 	white-space:nowrap;
-	width:10%;
 }
 
-#header > div:last-child {
+#header > div:nth-child(2) {
+	padding:4px 0 4px 0;
+	flex-grow:1;
+}
+
+#header > div:nth-child(3) {
+	padding:4px 8px 4px 8px;
 	text-align:right;
+	white-space:nowrap;
 }
 
 #header h1 {
@@ -166,6 +178,10 @@ a.js kbd {
 #header h1 a {
 	color:inherit;
 	text-decoration:inherit;
+}
+
+#header label {
+	white-space:nowrap;
 }
 
 #header img {
@@ -195,14 +211,17 @@ a.js kbd {
 }
 
 #content {
-	margin:40pt 0 0 0;
+	margin:0;
 	position:relative;
 	left:0;
+	background-color:#ffe;
+}
+
+#content.transition-enabled {
 	transition-property:left;
 	transition-duration:.4s;
 	transition-timing-function:ease;
 	transition-delay:0s;
-	background-color:#ffe;
 }
 
 #content.init {
@@ -210,14 +229,22 @@ a.js kbd {
 }
 
 #content > article {
-	display:table;
+	display:flex;
 	width:100%;
 }
 
-#content > article > div {
-	display:table-cell;
-	vertical-align:top;
+#content > article > .image {
+	max-width:250px;
 	padding:0 12px 0 0;
+}
+
+#content > article > .text {
+	flex-grow:1;
+	padding:0 12px 0 0;
+}
+
+#content > article > .aside {
+	width:24%;
 }
 
 .page-mode-header {
@@ -397,11 +424,15 @@ a.js kbd {
 
 /* thread image */
 #content > article > .image {
-	width:10%;
 	font-size:small;
 	text-align:center;
 	line-height:1.25;
 	white-space:nowrap;
+}
+
+#content > article > .image > div {
+	position:sticky;
+	top:0;
 }
 
 #content > article > .image a {
@@ -726,6 +757,24 @@ article.summary .replies {
 	width:100%;
 }
 
+#postform {
+	display:block;
+	position:relative;
+}
+
+#postform .drop-indicator {
+	position:absolute;
+	display:flex;
+	justify-content:center;
+	align-items:center;
+	left:0;
+	top:0;
+	right:0;
+	bottom:0;
+	background-color:#ffe;
+	font-size:medium;
+}
+
 #name {
 	color:#117743;
 	font-weight:bold;
@@ -919,14 +968,14 @@ article.summary .replies {
 	flex-direction:column;
 	width:24%;
 	top:40pt;
-	right:-24%;
+	right:-28%;
 	bottom:8pt;
 	background-color:rgba(255,255,238,.6);
 	border-radius:4px 0 0 4px;
 	box-shadow:0 0 8px 2px rgba(0,0,0,.3);
 	transition-property:right;
-	transition-duration:.4s;
-	transition-timing-function:cubic-bezier(0, 1, 1, 1);
+	transition-duration:.3s;
+	transition-timing-function:ease;
 	transition-delay:0s;
 }
 
@@ -978,21 +1027,21 @@ article.summary .replies {
 
 #panel-aside-wrap .panel-content-wrap {
 	flex:1;
-}
-
-#panel-aside-wrap .panel-content-wrap > div {
 	box-sizing:border-box;
 	padding:8px;
 	font-size:small;
 	overflow-y:auto;
-	height:300px;
 }
+
+/*#panel-aside-wrap .panel-content-wrap > div {
+	height:300px;
+	}*/
 
 /*
  * panel content: mark and id statistics
  */
 
-#panel-aside-wrap #panel-content-mark h2 {
+#panel-content-mark h2 {
 	margin:0 0 4px 0;
 	padding: 0 0 4px 0;
 	border-bottom:1px solid silver;
@@ -1001,36 +1050,40 @@ article.summary .replies {
 	font-weight:bold;
 }
 
-#panel-aside-wrap #panel-content-mark h2 span {
+#panel-content-mark h2:not(:first-child) {
+	margin-top:1em;
+}
+
+#panel-content-mark h2 span {
 	margin:0 0 0 4px;
 	font-size:medium;
 	font-weight:normal;
 }
 
-#panel-aside-wrap #panel-content-mark ul {
+#panel-content-mark ul {
 	margin:0;
 	padding:0 0 0 1em;
 }
 
-#panel-aside-wrap #panel-content-mark li {
+#panel-content-mark li {
 	line-height:1.5;
 }
 
-#panel-aside-wrap #panel-content-mark li p {
+#panel-content-mark li p {
 	margin:1em 0 4px 0;
 }
 
-#panel-aside-wrap #panel-content-mark li p.sub-header {
+#panel-content-mark li p.sub-header {
 	font-weight:bold;
 	border-bottom:1px dotted silver;
 }
 
-#panel-aside-wrap #panel-content-mark li p.sub-header span {
+#panel-content-mark li p.sub-header span {
 	margin:0 0 0 4px;
 	font-weight:normal;
 }
 
-#panel-aside-wrap #panel-content-mark li span.a {
+#panel-content-mark li a {
 	display:inline-block;
 	margin:0 4px 4px 0;
 	padding:4px;
@@ -1040,14 +1093,15 @@ article.summary .replies {
 	color:#555;
 	line-height:1;
 	font-size:x-small;
+	text-decoration:none;
 }
 
-#panel-aside-wrap #panel-content-mark li span.new {
+#panel-content-mark li a.new {
 	font-weight:bold;
 }
 
-#panel-aside-wrap #panel-content-mark li span.a:hover,
-#panel-aside-wrap #panel-content-mark li span.new:hover {
+#panel-content-mark li a:hover,
+#panel-content-mark li a.new:hover {
 	background-color:#fec;
 }
 
@@ -1055,22 +1109,22 @@ article.summary .replies {
  * panel content: search
  */
 
-#panel-aside-wrap #panel-content-search .search-form {
+#panel-content-search .search-form-wrap form {
 	display:flex;
 }
 
-#panel-aside-wrap #panel-content-search input[type="text"] {
+#panel-content-search input[type="text"] {
 	flex:1;
 	box-sizing:border-box;
 	margin:0;
 }
 
-#panel-aside-wrap #panel-content-search #search-guide {
+#panel-content-search #search-guide {
 	margin:8px 0 4px 0;
 	font-size:small;
 }
 
-#panel-aside-wrap #panel-content-search #search-result-count {
+#panel-content-search #search-result-count {
 	margin:8px 0 4px 0;
 	padding:0;
 	font-size:small;
@@ -1078,11 +1132,12 @@ article.summary .replies {
 	line-height:1;
 }
 
-#panel-aside-wrap #panel-content-search #search-result {
+#panel-content-search #search-result {
 	height:300px;
 }
 
-#panel-aside-wrap #panel-content-search #search-result > div {
+#panel-content-search #search-result > a {
+	display:block;
 	margin:0 0 4px 4px;
 	padding:4px;
 	border:1px solid #ccc;
@@ -1091,10 +1146,33 @@ article.summary .replies {
 	color:#555;
 	line-height:1.1;
 	font-size:x-small;
+	text-decoration:none;
+	word-break:break-all;
 }
 
-#panel-aside-wrap #panel-content-search #search-result > div:hover {
+#panel-content-search #search-result > a.new {
+	background-color:#cfc;
+}
+
+#panel-content-search #search-result > a:visited {
+	background-color:#f0e0d6;
+}
+
+#panel-content-search #search-result > a:hover {
 	background-color:#fec;
+}
+
+#panel-content-search #search-result > a img {
+	float:left;
+	margin:0 4px 4px 0;
+	max-width:50px;
+}
+
+#panel-content-search #search-result > a .sentinel {
+	clear:both;
+	margin:4px 0 0 0;
+	padding:0;
+	text-align:right;
 }
 
 /*
@@ -1439,14 +1517,16 @@ article.summary .replies {
 	padding:6px 8px 4px 8px;
 	background-color:#fff;
 	color:#333;
-	box-shadow:0 0 4px 2px rgba(0,0,0,.25);
+	box-shadow:0 1px 4px 2px rgba(0,0,0,.25);
 	line-height:1;
 	text-align:center;
 	text-decoration:none;
+	/*
 	transition-property:background-color;
 	transition-duration:.2s;
 	transition-timing-function:ease-in;
 	transition-delay:0s;
+	*/
 }
 
 .dialog-wrap .dialog-content-footer > a + a {
@@ -1518,8 +1598,8 @@ article.summary .replies {
 }
 
 #catalog .catalog-options span + span:before {
-	margin:0 0 0 8px;
-	content: " | ";
+	margin:0 8px 0 8px;
+	content: "|";
 }
 
 #catalog .catalog-options input[type="text"] {
@@ -1545,13 +1625,15 @@ article.summary .replies {
 	transition-timing-function:ease;
 	transition-delay:0s;
 	opacity:1;
+	counter-reset: pageindex -1;
 }
 
 #catalog .catalog-threads-wrap > div.run {
-	opacity:.5;
+	opacity:.3;
 }
 
 #catalog .catalog-threads-wrap > div > a {
+	position:relative;
 	display:block;
 	box-sizing:border-box;
 	margin:0 2px 2px 0;
@@ -1559,29 +1641,57 @@ article.summary .replies {
 	border:1px inset #ccc;
 	font-size:small;
 	line-height:1;
-	/*width:60px;*/
 	text-align:center;
 	color:#800;
 	text-decoration:none;
 }
 
-#catalog .catalog-threads-wrap img {
+#catalog #catalog-threads-wrap-default > a:nth-child(10n+1)::after {
+	position:absolute;
+	left:-1px;
+	top:-1px;
+	padding:0 2px 2px 0;
+	border-radius:0 0 3px 0;
+	border-style:none outset outset none;
+	border-width:1px;
+	border-color:#ccc;
+	background-color:#ffe;
+	color:#855;
+	line-height:1;
+	font-weight:bold;
+	counter-increment:pageindex;
+	content: counter(pageindex);
+}
+
+#catalog #catalog-threads-wrap-default > a.visited:nth-child(10n+1)::after,
+#catalog #catalog-threads-wrap-default > a.soft-visited:nth-child(10n+1)::after {
+	border:none;
+}
+
+#catalog #catalog-threads-wrap-default > a.warned:nth-child(10n+1)::after {
+	left:-2px;
+	top:-2px;
+	border-style:none solid solid none;
+	border-color:#d00;
+	border-width:2px;
+	color:#d00;
+}
+
+#catalog .catalog-threads-wrap .image {
+	display:flex;
+	flex-direction:column;
+	justify-content:flex-end;
+	align-items:center;
 	margin:0 0 2px 0;
 }
 
 #catalog .catalog-threads-wrap a:link { background-color:#ffe; }
 #catalog .catalog-threads-wrap a:visited,
-#catalog .catalog-threads-wrap a.soft-visited { background-color:#f0e0d6; border-color:#f0e0d6; }
-/*#catalog .catalog-threads-wrap a:hover { background-color:#fc6; }*/
+#catalog .catalog-threads-wrap a.soft-visited { background-color:#f0e0d6; border-color:#f0e0d6; border-style:solid; }
 #catalog .catalog-threads-wrap a:active { background-color:#ea8; }
 #catalog .catalog-threads-wrap a.new { background-color:#cfc; border-color:#cfc; }
-#catalog .catalog-threads-wrap a.long { background-color:#cfc; border-color:#cfc; }
+#catalog .catalog-threads-wrap a.long { background-color:#c9e6e9; border-color:#c9e6e9; }
 #catalog .catalog-threads-wrap a.warned { border:2px solid #d00; padding:1px; }
-
-#catalog .catalog-threads-wrap a:nth-child(111),
-#catalog .catalog-threads-wrap a:nth-child(121) {
-	background-color:#eeaa88 !important;
-}
 
 #catalog .catalog-threads-wrap .info {
 	padding:1px;
@@ -1613,6 +1723,7 @@ div.catalog-popup {
 	box-shadow:0 0 4px 4px rgba(0,0,0,.25);
 	box-sizing:border-box;
 	font-size:x-small;
+	word-break:break-all;
 	overflow:hidden;
 	text-overflow:ellipsis;
 	transition-property:opacity;
@@ -1648,13 +1759,26 @@ div.catalog-popup span {
 	font-size:small;
 }
 
+#quote-popup-pool2 .quote-popup {
+	position:fixed;
+	box-sizing:border-box;
+	border:1px solid #ea8;
+	border-radius:3px;
+	padding:4px 4px 0 4px;
+	max-width:50%;
+	background-color:#ffe;
+	box-shadow:0 1px 4px 2px rgba(0,0,0,.3);
+	font-size:small;
+}
+
 .highlight.topic-wrap,
 .highlight.reply-wrap > div:last-child {
 	color:HighlightText !important;
 	background-color:Highlight !important;
 }
 
-#quote-popup-pool .quote-popup .jumpto-quote-anchor {
+#quote-popup-pool .quote-popup .jumpto-quote-anchor,
+#quote-popup-pool2 .quote-popup .jumpto-quote-anchor {
 	margin-right:.5em;
 	font-weight:bold;
 }
@@ -1705,6 +1829,19 @@ div.catalog-popup span {
 	border-top:1px solid silver;
 	border-bottom:1px solid #fff;
 }
+
+/*
+ * internal submit target
+ */
+
+#internal-submit-target {
+	position:absolute;
+	left:-100px;
+	top:0;
+	width:100px;
+	height:100px;
+	border:none;
+}
 		</style>
 		<link rel="stylesheet" href="{$platform}-extension://{meta/extension_id}/styles/extra-{$platform}.css"/>
 		<style id="dynstyle-comment-maxwidth"></style>
@@ -1719,6 +1856,10 @@ div.catalog-popup span {
 				&#160; <a class="js" href="#toggle-catalog"><kbd>c</kbd><span>カタログ</span></a>
 				&#160; <a class="js" href="#delete-post">記事削除</a>
 				<xsl:if test="$page_mode='reply'"> &#160; <a class="js" href="#track">自動追尾</a></xsl:if>
+				<xsl:if test="$dev_mode='1'">
+					&#160; <a class="js" href="#reload-ext">Reload Extension</a>
+					&#160; <label><input type="checkbox" data-href="#toggle-logging"/>Timing log</label>
+				</xsl:if>
 			</div>
 			<div>
 				<a href="{meta/home}" target="_top">ホーム</a>
@@ -1735,19 +1876,19 @@ div.catalog-popup span {
 			<div class="page-mode-header catalog-mode">カタログモード</div>
 			<div class="catalog-options">
 				<div>
-					<span><a class="catalog-order active" href="#catalog-order-default">カタログ</a></span>
-					<span><a class="catalog-order" href="#catalog-order-new">新順</a></span>
-					<span><a class="catalog-order" href="#catalog-order-old">古順</a></span>
-					<span><a class="catalog-order" href="#catalog-order-most">多順</a></span>
-					<span><a class="catalog-order" href="#catalog-order-less">少順</a></span>
-					<span><a class="catalog-order" href="#catalog-order-hist">履歴</a></span>
+					<span><a  class="catalog-order js {substring('active',1,6*number($sort_order='default'))}" href="#catalog-order-default">カタログ</a></span
+					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='new'    ))}" href="#catalog-order-new">新順</a></span
+					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='old'    ))}" href="#catalog-order-old">古順</a></span
+					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='most'   ))}" href="#catalog-order-most">多順</a></span
+					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='less'   ))}" href="#catalog-order-less">少順</a></span
+					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='hist'   ))}" href="#catalog-order-hist">履歴</a></span>
 				</div>
 				<div>
 					<span>
 						<label>横: <input id="catalog-horz-number" type="text"/></label>
 						× <label>縦: <input id="catalog-vert-number" type="text"/> スレッド</label>
-					</span>
-					<span><label><xsl:element name="input">
+					</span
+					><span><label><xsl:element name="input">
 						<xsl:attribute name="class">catalog-settings-item</xsl:attribute>
 						<xsl:attribute name="id">catalog-with-text</xsl:attribute>
 						<xsl:attribute name="data-href">#catalog-with-text</xsl:attribute>
@@ -1755,93 +1896,86 @@ div.catalog-popup span {
 						<xsl:if test="meta/configurations/param[@name='catalog.text']/@value='1'">
 							<xsl:attribute name="checked">checked</xsl:attribute>
 						</xsl:if>
-					</xsl:element>本文も取得</label></span>
+					</xsl:element>本文も取得</label></span><span><a class="js" href="#save-catalog-settings">設定を更新</a></span>
 				</div>
 			</div>
 			<div class="catalog-threads-wrap">
-				<div id="catalog-threads-wrap-default"></div>
-				<div class="hide" id="catalog-threads-wrap-new"></div>
-				<div class="hide" id="catalog-threads-wrap-old"></div>
-				<div class="hide" id="catalog-threads-wrap-most"></div>
-				<div class="hide" id="catalog-threads-wrap-less"></div>
-				<div class="hide" id="catalog-threads-wrap-hist"></div>
+				<div class="{substring('hide',1,4*number($sort_order!='default'))}" id="catalog-threads-wrap-default"></div>
+				<div class="{substring('hide',1,4*number($sort_order!='new'    ))}" id="catalog-threads-wrap-new"></div>
+				<div class="{substring('hide',1,4*number($sort_order!='old'    ))}" id="catalog-threads-wrap-old"></div>
+				<div class="{substring('hide',1,4*number($sort_order!='most'   ))}" id="catalog-threads-wrap-most"></div>
+				<div class="{substring('hide',1,4*number($sort_order!='less'   ))}" id="catalog-threads-wrap-less"></div>
+				<div class="{substring('hide',1,4*number($sort_order!='hist'   ))}" id="catalog-threads-wrap-hist"></div>
 			</div>
 			<hr/>
 		</div>
 		<footer id="footer">
 			<div class="amazon">
-				<img src="{$platform}-extension://{meta/extension_id}/images/gaoru.png"/>
+				<a href="#reload" title="リロード"><img src="{$platform}-extension://{meta/extension_id}/images/gaoru.png"/></a>
 			</div>
 			<div class="credit">—
-			<a href="http://php.s3.to" target="_top">GazouBBS</a>
-			+ <a href="//www.2chan.net/" target="_top">futaba</a>
-			/ This page is under control of <a href="https://akahuku.github.io/akahukuplus/" target="_blank">akahukuplus/<xsl:value-of select="meta/version"/></a>
+				<a href="http://php.loglog.jp/bbs/bbs3.php" target="_blank">GazouBBS</a>
+				+ <a href="//www.2chan.net/" target="_top">futaba</a>
+				/ This page is under control of <a href="https://akahuku.github.io/akahukuplus/" target="_blank"><xsl:value-of select="$app_name"/>/<xsl:value-of select="meta/version"/></a>
 			—</div>
 		</footer>
 		<div class="wheel-status hide" id="wheel-status"><span>wow</span><img width="10" height="2" src="{$platform}-extension://{meta/extension_id}/images/cursor.gif"/></div>
 		<div id="ad-aside-wrap">
-			<xsl:choose>
-				<xsl:when test="meta/configurations/param[@name='banner_enabled']/@value='1'">
-					<xsl:for-each select="meta/ads/banners/ad">
-						<div class="{@class}">
-							<xsl:element name="iframe">
-								<xsl:attribute name="frameborder">0</xsl:attribute>
-								<xsl:attribute name="scrolling">no</xsl:attribute>
-								<xsl:attribute name="width"><xsl:value-of select="@width"/></xsl:attribute>
-								<xsl:attribute name="height"><xsl:value-of select="@height"/></xsl:attribute>
-								<xsl:attribute name="src"><xsl:value-of select="@src"/></xsl:attribute>
-							</xsl:element>
-						</div>
-					</xsl:for-each>
-				</xsl:when>
-				<xsl:otherwise>
-					<xsl:for-each select="meta/ads/banners/ad">
-						<div class="{@class}" data-banner-markup="{@src}"></div>
-					</xsl:for-each>
-				</xsl:otherwise>
-			</xsl:choose>
+			<xsl:if test="meta/configurations/param[@name='banner_enabled']/@value='1'">
+				<xsl:for-each select="meta/ads/banners/ad">
+					<div class="{@class}">
+						<xsl:element name="iframe">
+							<xsl:attribute name="frameborder">0</xsl:attribute>
+							<xsl:attribute name="scrolling">no</xsl:attribute>
+							<xsl:attribute name="width"><xsl:value-of select="@width"/></xsl:attribute>
+							<xsl:attribute name="height"><xsl:value-of select="@height"/></xsl:attribute>
+							<xsl:attribute name="src"><xsl:value-of select="@src"/></xsl:attribute>
+						</xsl:element>
+					</div>
+				</xsl:for-each>
+			</xsl:if>
 		</div>
-		<div id="panel-aside-wrap" class="hide">
+		<div id="panel-aside-wrap">
 			<div class="panel-header">パネル</div>
 			<div class="panel-tab-wrap">
-				<a class="panel-tab active" href="#mark"><kbd>s</kbd>集計</a>
-				<a class="panel-tab" href="#search"><kbd>/</kbd>レス検索</a>
-				<a class="panel-tab" href="#notice"><kbd>n</kbd>注意書き</a>
+				<a class="panel-tab active" href="#mark"><kbd>s</kbd><span>集計</span></a>
+				<a class="panel-tab" href="#search"><kbd>/</kbd><span>レス検索</span></a>
+				<a class="panel-tab" href="#notice"><kbd>n</kbd><span>注意書き</span></a>
 			</div>
-			<div class="panel-content-wrap">
-				<div id="panel-content-mark" data-stretch="true">
-					<h2>マークの集計</h2>
+			<div id="panel-content-mark" class="panel-content-wrap">
+				<h2>マークの集計</h2>
+				<ul>
+					<li class="hide"><p>管理人さん<span></span></p><div id="stat-admin"></div></li>
+					<li class="hide"><p>なー<span></span></p><div id="stat-nar"></div></li>
+					<li class="hide"><p>スレッドを立てた人によって削除<span></span></p><div id="stat-passive"></div></li>
+					<li class="hide"><p>書き込みをした人によって削除<span></span></p><div id="stat-active"></div></li>
+					<li class="hide"><p>その他の赤字<span></span></p><div id="stat-other"></div></li>
+				</ul>
+				<h2>ID の集計<span id="stat-id-header"></span></h2>
+				<ul id="stat-id"></ul>
+			</div>
+			<div id="panel-content-search" class="panel-content-wrap hide">
+				<div class="search-form-wrap">
+					<form id="search-form" target="internal-submit-target" method="get" action="about:blank">
+						<input type="text" id="search-text" autocomplete="on"/>
+						<button type="submit" id="search-submit">検索</button>
+					</form>
+				</div>
+				<div id="search-result-count"></div>
+				<div id="search-guide">
+					<b>クエリの文法</b>
 					<ul>
-						<li class="hide"><p>管理人さん<span></span></p><div id="stat-admin"></div></li>
-						<li class="hide"><p>なー<span></span></p><div id="stat-nar"></div></li>
-						<li class="hide"><p>スレッドを立てた人によって削除<span></span></p><div id="stat-passive"></div></li>
-						<li class="hide"><p>書き込みをした人によって削除<span></span></p><div id="stat-active"></div></li>
-						<li class="hide"><p>その他の赤字<span></span></p><div id="stat-other"></div></li>
+						<li>A B ─ A と B を含むレスを検索。これは「|」より優先されます</li>
+						<li>A | B ─ A または B いずれかを含むレスを検索</li>
+						<li>-A ─ A を含まないレスを検索</li>
+						<li>( A ) ─ 式のグループ化</li>
 					</ul>
-					<h2>ID の集計<span id="stat-id-header"></span></h2>
-					<ul id="stat-id"></ul>
+					<p>英文字の大文字・小文字は同一視されます。</p>
+					<p>先頭および末尾を / で囲んだ場合は正規表現とみなされます。</p>
 				</div>
-				<div id="panel-content-search" class="hide">
-					<div class="search-form">
-						<input type="text" id="search-text"/>
-						<button data-href="#search-start">検索</button>
-					</div>
-					<div id="search-result-count"></div>
-					<div id="search-guide">
-						<b>クエリの文法</b>
-						<ul>
-							<li>A B ─ A と B を含むレスを検索。これは「|」より優先されます</li>
-							<li>A | B ─ A または B いずれかを含むレスを検索</li>
-							<li>-A ─ A を含まないレスを検索</li>
-							<li>( A ) ─ 式のグループ化</li>
-						</ul>
-						<p>英文字の大文字・小文字は同一視されます。</p>
-						<p>先頭および末尾を / で囲んだ場合は正規表現とみなされます。</p>
-					</div>
-					<div id="search-result" data-stretch="true"></div>
-				</div>
-				<div id="panel-content-notice" class="hide" data-binding="template:notices"></div>
+				<div id="search-result"></div>
 			</div>
+			<div id="panel-content-notice" class="panel-content-wrap hide" data-binding="template:notices"></div>
 		</div>
 		<div id="postform-wrap">
 			<xsl:if test="meta/postform">
@@ -1889,6 +2023,9 @@ div.catalog-popup span {
 						<xsl:apply-templates select="meta/postform/input[@name='pwd']"/>
 						</table>
 					</fieldset>
+					<div id="postform-drop-indicator" class="drop-indicator hide">
+						<div>ファイルをドロップできます</div>
+					</div>
 				</form>
 			</div>
 			</xsl:if>
@@ -1896,9 +2033,9 @@ div.catalog-popup span {
 				<xsl:if test="$page_mode!='reply'">
 				<div class="nav-links" data-binding="template:navigator"></div>
 				<div class="tips">
-					<kbd>z</kbd>前
-					<kbd>.</kbd>次
-					<kbd>r</kbd>リロード
+					<a class="js" href="#prev-summary"><kbd>z</kbd>前</a>
+					&#160; <a class="js" href="#next-summary"><kbd>.</kbd>次</a>
+					&#160; <a class="js" href="#reload"><kbd>r</kbd>リロード</a>
 					<kbd>i</kbd>フォームを開く
 				</div>
 				</xsl:if>
@@ -1923,7 +2060,7 @@ div.catalog-popup span {
 			</div>
 			<div id="comment-backend"></div>
 		</div>
-		<div id="quote-popup-pool"/>
+		<div id="quote-popup-pool"/><div id="quote-popup-pool2"/>
 		<div id="selection-menu" class="hide">
 			<a class="selmenu l" href="#ss-quote">引用</a>
 			<a class="selmenu l" href="#ss-pull">コメントへ</a>
@@ -1982,7 +2119,7 @@ div.catalog-popup span {
 			<div class="dimmer"></div>
 			<div class="image-wrap"></div>
 			<div class="loader-wrap">
-				<div><img/><p>読み込み中...</p></div>
+				<div><img src="{$platform}-extension://{meta/extension_id}/images/icon128.png"/><p>読み込み中...</p></div>
 			</div>
 			<div class="receiver">
 				<div class="info hide">
@@ -2004,11 +2141,14 @@ div.catalog-popup span {
 				<div>
 					<div class="dialog-content-title">タイトル</div>
 					<div class="dialog-content" id="dialog-content"></div>
-					<div class="dialog-content-footer"><a href="#apply-dialog">適用</a><a href="#ok-dialog">OK</a><a href="#cancel-dialog">キャンセル</a></div>
+					<div class="dialog-content-footer"><a href="#apply-dialog">適用</a><a href="#ok-dialog"><kbd>&#x23ce;</kbd>OK</a><a href="#cancel-dialog"><kbd>esc</kbd>キャンセル</a></div>
 					<div class="dialog-content-title-ex"><a class="close-button" href="#cancel-dialog"></a></div>
 				</div>
 			</div>
 		</div>
+		<iframe id="internal-submit-target"
+			name="internal-submit-target"
+			src="about:blank"></iframe>
 	</body>
 </html>
 </xsl:template>

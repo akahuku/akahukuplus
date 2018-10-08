@@ -6,27 +6,32 @@
  * @author akahuku@gmail.com
  */
 
+if (true) {
+
 /*
  * consts
  */
 
+const APP_NAME = 'akahukuplus';
 const FUTABA_CHARSET = 'Shift_JIS';
-const NOTFOUND_TITLE = '404 File Not Found';
-const WAIT_AFTER_INIT_TRANSITION = 1000;
+const NOTFOUND_TITLE = /404\s+file\s+not\s+found/i;
 const WAIT_AFTER_RELOAD = 500;
 const WAIT_AFTER_POST = 500;
 const LEAD_REPLIES_COUNT = 50;
 const REST_REPLIES_PROCESS_COUNT = 50;
-const REST_REPLIES_PROCESS_INTERVAL = 200;
+const REST_REPLIES_PROCESS_INTERVAL = 100;
 const POSTFORM_DEACTIVATE_DELAY = 500;
-const BANNER_LOAD_DELAY = 1000;
 const POSTFORM_LOCK_RELEASE_DELAY = 1000;
 const RELOAD_LOCK_RELEASE_DELAY = 1000 * 3;
-const RELOAD_AUTO_SCROLL_CONSUME = 200;
+const RELOAD_AUTO_SCROLL_CONSUME = 300;
 const WHEEL_RELOAD_UNIT_SIZE = 120;
 const WHEEL_RELOAD_DEFAULT_FACTOR = 3;
 const WHEEL_RELOAD_THRESHOLD_OVERRIDE = 0;
 const NETWORK_ACCESS_MIN_INTERVAL = 1000 * 3;
+const QUOTE_POPUP_DELAY_MSEC = 1000 * 0.5;
+const QUOTE_POPUP_HIGHLIGHT_MSEC = 1000 * 2;
+const QUOTE_POPUP_HIGHLIGHT_TOP_MARGIN = 64;
+const QUOTE_POPUP_POS_OFFSET = 8;
 const CATALOG_ANCHOR_PADDING = 5 * 2;
 const CATALOG_ANCHOR_MARGIN = 2;
 const CATALOG_THUMB_WIDTH = 50;
@@ -42,8 +47,9 @@ const IDEOGRAPH_CONVERSION_CONTENT = false;
 const IDEOGRAPH_CONVERSION_POST = false;
 const IDEOGRAPH_CONVERSION_UI = false;
 const FALLBACK_LAST_MODIFIED = 'Fri, 01 Jan 2010 00:00:00 GMT';
+const HEADER_MARGIN_BOTTOM = 16;
 
-const DEBUG_ALWAYS_LOAD_XSL = true;		// default: false
+const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
 const DEBUG_IGNORE_LAST_MODIFIED = false;	// default: false
 
@@ -62,38 +68,37 @@ const ONER = d('pofssps');
  * <<<1 globals
  */
 
-var bootVars = {iframeSources:'', bodyHTML:''};
+let bootVars = {iframeSources:'', bodyHTML:''};
 
 // object instances
-var config;
-var favicon;
-var timingLogger;
-var backend;
-var xmlGenerator;
-var xsltProcessor;
-var resources;
-var sounds;
-var clickDispatcher;
-var keyManager;
-var markStatistics;
-var urlStorage;
-var catalogPopup;
-var quotePopup;
-var selectionMenu;
-var historyStateWrapper;
-var overrideUpfile;
-
-// xmlhttprequest
-var transport;
-var transportType;
-var transportLastUsedTime = 0;
+let timingLogger;
+let storage;
+let backend;
+let transport;
+let resources;
+let markStatistics;
+let xmlGenerator;
+let xsltProcessor;
+let clickDispatcher;
+let keyManager;
+let favicon;
+let scrollManager;
+let historyStateWrapper;
+let selectionMenu;
+let sounds;
+let catalogPopup;
+let urlStorage;
+let quotePopup;
 
 // others
 const siteInfo = {
 	server: '', board: '', resno: 0,
 	logSize: 10000,
 	maxAttachSize: 0,
-	lastModified: 0
+	minThreadLifeTime: 0,
+	lastModified: 0,
+	subHash: {},
+	nameHash: {}
 };
 const cursorPos = {
 	x: 0,
@@ -104,20 +109,17 @@ const cursorPos = {
 };
 const pageModes = [];
 const appStates = ['command'];
-const subHash = {};
-const nameHash = {};
 
-var version = '0.1.0';
-var devMode = false;
-var viewportRect;
-var lastScrollTop;
-var lastDelReason;
+let version = '0.0.1';
+let devMode = false;
+let viewportRect;
+let overrideUpfile;
 
 /*
  * <<<1 bootstrap functions
  */
 
-var scriptWatcher = (function () {
+let scriptWatcher = (function () {
 	function handleBeforeScriptExecute (e) {
 		e.target.removeEventListener(
 			e.type, handleBeforeScriptExecute);
@@ -145,9 +147,7 @@ var scriptWatcher = (function () {
 
 // html extension to DOMParser: @see https://gist.github.com/kethinov/4760460
 (function (DOMParser) {
-	'use strict';
-
-	var DOMParser_proto = DOMParser.prototype,
+	let DOMParser_proto = DOMParser.prototype,
 		real_parseFromString = DOMParser_proto.parseFromString;
 
 	// Firefox/Opera/IE throw errors on unsupported types
@@ -161,7 +161,7 @@ var scriptWatcher = (function () {
 
 	DOMParser_proto.parseFromString = function(markup, type) {
 		if (/^\s*text\/html\s*(?:;|$)/i.test(type)) {
-			var doc = document.implementation.createHTMLDocument('');
+			let doc = document.implementation.createHTMLDocument('');
 			if (/<!doctype/i.test(markup)) {
 				doc.documentElement[IHTML] = markup;
 			}
@@ -177,22 +177,25 @@ var scriptWatcher = (function () {
 }(window.DOMParser));
 
 function d (s) {
-	var result = '';
-	for (var i = 0, goal = s.length; i < goal; i++) {
+	let result = '';
+	for (let i = 0, goal = s.length; i < goal; i++) {
 		result += String.fromCharCode(s.charCodeAt(i) - 1);
 	}
 	return result;
 }
 
 function initialStyle (isStart) {
-	var s;
+	let s = $('akahuku_initial_style');
 
 	if (isStart) {
-		try {
-			s = document.documentElement.appendChild(document[CRE]('style'));
-		}
-		catch (e) {
-			s = null;
+		if (!s) {
+			try {
+				s = document.documentElement.appendChild(
+					document[CRE]('style'));
+			}
+			catch (e) {
+				s = null;
+			}
 		}
 
 		if (s) {
@@ -202,269 +205,793 @@ function initialStyle (isStart) {
 		}
 	}
 	else {
-		s = $('akahuku_initial_style');
 		if (s) {
 			s.parentNode.removeChild(s);
 		}
 	}
 }
 
-function initCustomEventHandler () {
-	var statusHideTimer;
-	document.addEventListener('Akahukuplus.bottomStatus', function (e) {
-		var ws = $('wheel-status');
-		if (!ws) return;
-		if ($qs('#dialog-wrap:not(.hide)')) return;
+function connectToBackend (callback) {
+	let retryRest = 5;
+	let wait = 1000;
 
-		var s = e.detail.message;
-		if (!s || s == '') {
-			ws.classList.add('hide');
-		}
-		else {
-			ws.classList.remove('hide');
-			$t(ws.getElementsByTagName('span')[0], s);
-			if (statusHideTimer) {
-				clearTimeout(statusHideTimer);
-				statusHideTimer = null;
+	function doconnect () {
+		backend.connect('init', response => {
+			if (response) {
+				backend.tabId = response.tabId;
+				version = response.version;
+				devMode = response.devMode;
+				callback(true);
 			}
-			if (!e.detail.persistent) {
-				statusHideTimer = setTimeout(function () {
-					statusHideTimer = null;
-					ws.classList.add('hide');
-				}, 1000 * 3);
+			else {
+				if (--retryRest > 0) {
+					setTimeout(doconnect, wait);
+					wait += 1000;
+				}
+				else {
+					callback(false);
+				}
 			}
-		}
-	}, false);
+		});
+	}
+
+	backend = WasaviExtensionWrapper.create({extensionName: APP_NAME});
+	doconnect();
 }
 
-function handleDOMContentLoaded (e) {
-	document.removeEventListener(e.type, handleDOMContentLoaded, false);
+function transformWholeDocument (xsl) {
+	timingLogger.startTag('transformWholeDocument');
 
-	scriptWatcher.disconnect();
-	scriptWatcher = undefined;
+	markStatistics = createMarkStatistics();
+	urlStorage = createUrlStorage();
+	xmlGenerator = createXMLGenerator();
 
-	if (document.title == NOTFOUND_TITLE) {
-		initialStyle();
-		return;
-	}
+	let generateResult = xmlGenerator.run(
+		bootVars.bodyHTML + bootVars.iframeSources,
+		null,
+		pageModes[0] == 'reply' ? LEAD_REPLIES_COUNT : null);
 
-	timingLogger.startTag(e.type);
-	bootVars.bodyHTML = document.documentElement[IHTML];
-	initialStyle(false);
-	document.body[IHTML] = 'akahukuplus: ページを再構成しています。ちょっと待ってね。';
+	try {
+		timingLogger.startTag('parsing xsl');
 
-	config = createConfigurator();
-	config.assign();
-	backend = WasaviExtensionWrapper.create({extensionName: 'akahukuplus'});
+		if (IDEOGRAPH_CONVERSION_UI) {
+			xsl = 新字体の漢字を舊字體に変換(xsl);
+		}
 
-	if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/res\/(\d+)\.htm/)) {
-		siteInfo.server = RegExp.$1;
-		siteInfo.board = RegExp.$2;
-		siteInfo.resno = RegExp.$3 - 0;
-	}
-	else if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)/)) {
-		siteInfo.server = RegExp.$1;
-		siteInfo.board = RegExp.$2;
-	}
-
-	var connected = false;
-	var retryRest = 5;
-	var wait = 1000;
-	var gotInit = function (req) {
-		if (connected) return;
-		connected = true;
-		backend.tabId = req.tabId;
-		version = req.version;
-		devMode = req.devMode;
-		resources = createResourceManager();
-		initCustomEventHandler();
+		xsl = (new window.DOMParser()).parseFromString(xsl, "text/xml");
 		timingLogger.endTag();
-		boot();
-	};
-	var timeout = function () {
-		if (connected) return;
-		if (retryRest <= 0) {
-			document.body[IHTML] = 'akahukuplus: バックエンドに接続できません。中止。';
-			return;
-		}
-		retryRest--;
-		wait += 1000;
-		setTimeout(function () {timeout()}, wait);
-		backend.connect('init', gotInit);
-	};
+	}
+	catch (e) {
+		throw new Error(
+			`${APP_NAME}: XSL ファイルの DOM ツリー構築に失敗しました。中止します。`);
+	}
 
-	setTimeout(function () {timeout()}, wait);
-	backend.connect('init', gotInit);
+	xsltProcessor = new window.XSLTProcessor();
+	try {
+		timingLogger.startTag('constructing xsl');
+		xsltProcessor.importStylesheet(xsl);
+		timingLogger.endTag();
+	}
+	catch (e) {
+		throw new Error(
+			`${APP_NAME}: XSL ファイルの評価に失敗しました。中止します。`);
+	}
+
+	// transform xsl into html
+	timingLogger.startTag('applying xsl');
+	document.body[IHTML] = '';
+	xsltProcessor.setParameter(null, 'app_name', APP_NAME);
+	xsltProcessor.setParameter(null, 'dev_mode', devMode ? '1' : '0');
+	xsltProcessor.setParameter(null, 'page_mode', pageModes[0]);
+	xsltProcessor.setParameter(null, 'render_mode', 'full');
+	xsltProcessor.setParameter(null, 'platform', WasaviExtensionWrapper.IS_GECKO ? 'moz' : 'chrome');
+	xsltProcessor.setParameter(null, 'sort_order', storage.runtime.catalog.sortOrder);
+
+	let fragment = xsltProcessor.transformToFragment(generateResult.xml, document);
+	if (!fragment) {
+		throw new Error(
+			`${APP_NAME}: XML 文書を変換できませんでした。中止します。`);
+	}
+
+	let head = $qs('head', fragment);
+	let body = $qs('body', fragment);
+	let removeHeadElements = function () {
+		Array.prototype.slice.call($qsa('head > *'))
+		.forEach(node => {
+			if (node.nodeName == 'BASE') return;
+			node.parentNode.removeChild(node);
+		});
+	};
+	if (head || body) {
+		if (head) {
+			removeHeadElements();
+			document.head.appendChild(fixFragment(fragment, 'head'));
+		}
+		if (body) {
+			document.body.appendChild(fixFragment(fragment, 'body'));
+		}
+	}
+	else {
+		removeHeadElements();
+		document.body.appendChild(fragment);
+	}
+	appendFragment(document.documentElement);
+	timingLogger.endTag();
+
+	timingLogger.startTag('some tweaks');
+	// some tweaks: remove obsolete attributes on body element
+	['bgcolor', 'text', 'link', 'vlink', 'alink'].forEach(p => {
+		document.body.removeAttribute(p);
+	});
+
+	// some tweaks: move some elements to its proper position
+	let headNodes = Array.prototype.slice.call(
+		$qsa('body style, body link'));
+	while (headNodes.length) {
+		let node = headNodes.shift();
+		node.parentNode.removeChild(node);
+		document.head.appendChild(node);
+	}
+
+	// some tweaks: ensure title element exists
+	if (document.head.getElementsByTagName('title').length == 0) {
+		document.head.appendChild(document[CRE]('title')).setAttribute('data-binding', 'xpath:/futaba/meta/title');
+	}
+	timingLogger.endTag();
+
+	// expand all bindings
+	timingLogger.startTag('applying bindings');
+	applyDataBindings(generateResult.xml);
+	timingLogger.endTag();
+
+	if (DEBUG_DUMP_INTERNAL_XML) {
+		let node = document.body.appendChild(document[CRE]('pre'));
+		node.appendChild(document.createTextNode(serializeXML(generateResult.xml)));
+		node.style.fontFamily = 'Consolas';
+		node.style.whiteSpace = 'pre-wrap';
+	}
+
+	fragment = xsl = null;
+	bootVars = null;
+
+	$('content').classList.remove('init');
+
+	timingLogger.startTag('install');
+	install(pageModes[0]);
+	timingLogger.forceEndTag();
+	timingLogger.locked = true;
+
+	processRemainingReplies(generateResult.remainingRepliesContext);
 }
 
-function boot () {
-	timingLogger.startTag('boot');
-	resources.get(
-		'/xsl/fundamental.xsl',
-		{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 60},
-		function (xsl) {
-			if (xsl === null) {
-				document.body[IHTML] =
-					'akahukuplus: 内部用の XSL ファイルの取得に失敗しました。中止します。';
-				return;
-			}
+function install (mode) {
+	/*
+	 * last modified date
+	 */
 
-			if (/\/futaba\.php\?.*res=\d+/.test(window.location.href)
-			||  /\/res\/\d+\.htm$/.test(window.location.pathname)) {
-				pageModes.unshift('reply');
-			}
-			else if (/\/(?:futaba|\d+)\.htm$/.test(window.location.pathname)) {
-				pageModes.unshift('summary');
-			}
+	try {
+		siteInfo.lastModified = new Date(document.lastModified).toUTCString();
+	}
+	catch (e) {
+		siteInfo.lastModified = 0;
+	}
 
-			markStatistics = createMarkStatistics();
-			xmlGenerator = createXMLGenerator();
-			var generateResult = xmlGenerator.run(
-				bootVars.bodyHTML + bootVars.iframeSources,
-				null,
-				pageModes[0] == 'reply' ? LEAD_REPLIES_COUNT : null);
-			var xml = generateResult.xml;
+	/*
+	 * message handler from backend
+	 */
 
-			try {
-				timingLogger.startTag('parsing xsl');
+	backend.setMessageListener(data => {
+		switch (data.type) {
+		case 'fileio-authorize-response':
+		case 'fileio-write-response':
+			{
+				let anchor = $(data.anchorId);
 
-				if (IDEOGRAPH_CONVERSION_UI) {
-					xsl = 新字体の漢字を旧字体に変換(xsl);
-				}
-
-				xsl = (new window.DOMParser()).parseFromString(xsl, "text/xml");
-				timingLogger.endTag();
-			}
-			catch (e) {
-				document.body[IHTML] =
-					'akahukuplus: XSL ファイルの DOM ツリー構築に失敗しました。中止します。';
-				$t(document.body.appendChild(document[CRE]('pre')), e.stack);
-				return;
-			}
-
-			xsltProcessor = new window.XSLTProcessor();
-			try {
-				timingLogger.startTag('constructing xsl');
-				xsltProcessor.importStylesheet(xsl);
-				timingLogger.endTag();
-			}
-			catch (e) {
-				document.body[IHTML] =
-					'akahukuplus: XSL ファイルの評価に失敗しました。中止します。';
-				$t(document.body.appendChild(document[CRE]('pre')), e.stack);
-				return;
-			}
-
-			// notify initialized message to backend
-			sendToBackend('initialized');
-
-			try {
-				// transform xsl into html
-				timingLogger.startTag('applying xsl');
-				document.body[IHTML] = '';
-				xsltProcessor.setParameter(null, 'page_mode', pageModes[0]);
-				xsltProcessor.setParameter(null, 'render_mode', 'full');
-				xsltProcessor.setParameter(null, 'platform', WasaviExtensionWrapper.IS_GECKO ? 'moz' : 'chrome');
-
-				var fragment = xsltProcessor.transformToFragment(xml, document);
-				if (!fragment) {
-					throw new Error('Cannot transform and import the XML document.');
-				}
-
-				var head = $qs('head', fragment);
-				var body = $qs('body', fragment);
-				var removeHeadElements = function () {
-					Array.prototype.slice
-					.call($qsa('head > *'))
-					.forEach(function (node) {
-						if (node.nodeName == 'BASE') return;
-						node.parentNode.removeChild(node);
-					});
-				};
-				if (head || body) {
-					if (head) {
-						removeHeadElements();
-						document.head.appendChild(fixFragment(fragment, 'head'));
+				let message;
+				if (data.error || data.state == 'complete') {
+					if (data.error) {
+						message = '保存失敗';
 					}
-					if (body) {
-						document.body.appendChild(fixFragment(fragment, 'body'));
+					else {
+						message = '保存完了';
+
+						if (data.status == 200) {
+							anchor.setAttribute('data-image-saved', '1');
+							sounds.imageSaved.volume = storage.config.save_image_bell_volume.value;
+							sounds.imageSaved.play();
+						}
 					}
+
+					anchor && setTimeout(anchor => {
+						if (/^save-image-anchor-/.test(anchor.id)) {
+							anchor.removeAttribute('id');
+						}
+						$t(anchor, anchor.getAttribute('data-original-text'));
+						anchor.removeAttribute('data-original-text');
+						anchor = null;
+					}, 1000 * 1, anchor);
 				}
 				else {
-					removeHeadElements();
-					document.body.appendChild(fragment);
+					switch (data.state) {
+					case 'authorizing':	message = '認可の確認中...'; break;
+					case 'buffered':	message = 'バッファ済み...'; break;
+					case 'writing':		message = '書き込み中...'; break;
+					}
 				}
-				appendFragment(document.documentElement);
-				timingLogger.endTag();
-
-				// some tweaks: remove obsolete attributes on body element
-				['bgcolor', 'text', 'link', 'vlink', 'alink'].forEach(function (p) {
-					document.body.removeAttribute(p);
-				});
-
-				// some tweaks: move some elements to its proper position
-				var headNodes = Array.prototype.slice.call(
-					$qsa('body style, body link'));
-				while (headNodes.length) {
-					var node = headNodes.shift();
-					node.parentNode.removeChild(node);
-					document.head.appendChild(node);
-				}
-
-				// some tweaks: ensure title element exists
-				if (document.head.getElementsByTagName('title').length == 0) {
-					document.head.appendChild(document[CRE]('title')).setAttribute('data-binding', 'xpath:/futaba/meta/title');
-				}
-
-				// expand all bindings
-				applyDataBindings(xml);
-
-				// start transition
-				var startTransition = function () {
-					transitionend('content', function (e) {
-						if (!bootVars) return;
-						bootVars = null;
-
-						install(pageModes[0]);
-
-						timingLogger.endTag(`(${e.type})`);
-						timingLogger.endTag('!');
-						timingLogger.locked = true;
-
-						processRemainingReplies(generateResult.remainingRepliesContext);
-					}, WAIT_AFTER_INIT_TRANSITION);
-					$('content').classList.remove('init');
-				};
-				if (document.readyState == 'complete'
-				|| document.readyState == 'interactive') {
-					startTransition();
-					startTransition = null;
-				}
-				else {
-					window.addEventListener('load', function handleLoad (e) {
-						this.removeEventListener(e.type, handleLoad, false);
-						startTransition();
-						startTransition = null;
-					}, false);
+				message && $t(anchor, message);
+			}
+			break;
+		case 'notify-viewers':
+			{
+				if (data.siteInfo.server == siteInfo.server
+				&&  data.siteInfo.board == siteInfo.board
+				&&  data.siteInfo.resno != siteInfo.resno) {
+					$t('viewers', data.data);
 				}
 			}
-			catch (e) {
-				document.body[IHTML] =
-					'akahukuplus: 内部 XML から HTML への変換に失敗しました。中止します。';
-				$t(document.body.appendChild(document[CRE]('pre')), e.stack);
-				return;
-			}
-
-			if (DEBUG_DUMP_INTERNAL_XML) {
-				var node = document.body.appendChild(document[CRE]('pre'));
-				node.appendChild(document.createTextNode(serializeXML(xml)));
-				node.style.fontFamily = 'Consolas';
-				node.style.whiteSpace = 'pre-wrap';
-			}
-
-			xml = xsl = null;
+			break;
+		default:
+			break;
 		}
-	);
+	});
+
+	/*
+	 * instantiate click dispachter
+	 * and register click handlers
+	 */
+
+	clickDispatcher = createClickDispatcher();
+	clickDispatcher
+		.add('#void', () => {})
+
+		.add('#delete-post',    commands.openDeleteDialog)
+		.add('#config',         commands.openConfigDialog)
+		.add('#help',           commands.openHelpDialog)
+		.add('#draw',           commands.openDrawDialog)
+		.add('#toggle-panel',   commands.togglePanelVisibility)
+		.add('#reload',         commands.reload)
+		.add('#sage',           commands.toggleSage)
+		.add('#search-start',   commands.search)
+		.add('#clear-upfile',   commands.clearUpfile)
+		.add('#toggle-catalog', commands.toggleCatalogVisibility)
+		.add('#track',          commands.registerTrack)
+		.add('#reload-ext',     commands.reloadExtension)
+		.add('#toggle-logging', commands.toggleLogging)
+		.add('#prev-summary',   commands.summaryBack)
+		.add('#next-summary',   commands.summaryNext)
+
+		.add('#search-item', (e, t) => {
+			let number = t.getAttribute('data-number');
+			if (!number) return;
+			let wrapper = $qs([
+				`article .topic-wrap[data-number="${number}"]`,
+				`article .reply-wrap > [data-number="${number}"]`
+			].join(','));
+			if (!wrapper) return;
+
+			let rect = wrapper.getBoundingClientRect();
+			if (rect.top < 0 || rect.bottom >= viewportRect.height) {
+				window.scrollTo(
+					0,
+					Math.floor(
+						docScrollTop() +
+						rect.top +
+						(rect.height / 2) -
+						(viewportRect.height / 2)));
+			}
+			wrapper.classList.add('hilight');
+			setTimeout(() => {
+				wrapper.classList.remove('hilight');
+				wrapper = null;
+			}, 1000);
+		})
+		.add('#save-catalog-settings', (e, t) => {
+			commands.updateCatalogSettings({
+				x: $('catalog-horz-number').value,
+				y: $('catalog-vert-number').value,
+				text: $('catalog-with-text').checked ? storage.config.catalog_text_max_length.value : 0
+			});
+			window.alert('はい。');
+		})
+
+		.add('.del', (e, t) => {
+			commands.openModerateDialog(e, t);
+		})
+		.add('.postno', (e, t) => {
+			let wrap = getWrapElement(t);
+			if (!wrap) return;
+			let comment = $qs('.comment', wrap);
+			if (!comment) return;
+
+			comment = nodeToString(comment);
+
+			if ($qs('.reply-image', wrap) && /^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
+				comment = $qs('.postno', wrap).textContent;
+			}
+
+			selectionMenu.dispatch('quote', comment);
+		})
+		.add('.save-image',  (e, t) => {
+			commands.saveImage(e, t);
+		})
+		.add('.panel-tab',   (e, t) => {
+			showPanel(panel => {
+				activatePanelTab(t);
+			});
+		})
+		.add('.switch-to', (e, t) => {
+			historyStateWrapper.pushState(t.href);
+			if (pageModes[0] == 'catalog') {
+				commands.toggleCatalogVisibility();
+			}
+			commands.reload();
+		})
+		.add('.lightbox',  (e, t) => {
+			if (storage.config.auto_save_image.value) {
+				setTimeout((e, t) => {
+					let saveLink = $qs(`.save-image[href="${t.href}"]`);
+					if (!saveLink) return;
+					if (saveLink.getAttribute('data-image-saved')) return;
+
+					commands.saveImage(e, saveLink);
+				}, 1000 * 1, e, t);
+			}
+			if (storage.config.lightbox_enabled.value) {
+				if (/\.(?:jpg|gif|png)$/.test(t.href)) {
+					let ignoreThumbnail =
+						t.classList.contains('link-siokara')
+						|| t.classList.contains('siokara-thumbnail');
+
+					lightbox(t, ignoreThumbnail);
+				}
+				else if (/\.(?:webm|mp4)$/.test(t.href)) {
+					displayInlineVideo(t);
+				}
+				else if (/\.(?:mp3|ogg)$/.test(t.href)) {
+					displayInlineAudio(t);
+				}
+			}
+			else {
+				return 'passthrough';
+			}
+		})
+		.add('.catalog-order', (e, t) => {
+			let newActive;
+
+			Array.prototype.forEach.call(
+				$qsa('#catalog .catalog-options a'),
+				node => {
+					if (node == t) {
+						node.classList.add('active');
+						newActive = node;
+					}
+					else {
+						node.classList.remove('active');
+					}
+				}
+			);
+
+			if (!newActive) {
+				newActive = $qs('#catalog .catalog-options a');
+				newActive.classList.add('active');
+			}
+
+			let order = newActive.href.match(/\w+$/)[0];
+			let contentId = `catalog-threads-wrap-${order}`;
+			Array.prototype.forEach.call(
+				$qsa('#catalog .catalog-threads-wrap > div'),
+				node => {
+					if (node.id == contentId) {
+						node.classList.remove('hide');
+					}
+					else {
+						node.classList.add('hide');
+					}
+				}
+			);
+
+			storage.runtime.catalog.sortOrder = order;
+			storage.saveRuntime();
+			commands.reload();
+		})
+		.add('.sodane', (e, t) => {
+			commands.sodane(e, t);
+		})
+		.add('.sodane-null', (e, t) => {
+			commands.sodane(e, t);
+		})
+		.add('*noclass*', (e, t) => {
+			let re1 = /(.*)#[^#]*$/.exec(t.href);
+			let re2 = /(.*)(#[^#]*)?$/.exec(window.location.href);
+			if (t.target != '_blank') return;
+			if (re1 && re2 && re1[1] == re2[1]) return;
+
+			e.preventDefault();
+			e.stopPropagation();
+			sendToBackend('open', {url:t.href, selfUrl:window.location.href});
+		})
+
+	/*
+	 * instantiate keyboard shortcut manager
+	 * and register shortcut handlers
+	 */
+
+	keyManager = createKeyManager();
+	keyManager
+		.addStroke('command', 'r', commands.reload)
+		.addStroke('command', [' ', '<S-space>'], commands.scrollPage, true)
+		.addStroke('command', 'z', commands.summaryBack)
+		.addStroke('command', '.', commands.summaryNext)
+		.addStroke('command', '?', commands.openHelpDialog)
+		.addStroke('command', 'c', commands.toggleCatalogVisibility)
+		.addStroke('command', 'p', commands.togglePanelVisibility)
+		.addStroke('command', 's', commands.activateStatisticsTab)
+		.addStroke('command', '/', commands.activateSearchTab)
+		.addStroke('command', 'n', commands.activateNoticeTab)
+
+		.addStroke('command', 'i', commands.activatePostForm)
+		.addStroke('command', '\u001b', commands.deactivatePostForm)
+
+		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)
+		.addStroke('command.edit', '\u0013', commands.toggleSage)
+		.addStroke('command.edit', '<S-enter>', commands.post)
+		.addStroke('command.edit', '\u0001', commands.cursorTopOfLine)
+		.addStroke('command.edit', '\u0005', commands.cursorBottomOfLine)
+		//.addStroke('command.edit', 'C-p', commands.cursorPrev)
+		//.addStroke('command.edit', 'C-n', commands.cursorNext)
+		.addStroke('command.edit', '\u0002', commands.cursorBack)
+		.addStroke('command.edit', '\u0006', commands.cursorForward)
+		.updateManifest();
+
+	/*
+	 * favicon maintainer
+	 */
+
+	favicon = createFavicon();
+
+	/*
+	 * window resize handler
+	 */
+
+	setupWindowResizeEvent(100, e => {
+		let vp = document.body.appendChild(document[CRE]('div'));
+		try {
+			vp.id = 'viewport-rect';
+			viewportRect = vp.getBoundingClientRect();
+		}
+		finally {
+			vp.parentNode.removeChild(vp);
+		}
+
+		let style = $('dynstyle-comment-maxwidth');
+		if (!style) return;
+		empty(style);
+
+		// max width of comments
+		let text = $qs('article div.text');
+		if (text) {
+			let isContentInvisible = $('content').classList.contains('hide');
+			$('content').classList.remove('hide');
+			try {
+				let rect = text.getBoundingClientRect();
+				style.appendChild(document.createTextNode([
+					'.reply-wrap > div:last-child {',
+					`  max-width:${Math.floor(rect.width * 0.9)}px;`,
+					'}'
+				].join('\n')));
+			}
+			finally {
+				if (isContentInvisible) {
+					$('content').classList.add('hide');
+				}
+			}
+		}
+
+		// max size of dialogs
+		style.appendChild(document.createTextNode([
+			`.dialog-wrap .dialog-content {`,
+			`  max-width:${Math.floor(viewportRect.width * 0.8)}px;`,
+			`  max-height:${Math.floor(viewportRect.height * 0.8)}px;`,
+			`  min-width:${Math.floor(viewportRect.width * 0.25)}px;`,
+			'}'
+		].join('\n')));
+
+		// header height adjustment
+		let headerHeight = $('header').offsetHeight + HEADER_MARGIN_BOTTOM;
+		$('content').style.marginTop =
+		$('ad-aside-wrap').style.top =
+		$('panel-aside-wrap').style.top = headerHeight + 'px';
+		style.appendChild(document.createTextNode([
+			`#content > article > .image > div {`,
+			`  top:${headerHeight}px`,
+			'}'
+		].join('\n')));
+	});
+
+	/*
+	 * window scroll handler
+	 */
+
+	scrollManager = createScrollManager(10);
+
+	/*
+	 * history handler
+	 */
+
+	historyStateWrapper = createHistoryStateWrapper(e => {
+		/*
+		console.log([
+			`  previous page mode: ${pageModes[0]}`,
+			`current page address: ${location.href}`
+		].join('\n'));
+		*/
+
+		let isCatalog = window.location.hash == '#mode=cat';
+
+		if (pageModes[0] == 'catalog' && !isCatalog
+		||  pageModes[0] != 'catalog' && isCatalog) {
+			commands.toggleCatalogVisibility();
+		}
+
+		if (pageModes[0] == 'summary') {
+			commands.reload();
+		}
+		else if (pageModes[0] == 'catalog' && pageModes[1] == 'summary') {
+			let re = /(\d+)\.htm$/.exec(window.location.pathname);
+			let summaryIndex = re ? re[1] : 0;
+
+			// title sync
+			let titleElement = $qs('#header h1 a');
+			let title = titleElement
+				.textContent
+				.replace(/\s*\[ページ\s*\d+\]/, '');
+			if (summaryIndex) {
+				title += ` [ページ ${summaryIndex}]`;
+			}
+			$t(titleElement, title);
+
+			// page navigator sync
+			let navElement = $qs('#postform-wrap .nav-links');
+			let pageCount = navElement.childElementCount;
+			empty(navElement);
+			for (let i = 0; i < pageCount; i++) {
+				if (i == summaryIndex) {
+					let span = navElement.appendChild(document[CRE]('span'));
+					span.className = 'current';
+					$t(span, i);
+				}
+				else {
+					let a = navElement.appendChild(document[CRE]('a'));
+					a.className = 'switch-to';
+					a.href = `${location.protocol}//${location.host}/${siteInfo.board}/${i == 0 ? 'futaba' : i}.htm`;
+					$t(a, i);
+				}
+			}
+		}
+	});
+
+	/*
+	 * mouse cursor tracker
+	 */
+
+	window.addEventListener(MMOVE_EVENT_NAME, e => {
+		cursorPos.x = e.clientX;
+		cursorPos.y = e.clientY;
+		cursorPos.pagex = e.pageX;
+		cursorPos.pagey = e.pageY;
+		cursorPos.moved = true;
+	}, false);
+
+	/*
+	 * selection menu handler
+	 */
+
+	selectionMenu = createSelectionMenu();
+
+	/*
+	 * restore cookie value
+	 */
+
+	$t('name', getCookie('namec'));
+	$t('pwd', getCookie('pwdc'));
+
+	/*
+	 * init some hidden parameters
+	 */
+
+	$t(document.getElementsByName('js')[0],
+		'on');
+	$t(document.getElementsByName('scsz')[0],
+		[
+			window.screen.width,
+			window.screen.height,
+			window.screen.colorDepth
+		].join('x'));
+
+	/*
+	 * post form
+	 */
+
+	// submit listener
+	$('postform') && $('postform').addEventListener('submit', e => {
+		e.preventDefault();
+		commands.post();
+	});
+
+	// post mode switcher
+	((elms, handler) => {
+		for (let i = 0; i < elms.length; i++) {
+			elms[i].addEventListener('click', handler, false);
+		}
+	})(document.getElementsByName('post-switch'), e => {
+		let upfile = $('upfile');
+		let textonly = $('textonly');
+		let resto = document.getElementsByName('resto')[0];
+
+		switch (e.target.value) {
+		case 'reply':
+			upfile.disabled = textonly.disabled = upfile.getAttribute('data-origin') == 'js';
+			resto.disabled = false;
+			break;
+
+		case 'thread':
+			upfile.disabled = textonly.disabled = false;
+			resto.disabled = true;
+			break;
+		}
+	});
+
+	// allow tegaki link, if baseform element exists or the page is summary
+	(drawButtonWrap => {
+		if (!drawButtonWrap) return;
+		if (document.getElementsByName('baseform').length == 0 && pageModes[0] != 'summary') return;
+
+		drawButtonWrap.classList.remove('hide');
+
+		if (pageModes[0] == 'summary') {
+			let canvas = $qs('.draw-canvas');
+			if (!canvas) return;
+			canvas.width = 640;
+			canvas.height = 480;
+		}
+	})($qs('.draw-button-wrap'));
+
+	// file element change listener
+	(file => {
+		if (!file) return;
+		file.addEventListener('change', e => {
+			setPostThumbnail(e.target.files[0]);
+			resetForm('baseform', 'textonly');
+			overrideUpfile = undefined;
+		}, false);
+	})($('upfile'));
+
+	// handle behavior of text fields
+	setupPostFormItemEvent([
+		{id:'com',              bytes:1000, lines:15},
+		{id:'name',  head:'名', bytes:100},
+		{id:'email', head:'メ', bytes:100},
+		{id:'sub',   head:'題', bytes:100}
+	]);
+
+	// handle post form sivibility
+	(() => {
+		let frameOutTimer;
+		$('postform-wrap').addEventListener('mouseenter', e => {
+			if (frameOutTimer) {
+				clearTimeout(frameOutTimer);
+				frameOutTimer = null;
+			}
+			commands.activatePostForm();
+		});
+		$('postform-wrap').addEventListener('mouseleave', e => {
+			if (frameOutTimer) return;
+
+			frameOutTimer = setTimeout(() => {
+				frameOutTimer = null;
+				let p = document.elementFromPoint(cursorPos.x, cursorPos.y);
+				while (p && p.id != 'postform-wrap') {
+					p = p.parentNode;
+				}
+				if (p) return;
+				let thumb = $('post-image-thumbnail-wrap');
+				if (thumb && thumb.getAttribute('data-available') == '2') {
+					thumb.setAttribute('data-available', '1');
+					return;
+				}
+				commands.deactivatePostForm();
+			}, POSTFORM_DEACTIVATE_DELAY);
+		});
+	})();
+
+	/*
+	 * parallax banner handling
+	 */
+
+	setupParallax('#ad-aside-wrap');
+
+	/*
+	 * inline viewo viewer
+	 */
+
+	setupVideoViewer();
+
+	/*
+	 * mouse wheel handler
+	 */
+
+	setupWheelReload();
+
+	/*
+	 * sounds/
+	 */
+
+	sounds = {
+		detectNewMark: createSound('new-mark'),
+		imageSaved: createSound('image-saved'),
+	};
+
+	/*
+	 * panel
+	 */
+
+	// submit button on search panel
+	$('search-form').addEventListener('submit', e => {
+		commands.search();
+	});
+
+	// pseudo mousehoverin/mousehoverout events for search item
+	// on reply search panel and statistics panel
+	setupSearchResultPopup();
+	
+	/*
+	 * catalog popup
+	 */
+
+	catalogPopup = createCatalogPopup($qs('#catalog'));
+
+	/*
+	 * quote popup
+	 */
+
+	quotePopup = createQuotePopup();
+
+	/*
+	 * register custom event handler
+	 */
+
+	setupCustomEventHandler();
+
+	/*
+	 * switch according to mode of pseudo-query
+	 */
+
+	let queries = (() => {
+		let result = {};
+		window.location.hash
+		.replace(/^#/, '')
+		.split('&').forEach(s => {
+			s = s.split('=');
+			s[0] = decodeURIComponent(s[0]);
+			s[1] = s.length >= 2 ? decodeURIComponent(s[1]) : null;
+			result[s[0]] = s[1];
+		});
+		return result;
+	})();
+
+	switch (queries.mode) {
+	case 'cat':
+		setTimeout(() => {
+			commands.toggleCatalogVisibility();
+		}, 0);
+		break;
+	}
+
+	/*
+	 * finish
+	 */
+
+	$('content').classList.add('transition-enabled');
 }
 
 /*
@@ -472,10 +999,10 @@ function boot () {
  */
 
 function applyDataBindings (xml) {
-	var nodes = $qsa('*[data-binding]');
-	var result = null, re = null;
-	for (var i = 0, goal = nodes.length; i < goal; i++) {
-		var binding = nodes[i].getAttribute('data-binding');
+	let nodes = $qsa('*[data-binding]');
+	let result = null, re = null;
+	for (let i = 0, goal = nodes.length; i < goal; i++) {
+		let binding = nodes[i].getAttribute('data-binding');
 		if ((re = /^xpath(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
 			if (typeof re[1] == 'string' && re[1] != pageModes[0]) continue;
 			try {
@@ -488,7 +1015,7 @@ function applyDataBindings (xml) {
 			}
 			catch (e) {
 				console.error(
-					`applyDataBindings: failed to apply the data "${re[2]}"` +
+					`${APP_NAME}: applyDataBindings: failed to apply the data "${re[2]}"` +
 					`\n(${e.message})`);
 			}
 		}
@@ -502,7 +1029,7 @@ function applyDataBindings (xml) {
 			}
 			catch (e) {
 				console.error(
-					`applyDataBindings: failed to apply the data "${re[2]}" to class` +
+					`${APP_NAME}: applyDataBindings: failed to apply the data "${re[2]}" to class` +
 					`\n(${e.message})`);
 			}
 		}
@@ -510,14 +1037,14 @@ function applyDataBindings (xml) {
 			if (typeof re[1] == 'string' && re[1] != pageModes[0]) continue;
 			try {
 				xsltProcessor.setParameter(null, 'render_mode', re[2]);
-				var f = fixFragment(xsltProcessor.transformToFragment(xml, document));
+				let f = fixFragment(xsltProcessor.transformToFragment(xml, document));
 				if (f.textContent.replace(/^\s+|\s+$/g, '') == '' && !$qs('[data-doe]', f)) continue;
 				empty(nodes[i]);
 				appendFragment(nodes[i], f);
 			}
 			catch (e) {
 				console.error(
-					`applyDataBindings: failed to apply the template "${re[2]}"` +
+					`${APP_NAME}: applyDataBindings: failed to apply the template "${re[2]}"` +
 					`\n(${e.message})`);
 			}
 		}
@@ -537,8 +1064,8 @@ function createResourceManager () {
 		window.localStorage.setItem(getResKey(path), JSON.stringify(slot));
 	}
 
-	function loadWithXHR (path, callback, expires, responseType) {
-		let xhr = new XMLHttpRequest;
+	function loadWithXHR (path, expires, responseType, callback) {
+		let xhr = transport.create();
 
 		xhr.open('GET', chrome.runtime.getURL(path));
 		xhr.onload = () => {
@@ -574,27 +1101,7 @@ function createResourceManager () {
 		return `resource:${key}`;
 	}
 
-	function get (key) {
-		let opts;
-		let callback;
-
-		switch (arguments.length) {
-		case 2:
-			callback = arguments[1];
-			break;
-		case 3:
-			opts = arguments[1];
-			callback = arguments[2];
-			break;
-		default:
-			throw new Error('createResourceManager: invalid argument number');
-			break;
-		}
-
-		if (typeof callback != 'function') {
-			throw new Error('createResourceManager: callback is not a function');
-		}
-
+	function get (key, opts) {
 		opts || (opts = {});
 		let resKey = getResKey(key);
 		let responseType = opts.responseType || 'text';
@@ -603,17 +1110,34 @@ function createResourceManager () {
 		if (slot !== null) {
 			slot = JSON.parse(slot);
 			if (Date.now() < slot.expires) {
-				setTimeout(callback, 0, slot.data);
-				return;
+				return Promise.resolve(slot.data);
 			}
 			window.localStorage.removeItem(resKey);
 		}
 
-		loadWithXHR(key, callback, expires, responseType);
+		return new Promise(resolve => {
+			loadWithXHR(key, expires, responseType, resolve);
+		});
+	}
+
+	function remove (key) {
+		window.localStorage.removeItem(getResKey(key));
+	}
+
+	function clearCache () {
+		for (let i = 0; i < window.localStorage.length; i++) {
+			let key = window.localStorage.key(i);
+			if (/^resource:/.test(key)) {
+				window.localStorage.removeItem(key);
+				i--;
+			}
+		}
 	}
 
 	return {
-		get:get
+		get: get,
+		remove: remove,
+		clearCache: clearCache
 	};
 }
 
@@ -659,28 +1183,28 @@ function createXMLGenerator () {
 	}
 
 	function fetchReplies (s, regex, count, maxReplies, lowBoundNumber, threadNode, subHash, nameHash, baseUrl) {
-		var text = textFactory(threadNode.ownerDocument);
-		var repliesNode = element(threadNode, 'replies');
-		var goal = count + maxReplies;
-		var offset = count + 1;
-		var reply;
-		var postTimeRegex = getPostTimeRegex();
+		let text = textFactory(threadNode.ownerDocument);
+		let repliesNode = element(threadNode, 'replies');
+		let goal = count + maxReplies;
+		let offset = count + 1;
+		let reply;
+		let postTimeRegex = getPostTimeRegex();
 
 		for (;count < goal && (reply = regex.exec(s)); offset++, count++) {
-			var re = /^(.*)<blockquote[^>]*>(.*)<\/blockquote>/i.exec(reply[0]);
+			let re = /^(.*)<blockquote[^>]*>(.*)<\/blockquote>/i.exec(reply[0]);
 			if (!re) continue;
 
-			var info = re[1];
-			var infoText = info.replace(/<\/?\w+(\s+\w+\s*=\s*"[^"]*")*[^>]*>/g, '');
-			var comment = re[2];
-			var replyNode = element(repliesNode, 'reply');
-			var number;
+			let info = re[1];
+			let infoText = info.replace(/<\/?[\w\-:]+(\s+[\w\-:]+\s*=\s*"[^"]*")*[^>]*>/g, '');
+			let comment = re[2];
+			let replyNode = element(repliesNode, 'reply');
+			let number;
 
 			// number
 			re = /No\.(\d+)/i.exec(infoText);
 			if (re) {
 				number = re[1];
-				var numberNode = element(replyNode, 'number');
+				let numberNode = element(replyNode, 'number');
 				numberNode.appendChild(text(re[1]));
 				re = /^(\d*?)((\d)\3+)$/.exec(number);
 				if (re) {
@@ -698,7 +1222,7 @@ function createXMLGenerator () {
 			// ID
 			re = /ID:([^ "]+)/.exec(infoText);
 			if (re) {
-				var idNode = element(replyNode, 'user_id');
+				let idNode = element(replyNode, 'user_id');
 				idNode.appendChild(text(stripTags(re[1])));
 				markStatistics.notifyId(number, re[1]);
 			}
@@ -710,7 +1234,7 @@ function createXMLGenerator () {
 					element(replyNode, 'deleted');
 				}
 
-				var markNode = element(replyNode, 'mark');
+				let markNode = element(replyNode, 'mark');
 				re[0].charAt(0) == '['
 					&& re[0].substr(-1) == ']'
 					&& markNode.setAttribute('bracket', 'true');
@@ -722,7 +1246,7 @@ function createXMLGenerator () {
 			// そうだね (that's right）
 			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(info);
 			if (re) {
-				var sodaneNode = element(replyNode, 'sodane');
+				let sodaneNode = element(replyNode, 'sodane');
 				sodaneNode.appendChild(text(re[1]
 					.replace('x', ' × ')
 					.replace('+', '＋')
@@ -741,7 +1265,7 @@ function createXMLGenerator () {
 			// posted date
 			re = postTimeRegex.exec(info);
 			if (re) {
-				var postedDate = new Date(
+				let postedDate = new Date(
 					2000 + (re[1] - 0),
 					re[2] - 1,
 					re[3] - 0,
@@ -750,7 +1274,7 @@ function createXMLGenerator () {
 					re[6] - 0,
 					0
 				);
-				var postDateNode = element(replyNode, 'post_date');
+				let postDateNode = element(replyNode, 'post_date');
 				postDateNode.appendChild(text(re[0]));
 				postDateNode.setAttribute('value', postedDate.getTime() / 1000);
 			}
@@ -776,21 +1300,21 @@ function createXMLGenerator () {
 			// mail address
 			re = /<a href="mailto:([^"]*)"/i.exec(info);
 			if (re) {
-				var emailNode = element(replyNode, 'email');
+				let emailNode = element(replyNode, 'email');
 				emailNode.appendChild(text(stripTags(re[1])));
 				linkify(emailNode);
 			}
 
 			// src & thumbnail url
-			var imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
+			let imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
 			if (imagehref) {
-				var imageNode = element(replyNode, 'image');
-				var srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				let imageNode = element(replyNode, 'image');
+				let srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
 				// animated
-				re = /<!--AnimationGIF-->/i.exec(info);
+				re = /<small[^>]*>アニメGIF.<\/small[^>]*>/i.exec(info);
 				if (re) {
 					imageNode.setAttribute('animated', 'true');
 				}
@@ -803,7 +1327,7 @@ function createXMLGenerator () {
 				}
 
 				// thumbnail
-				var thumbUrl = '', thumbWidth = false, thumbHeight = false;
+				let thumbUrl = '', thumbWidth = false, thumbHeight = false;
 				re = /\b(?:data-)?src=([^\s>]+)/i.exec(imagehref[2]);
 				if (re) {
 					thumbUrl = re[1].replace(/^["']|["']$/g, '');
@@ -819,7 +1343,7 @@ function createXMLGenerator () {
 					thumbHeight = re[1];
 				}
 				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
-					var thumbNode = element(replyNode, 'thumb');
+					let thumbNode = element(replyNode, 'thumb');
 					thumbNode.appendChild(text(thumbUrl));
 					thumbNode.setAttribute('width', thumbWidth);
 					thumbNode.setAttribute('height', thumbHeight);
@@ -867,7 +1391,7 @@ function createXMLGenerator () {
 	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webm|mp4)$/.test(re[2])) {
+			if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(re[2])) {
 				anchor.setAttribute('class', `${this.className} incomplete-siokara-thumbnail lightbox`);
 				anchor.setAttribute('thumbnail', `${baseUrl}misc/${re[1]}.thumb.jpg`);
 			}
@@ -882,7 +1406,7 @@ function createXMLGenerator () {
 	LinkTarget.prototype.upProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webm|mp4)$/.test(re[2])) {
+			if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(re[2])) {
 				anchor.setAttribute('class', `${this.className} lightbox`);
 			}
 			return `${baseUrl}src/${re[1]}${re[2]}`;
@@ -893,7 +1417,7 @@ function createXMLGenerator () {
 			return `${baseUrl}up.htm`;
 		}
 	};
-	var linkTargets = [
+	const linkTargets = [
 		new LinkTarget(
 			'link-siokara',
 			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox6\\.com/futabafiles/001/src/)?(sa\\d{4,})(\\.\\w+)?)',
@@ -1007,21 +1531,21 @@ function createXMLGenerator () {
 			}
 		)
 	];
-	var linkTargetRegex = new RegExp(linkTargets.map(function (a, i) {
-		var re = (a.pattern.replace(/\(\?/g, '')).match(/\(/g);
+	const linkTargetRegex = new RegExp(linkTargets.map((a, i) => {
+		let re = (a.pattern.replace(/\(\?/g, '')).match(/\(/g);
 		linkTargets[i].backrefLength = re ? re.length : 0;
 		linkTargets[i].offset = i > 0 ? linkTargets[i - 1].offset + linkTargets[i - 1].backrefLength : 1;
 		return a.pattern;
 	}).join('|'));
-	var emojiPattern = /([\u00a9\u00ae\u2002\u2003\u2005\u203c\u2049\u2122\u2139\u2194-\u2199\u21a9\u21aa\u231a\u231b\u23e9-\u23ec\u23f0\u23f3\u24c2\u25aa\u25ab\u25b6\u25c0\u25fb-\u25fe\u2600\u2601\u260e\u2611\u2614\u2615\u261d\u263a\u2648-\u2653\u2660\u2663\u2665\u2666\u2668\u267b\u267f\u2693\u26a0\u26a1\u26aa\u26ab\u26bd\u26be\u26c4\u26c5\u26ce\u26d4\u26ea\u26f2\u26f3\u26f5\u26fa\u26fd\u2702\u2705\u2708-\u270c\u270f\u2712\u2714\u2716\u2728\u2733\u2734\u2744\u2747\u274c\u274e\u2753-\u2755\u2757\u2764\u2795-\u2797\u27a1\u27b0\u2934\u2935\u2b05-\u2b07\u2b1b\u2b1c\u2b50\u2b55\u3030\u303d\u3297\u3299]|\ud83c[\udc04\udccf\udd70\udd71\udd7e\udd7f\udd8e\udd91-\udd9a\ude01\ude02\ude1a\ude2f\ude32-\ude3a\ude50\ude51\udf00-\udf0c\udf0f\udf11\udf13-\udf15\udf19\udf1b\udf1f\udf20\udf30\udf31\udf34\udf35\udf37-\udf4a\udf4c-\udf4f\udf51-\udf7b\udf80-\udf93\udfa0-\udfc4\udfc6\udfc8\udfca\udfe0-\udfe3\udfe5-\udff0]|\ud83d[\udc0c-\udc0e\udc11\udc12\udc14\udc17-\udc29\udc2b-\udc3e\udc40\udc42-\udc64\udc66-\udc6b\udc6e-\udcac\udcae-\udcb5\udcb8-\udceb\udcee\udcf0-\udcf4\udcf6\udcf7\udcf9-\udcfc\udd03\udd0a-\udd14\udd16-\udd2b\udd2e-\udd3d\udd50-\udd5b\uddfb-\uddff\ude01-\ude06\ude09-\ude0d\ude0f\ude12-\ude14\ude16\ude18\ude1a\ude1c-\ude1e\ude20-\ude25\ude28-\ude2b\ude2d\ude30-\ude33\ude35\ude37-\ude40\ude45-\ude4f\ude80\ude83-\ude85\ude87\ude89\ude8c\ude8f\ude91-\ude93\ude95\ude97\ude99\ude9a\udea2\udea4\udea5\udea7-\udead\udeb2\udeb6\udeb9-\udebe\udec0])[\ufe0e\ufe0f]?/;
+	const emojiPattern = /([\u00a9\u00ae\u2002\u2003\u2005\u203c\u2049\u2122\u2139\u2194-\u2199\u21a9\u21aa\u231a\u231b\u23e9-\u23ec\u23f0\u23f3\u24c2\u25aa\u25ab\u25b6\u25c0\u25fb-\u25fe\u2600\u2601\u260e\u2611\u2614\u2615\u261d\u263a\u2648-\u2653\u2660\u2663\u2665\u2666\u2668\u267b\u267f\u2693\u26a0\u26a1\u26aa\u26ab\u26bd\u26be\u26c4\u26c5\u26ce\u26d4\u26ea\u26f2\u26f3\u26f5\u26fa\u26fd\u2702\u2705\u2708-\u270c\u270f\u2712\u2714\u2716\u2728\u2733\u2734\u2744\u2747\u274c\u274e\u2753-\u2755\u2757\u2764\u2795-\u2797\u27a1\u27b0\u2934\u2935\u2b05-\u2b07\u2b1b\u2b1c\u2b50\u2b55\u3030\u303d\u3297\u3299]|\ud83c[\udc04\udccf\udd70\udd71\udd7e\udd7f\udd8e\udd91-\udd9a\ude01\ude02\ude1a\ude2f\ude32-\ude3a\ude50\ude51\udf00-\udf0c\udf0f\udf11\udf13-\udf15\udf19\udf1b\udf1f\udf20\udf30\udf31\udf34\udf35\udf37-\udf4a\udf4c-\udf4f\udf51-\udf7b\udf80-\udf93\udfa0-\udfc4\udfc6\udfc8\udfca\udfe0-\udfe3\udfe5-\udff0]|\ud83d[\udc0c-\udc0e\udc11\udc12\udc14\udc17-\udc29\udc2b-\udc3e\udc40\udc42-\udc64\udc66-\udc6b\udc6e-\udcac\udcae-\udcb5\udcb8-\udceb\udcee\udcf0-\udcf4\udcf6\udcf7\udcf9-\udcfc\udd03\udd0a-\udd14\udd16-\udd2b\udd2e-\udd3d\udd50-\udd5b\uddfb-\uddff\ude01-\ude06\ude09-\ude0d\ude0f\ude12-\ude14\ude16\ude18\ude1a\ude1c-\ude1e\ude20-\ude25\ude28-\ude2b\ude2d\ude30-\ude33\ude35\ude37-\ude40\ude45-\ude4f\ude80\ude83-\ude85\ude87\ude89\ude8c\ude8f\ude91-\ude93\ude95\ude97\ude99\ude9a\udea2\udea4\udea5\udea7-\udead\udeb2\udeb6\udeb9-\udebe\udec0]|\u0023\u20e3|\u0030\u20e3|\u0031\u20e3|\u0032\u20e3|\u0033\u20e3|\u0034\u20e3|\u0035\u20e3|\u0036\u20e3|\u0037\u20e3|\u0038\u20e3|\u0039\u20e3|\ud83c\udde8\ud83c\uddf3|\ud83c\udde9\ud83c\uddea|\ud83c\uddea\ud83c\uddf8|\ud83c\uddeb\ud83c\uddf7|\ud83c\uddec\ud83c\udde7|\ud83c\uddee\ud83c\uddf9|\ud83c\uddef\ud83c\uddf5|\ud83c\uddf0\ud83c\uddf7|\ud83c\uddf7\ud83c\uddfa|\ud83c\uddfa\ud83c\uddf8)[\ufe0e\ufe0f]?/;
 
 	function linkify (node) {
-		var r = node.ownerDocument.createRange();
-		var re;
+		let r = node.ownerDocument.createRange();
+		let re;
 		while (node.lastChild.nodeType == 3) {
 			if ((re = linkTargetRegex.exec(node.lastChild.nodeValue))) {
-				var index = -1;
-				linkTargets.some(function (a, i) {
+				let index = -1;
+				linkTargets.some((a, i) => {
 					if (re[a.offset] != undefined && re[a.offset] != '') {
 						index = i;
 						return true;
@@ -1029,7 +1553,7 @@ function createXMLGenerator () {
 				});
 				if (index < 0) break;
 
-				var anchor = node.ownerDocument[CRE]('a');
+				let anchor = node.ownerDocument[CRE]('a');
 				r.setStart(node.lastChild, re.index);
 				r.setEnd(node.lastChild, re.index + re[0].length);
 				r.surroundContents(anchor);
@@ -1037,9 +1561,7 @@ function createXMLGenerator () {
 				try {
 					anchor.textContent = anchor.textContent.replace(
 						/(?:%[0-9a-f][0-9a-f])+/gi,
-						function ($0, $1) {
-							return decodeURIComponent($0);
-						}
+						$0 => decodeURIComponent($0)
 					);
 				}
 				catch (e) {}
@@ -1049,14 +1571,14 @@ function createXMLGenerator () {
 				anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
 			}
 			else if ((re = emojiPattern.exec(node.lastChild.nodeValue))) {
-				var emoji = node.ownerDocument[CRE]('emoji');
+				let emoji = node.ownerDocument[CRE]('emoji');
 				emoji.setAttribute('alt', re[0]);
 
 				r.setStart(node.lastChild, re.index);
 				r.setEnd(node.lastChild, re.index + re[0].length);
 				r.surroundContents(emoji);
 
-				var cp = toUCS32(re[1]);
+				let cp = toUCS32(re[1]);
 				if (cp >= 0) {
 					emoji.setAttribute('codepoint', cp.toString(16));
 				}
@@ -1160,7 +1682,7 @@ function createXMLGenerator () {
 	}
 
 	function getExpirationDate (s, fromDate) {
-		var Y, M, D, h, m;
+		let Y, M, D, h, m;
 
 		if (!(fromDate instanceof Date)) {
 			fromDate = new Date;
@@ -1184,15 +1706,15 @@ function createXMLGenerator () {
 			m = RegExp.$2 - 0;
 		}
 
-		// 23:00 -> 01:00頃消えます: 翌日とみなす
+		// 23:00 -> 01:00頃消えます: treat next day
 		if (h != undefined && h < fromDate.getHours() && D == undefined) {
 			D = fromDate.getDate() + 1;
 		}
-		// 31日 -> 1日頃消えます: 翌月とみなす
+		// 31日 -> 1日頃消えます: treat next month
 		if (D != undefined && D < fromDate.getDate() && M == undefined) {
 			M = fromDate.getMonth() + 1;
 		}
-		// 12月 -> 1月頃消えます: 翌年とみなす
+		// 12月 -> 1月頃消えます: treat next year
 		if (M != undefined && M < fromDate.getMonth() && Y == undefined) {
 			Y = fromDate.getFullYear() + 1;
 		}
@@ -1205,18 +1727,21 @@ function createXMLGenerator () {
 		if (m == undefined) m = fromDate.getMinutes();
 
 		//
-		var remains = (new Date(Y, M, D, h, m)).getTime() - fromDate.getTime();
+		let expireDate = new Date(Y, M, D, h, m);
+		urlStorage.memo(window.location.href, expireDate.getTime());
+
+		let remains = expireDate.getTime() - fromDate.getTime();
 		if (remains < 0) {
 			return '?';
 		}
 
 		//
-		var remainsString = [];
+		let remainsString = [];
 		[
 			[1000 * 60 * 60 * 24, '日',   true],
 			[1000 * 60 * 60,      '時間', h != undefined && m != undefined],
 			[1000 * 60,           '分',   h != undefined && m != undefined]
-		].forEach(function (unit) {
+		].forEach(unit => {
 			if (!unit[2]) return;
 			if (remains < unit[0]) return;
 
@@ -1249,6 +1774,21 @@ function createXMLGenerator () {
 		}
 
 		return (number - 0) * unit;
+	}
+
+	function parseMinThreadLifeTime (number, unit) {
+		switch (unit) {
+		case '分':
+			unit = 60;
+			break;
+		case '時間':
+			unit = 3600;
+			break;
+		default:
+			unit = 1;
+		}
+
+		return (number - 0) * unit * 1000;
 	}
 
 	function run (content, url, maxReplies) {
@@ -1293,7 +1833,7 @@ function createXMLGenerator () {
 
 		// experimental feature
 		if (IDEOGRAPH_CONVERSION_CONTENT) {
-			content = 新字体の漢字を旧字体に変換(content);
+			content = 新字体の漢字を舊字體に変換(content);
 		}
 
 		// base url
@@ -1346,6 +1886,12 @@ function createXMLGenerator () {
 				if (notice[1].match(/(\d+)\s*(KB|MB)/)) {
 					siteInfo.maxAttachSize = parseMaxAttachSize(RegExp.$1, RegExp.$2);
 					element(metaNode, 'maxattachsize').appendChild(text(siteInfo.maxAttachSize));
+				}
+
+				// min life time of thread
+				if (notice[1].match(/最低(\d+)\s*(時間|分)保持/)) {
+					siteInfo.minThreadLifeTime = parseMinThreadLifeTime(RegExp.$1, RegExp.$2);
+					element(metaNode, 'minthreadlifetime').appendChild(text(siteInfo.minThreadLifeTime));
 				}
 
 				element(noticesNode, 'notice').appendChild(text(notice[1]));
@@ -1423,10 +1969,29 @@ function createXMLGenerator () {
 			let adsHash = {};
 
 			// pick up unique ad iframe list
-			let adsRegex = /<iframe[^>]+>.*?<\/iframe>/gi;
+			let adsRegex = /<iframe([^>]+)>.*?<\/iframe>/gi;
 			let ads;
 			while ((ads = adsRegex.exec(content))) {
-				adsHash[ads[0]] = 1;
+				let width, height, src, re;
+
+				re = /width\s*=\s*["']?\s*(\d+)/i.exec(ads[1]);
+				if (re) {
+					width = re[1] - 0;
+				}
+
+				re = /height\s*=\s*["']?\s*(\d+)/i.exec(ads[1]);
+				if (re) {
+					height = re[1] - 0;
+				}
+
+				re = /src\s*=\s*["']?\s*([^"'>\s]+)/i.exec(ads[1]);
+				if (re) {
+					src = re[1];
+				}
+
+				if (!isNaN(width) && !isNaN(height) && src) {
+					adsHash[`${width}_${height}_${src}`] = 1;
+				}
 			}
 
 			// shuffle
@@ -1441,17 +2006,12 @@ function createXMLGenerator () {
 			// store into xml
 			let bannersNode = element(adsNode, 'banners');
 			for (let i of adsArray) {
-				let width = /width="(\d+)"/.exec(i);
-				let height = /height="(\d+)"/.exec(i);
-				let src = /src="([^"]*)"/.exec(i);
-				if (!width || !height) continue;
-
+				let parts = i.split('_');
+				let width = parts.shift() - 0;
+				let height = parts.shift() - 0;
+				let src = parts.join('_');
 				let adNode = element(bannersNode, 'ad');
 				let className = 'unknown';
-
-				width = width[1] - 0;
-				height = height[1] - 0;
-				src = src[1];
 
 				if (width == 468 && height == 60) {
 					className = 'mini';
@@ -1490,33 +2050,33 @@ function createXMLGenerator () {
 
 			paramNode = configNode.appendChild(element(configNode, 'param'));
 			paramNode.setAttribute('name', 'storage')
-			paramNode.setAttribute('value', config.data.storage.value)
+			paramNode.setAttribute('value', storage.config.storage.value)
 
 			paramNode = configNode.appendChild(element(configNode, 'param'));
 			paramNode.setAttribute('name', 'banner_enabled')
-			paramNode.setAttribute('value', config.data.banner_enabled.value ? '1' : '0')
+			paramNode.setAttribute('value', storage.config.banner_enabled.value ? '1' : '0')
 		})();
 
 		/*
 		 * split content into threads
 		 */
 
-		var threadIndex = 0;
-		var threadRegex = /(<br>|<\/div>\s*<div\s+class="thre"[^>]*>\s*)(<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
-		var matches;
-		var postTimeRegex = getPostTimeRegex();
+		let threadIndex = 0;
+		let threadRegex = /(<div\s+class="thre"[^>]*>\s*)(.+?<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
+		let matches;
+		let postTimeRegex = getPostTimeRegex();
 		markStatistics.start();
 		while ((matches = threadRegex.exec(content))) {
-			var match = matches[0];
-			var topic = /^(.+?)<blockquote[^>]*>(.*?)<\/blockquote>(.*)/i.exec(match);
+			let match = matches[0];
+			let topic = /^(.+?)<blockquote[^>]*>(.*?)<\/blockquote>(.*)/i.exec(match);
 			if (!topic) continue;
 
-			var topicInfo = topic[1];
-			var topicInfoText = topicInfo.replace(/<\/?\w+(\s+\w+\s*=\s*"[^"]*")*\s*>/g, '');
-			var threadRest = topic[3];
+			let topicInfo = topic[1];
+			let topicInfoText = topicInfo.replace(/<\/?[\w\-:]+(\s+[\w\-:]+\s*=\s*"[^"]*")*\s*>/g, '');
+			let threadRest = topic[3];
 			topic = topic[2];
 
-			re = /^(.*?)(<table .*)/i.exec(threadRest);
+			re = /^(.*?)(<table\s+.*)/i.exec(threadRest);
 			if (re) {
 				topicInfo += ' ' + re[1];
 				threadRest = re[2];
@@ -1526,36 +2086,39 @@ function createXMLGenerator () {
 				threadRest = '';
 			}
 
-			var htmlref;
+			let htmlref;
 			if (isReplyMode) {
 				htmlref = /\b(res\/(\d+)\.htm|futaba\.php\?res=(\d+))/.exec(window.location.href);
 			}
 			else {
 				htmlref = /<a href=['"]?(res\/(\d+)\.htm|futaba\.php\?res=(\d+))[^>]*>/i.exec(topicInfo);
 			}
-			if (!htmlref)  continue;
+			if (!htmlref) continue;
 
 			/*
 			 * thread meta informations
 			 */
 
-			var threadNode = element(enclosureNode, 'thread');
+			let threadNode = element(enclosureNode, 'thread');
 			threadNode.setAttribute('url', resolveRelativePath(htmlref[1], baseUrl));
 
 			/*
 			 * topic informations
 			 */
 
-			var topicNode = element(threadNode, 'topic');
+			let topicNode = element(threadNode, 'topic');
 
 			// expiration date
-			var expires = /<small>(.+?頃消えます)<\/small>/i.exec(topicInfo);
-			var expireWarn = /<font[^>]+><b>このスレは古いので、/i.test(topicInfo);
+			let expires = /<small>([^<]+?頃消えます)<\/small>/i.exec(topicInfo);
+			let expireWarn = /<font[^>]+><b>このスレは古いので、/i.test(topicInfo);
 			if (expires || expireWarn) {
-				var expiresNode = element(topicNode, 'expires');
+				let expiresNode = element(topicNode, 'expires');
 				if (expires) {
 					expiresNode.appendChild(text(expires[1]));
 					expiresNode.setAttribute('remains', getExpirationDate(expires[1]));
+				}
+				else {
+					urlStorage.memo(window.location.href, Date.now() + 1000 * 60 * 60 * 24);
 				}
 				if (expireWarn) {
 					expiresNode.setAttribute('warned', 'true');
@@ -1563,7 +2126,7 @@ function createXMLGenerator () {
 			}
 
 			// number
-			var threadNumber = 0;
+			let threadNumber = 0;
 			if (typeof htmlref[2] == 'string' && htmlref[2] != '') {
 				threadNumber = htmlref[2] - 0;
 			}
@@ -1571,7 +2134,7 @@ function createXMLGenerator () {
 				threadNumber = htmlref[3] - 0;
 			}
 			if (threadNumber) {
-				var threadNumberNode = element(topicNode, 'number');
+				let threadNumberNode = element(topicNode, 'number');
 				threadNumberNode.appendChild(text(threadNumber));
 				re = /^(\d*?)((\d)\3+)$/.exec(threadNumber);
 				if (re) {
@@ -1583,7 +2146,7 @@ function createXMLGenerator () {
 			// posted date
 			re = postTimeRegex.exec(topicInfo);
 			if (re) {
-				var postedDate = new Date(
+				let postedDate = new Date(
 					2000 + (re[1] - 0),
 					re[2] - 1,
 					re[3] - 0,
@@ -1592,7 +2155,7 @@ function createXMLGenerator () {
 					re[6] - 0,
 					0
 				);
-				var postDateNode = element(topicNode, 'post_date');
+				let postDateNode = element(topicNode, 'post_date');
 				postDateNode.appendChild(text(re[0]));
 				postDateNode.setAttribute('value', postedDate.getTime() / 1000);
 			}
@@ -1602,7 +2165,7 @@ function createXMLGenerator () {
 			if (re) {
 				re[1] = re[1].replace(/^\s+|\s+$/g, '');
 				element(topicNode, 'sub').appendChild(text(re[1]));
-				subHash[re[1]] = (subHash[re[1]] || 0) + 1;
+				siteInfo.subHash[re[1]] = (siteInfo.subHash[re[1]] || 0) + 1;
 			}
 
 			// name
@@ -1612,13 +2175,13 @@ function createXMLGenerator () {
 					.replace(/<[^>]*>/g, '')
 					.replace(/^\s+|\s+$/g, '');
 				element(topicNode, 'name').appendChild(text(re[1]));
-				nameHash[re[1]] = (nameHash[re[1]] || 0) + 1;
+				siteInfo.nameHash[re[1]] = (siteInfo.nameHash[re[1]] || 0) + 1;
 			}
 
 			// mail address
 			re = /<a href="mailto:([^"]*)"/i.exec(topicInfo);
 			if (re) {
-				var emailNode = element(topicNode, 'email');
+				let emailNode = element(topicNode, 'email');
 				emailNode.appendChild(text(stripTags(re[1])));
 				linkify(emailNode);
 			}
@@ -1626,7 +2189,7 @@ function createXMLGenerator () {
 			// そうだね (that's right）
 			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
 			if (re) {
-				var sodaneNode = element(topicNode, 'sodane');
+				let sodaneNode = element(topicNode, 'sodane');
 				sodaneNode.appendChild(text(re[1]
 					.replace('x', ' × ')
 					.replace('+', '＋')
@@ -1637,21 +2200,21 @@ function createXMLGenerator () {
 			// ID
 			re = /ID:([^ ]+)/.exec(topicInfoText);
 			if (re) {
-				var idNode = element(topicNode, 'user_id');
+				let idNode = element(topicNode, 'user_id');
 				idNode.appendChild(text(stripTags(re[1])));
 				markStatistics.notifyId(threadNumber, re[1]);
 			}
 
 			// src & thumbnail url
-			var imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(topicInfo);
+			let imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(topicInfo);
 			if (imagehref) {
-				var imageNode = element(topicNode, 'image');
-				var srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				let imageNode = element(topicNode, 'image');
+				let srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
 				// animated
-				re = /<!--AnimationGIF-->/i.exec(topicInfo);
+				re = /<small[^>]*>アニメGIF.<\/small[^>]*>/i.exec(topicInfo);
 				if (re) {
 					imageNode.setAttribute('animated', 'true');
 				}
@@ -1664,7 +2227,7 @@ function createXMLGenerator () {
 				}
 
 				// thumbnail
-				var thumbUrl = '', thumbWidth = false, thumbHeight = false;
+				let thumbUrl = '', thumbWidth = false, thumbHeight = false;
 				re = /\b(?:data-)?src=([^\s>]+)/i.exec(imagehref[2]);
 				if (re) {
 					thumbUrl = re[1].replace(/^["']|["']$/g, '');
@@ -1680,7 +2243,7 @@ function createXMLGenerator () {
 					thumbHeight = re[1];
 				}
 				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
-					var thumbNode = element(topicNode, 'thumb');
+					let thumbNode = element(topicNode, 'thumb');
 					thumbNode.appendChild(text(thumbUrl));
 					thumbNode.setAttribute('width', thumbWidth);
 					thumbNode.setAttribute('height', thumbHeight);
@@ -1690,7 +2253,7 @@ function createXMLGenerator () {
 			// communist sign :-)
 			re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(topic);
 			if (re && (!re[1] || re[1].substr(-1) != '=')) {
-				var markNode = element(topicNode, 'mark');
+				let markNode = element(topicNode, 'mark');
 				re[0].charAt(0) == '['
 					&& re[0].substr(-1) == ']'
 					&& markNode.setAttribute('bracket', 'true');
@@ -1704,19 +2267,19 @@ function createXMLGenerator () {
 			 * replies
 			 */
 
-			var hiddenRepliesCount = 0;
+			let hiddenRepliesCount = 0;
 			re =  /font color="#707070">レス(\d+)件省略。/i.exec(topicInfo);
 			if (re) {
 				hiddenRepliesCount = re[1] - 0;
 			}
 
-			var result = fetchReplies(
+			let result = fetchReplies(
 				threadRest,
 				/<table[^>]*>.*?<input[^>]*>.*?<\/td>/g,
 				hiddenRepliesCount, maxReplies, -1, threadNode,
-				subHash, nameHash, baseUrl);
+				siteInfo.subHash, siteInfo.nameHash, baseUrl);
 
-			var lastIndex = result.regex.lastIndex;
+			let lastIndex = result.regex.lastIndex;
 			if (!result.lastReached && result.regex.exec(threadRest)) {
 				result.regex.lastIndex = lastIndex;
 				remainingRepliesContext.push({
@@ -1733,7 +2296,7 @@ function createXMLGenerator () {
 			threadIndex++;
 		}
 
-		setDefaultSubjectAndName(xml, metaNode, subHash, nameHash);
+		setDefaultSubjectAndName(xml, metaNode, siteInfo.subHash, siteInfo.nameHash);
 
 		timingLogger.endTag();
 		return {
@@ -1756,6 +2319,7 @@ function createXMLGenerator () {
 			do {
 				if (context.length == 0) {
 					callback();
+					timingLogger.endTag();
 					return;
 				}
 
@@ -1767,11 +2331,11 @@ function createXMLGenerator () {
 					maxReplies,
 					lowBoundNumber,
 					element(xml.documentElement, 'thread'),
-					subHash, nameHash, url);
+					siteInfo.subHash, siteInfo.nameHash, url);
 
 				result.repliesNode.setAttribute("total", result.repliesCount);
 				result.repliesNode.setAttribute("hidden", context[0].repliesCount);
-				setDefaultSubjectAndName(xml, element(xml.documentElement, 'meta'), subHash, nameHash);
+				setDefaultSubjectAndName(xml, element(xml.documentElement, 'meta'), siteInfo.subHash, siteInfo.nameHash);
 
 				var worked = callback(xml, context[0].index, result.repliesCount, context[0].repliesCount);
 
@@ -1785,11 +2349,17 @@ function createXMLGenerator () {
 				}
 			} while (!worked);
 
-			setTimeout(function () {main()}, REST_REPLIES_PROCESS_INTERVAL);
+			if (context.length) {
+				setTimeout(main, REST_REPLIES_PROCESS_INTERVAL);
+			}
+			else {
+				callback();
+				timingLogger.endTag();
+				return;
+			}
 		}
 
 		main();
-		timingLogger.endTag();
 	}
 
 	return {
@@ -1798,8 +2368,7 @@ function createXMLGenerator () {
 	};
 }
 
-function createConfigurator () {
-	const keyName = 'akahukuplus_config';
+function createPersistentStorage () {
 	const data = {
 		wheel_reload_unit_size: {
 			type:'int',
@@ -1884,8 +2453,25 @@ function createConfigurator () {
 			type:'bool',
 			value:true,
 			name:'バナーを表示する'
+		},
+		hook_space_key: {
+			type:'bool',
+			value:true,
+			name:'スペースキーによるスクロールを制御する'
 		}
 	};
+	let runtime = {
+		del: {
+			lastReason: ''
+		},
+		lightbox: {
+			zoomMode: 'whole'
+		},
+		catalog: {
+			sortOrder: 'default'
+		}
+	};
+	let onChanged;
 
 	function validate (name, value) {
 		if (!(name in data)) return;
@@ -1912,7 +2498,7 @@ function createConfigurator () {
 			value = '' + value;
 			break;
 		case 'list':
-			var keys = Object.keys(data[name].list);
+			let keys = Object.keys(data[name].list);
 			if (keys.indexOf(value) < 0) {
 				value = keys[0];
 			}
@@ -1924,74 +2510,101 @@ function createConfigurator () {
 		return value;
 	}
 
-	function save () {
-		var tmp = {};
+	function saveConfig () {
+		let config = {};
 
-		for (var i in data) {
-			if (typeof data[i].onsave == 'function') {
-				data[i].onsave(data[i]);
-			}
+		for (let i in data) {
 			if (data[i].value != data[i].defaultValue) {
-				tmp[i] = data[i].value;
+				config[i] = data[i].value;
 			}
 		}
 
-		window.localStorage.setItem(keyName, JSON.stringify(tmp));
+		set({config: config});
 	}
 
-	function assign (storage) {
-		if (!storage) {
-			storage = window.localStorage.getItem(keyName);
-			if (storage == null) return;
+	function saveRuntime () {
+		set({runtime: runtime});
+	}
 
-			try {
-				storage = JSON.parse(storage);
-			}
-			catch (e) {
-				storage = null;
-			}
-		}
+	function assignConfig (storage) {
 		if (!storage) return;
 
-		for (var i in storage) {
+		for (let i in storage) {
 			if (!(i in data)) continue;
-			var value = validate(i, storage[i]);
+			let value = validate(i, storage[i]);
 			if (value != undefined) {
 				data[i].value = value;
 			}
 		}
 	}
 
-	function reset () {
-		for (var i in data) {
+	function assignRuntime (storage) {
+		runtime = storage;
+	}
+
+	function resetConfig () {
+		for (let i in data) {
 			data[i].value = data[i].defaultValue;
 		}
 	}
 
-	function init () {
-		for (var i in data) {
-			if (typeof data[i].onload == 'function') {
-				data[i].onload(data[i]);
+	function getAllConfig () {
+		let result = {};
+		for (let i in data) {
+			result[i] = data[i].value;
+		}
+		return result;
+	}
+
+	function set (items) {
+		chrome.storage.onChanged.removeListener(handleChanged);
+		chrome.storage.sync.set(items, () => {
+			if (chrome.runtime.lastError) {
+				console.error(`${APP_NAME}: storage#set: ${chrome.runtime.lastError.message}`);
 			}
+			chrome.storage.onChanged.addListener(handleChanged);
+		});
+	}
+
+	function handleChanged (changes, areaName) {
+		if (onChanged) {
+			onChanged(changes, areaName);
+		}
+	}
+
+	function init () {
+		for (let i in data) {
 			data[i].defaultValue = data[i].value;
 		}
+
+		chrome.storage.onChanged.addListener(handleChanged);
 	}
 
 	init();
 	return {
-		save: save,
-		assign: assign,
-		reset: reset,
-		get data () {return data},
-		get keyName () {return keyName}
+		saveConfig: saveConfig,
+		assignConfig: assignConfig,
+		saveRuntime: saveRuntime,
+		assignRuntime: assignRuntime,
+		resetConfig: resetConfig,
+		getAllConfig: getAllConfig,
+		set: set,
+		get config () {return data},
+		get runtime () {return runtime},
+		get onChanged () {return onChanged},
+		set onChanged (f) {
+			if (typeof f == 'function') {
+				onChanged = f;
+			}
+		}
 	};
 }
 
 function createTimingLogger () {
-	const a = [];
-	const b = [];
-	var last = false;
-	var locked = false;
+	const stack = [];
+	const logs = [];
+	let last = false;
+	let locked = false;
 	function timeOffset (now) {
 		if (last === false) {
 			return now;
@@ -2001,36 +2614,49 @@ function createTimingLogger () {
 		}
 	}
 	return {
-		startTag: function (s) {
+		startTag: function (message, appendix) {
 			if (locked) return;
-			var now = Date.now();
-			var item = {time:now, message: s};
-			a.push(item);
-			b.push(
+			let now = Date.now();
+			let item = {time:now, message: message};
+			logs.push(
 				'[start]\t' +
 				timeOffset(now) + '\t' +
-				item.message);
+				'                    '.substring(0, stack.length * 2) +
+				item.message +
+				(appendix ? ': ' + appendix : ''));
+			stack.push(item);
 			last = now;
 		},
-		endTag: function (s) {
+		endTag: function (message) {
 			if (locked) return;
-			var item = a.pop();
+			let item = stack.pop();
 			if (!item) return;
-			var now = Date.now();
-			b.push(
-				'[done]\t' +
-				timeOffset(now) + '\t' +
-				item.message + (s ? (' ' + s) : '') +
-				' (' + (now - item.time).toFixed(4) + ' msecs)');
-			if (a.length == 0) {
-				log('*** timing dump ***\n' + this.dump());
-				a.length = b.length = 0;
+			let now = Date.now();
+			logs.push(
+				`[done]\t` +
+				`${timeOffset(now)}\t` +
+				'                    '.substring(0, stack.length * 2) +
+				item.message +
+				(message ? (' ' + message) : '') +
+				` (${(now - item.time).toFixed(4)} msecs)`);
+			if (stack.length == 0) {
+				log(`*** timing dump ***\n${this.dump()}`);
+				this.reset();
 			}
 			last = now;
+			return true;
+		},
+		reset: function () {
+			stack.length = logs.length = 0;
+			last = false;
+			return this;
+		},
+		forceEndTag: function () {
+			while (this.endTag());
 		},
 		dump: function () {
 			if (locked) return;
-			return b.join('\n');
+			return logs.join('\n');
 		},
 		get locked () {
 			return locked;
@@ -2045,9 +2671,9 @@ function createClickDispatcher () {
 	const keys = {};
 
 	function handler (e) {
-		var t = e.target, fragment;
+		let t = e.target, fragment;
 		while (t) {
-			var code = t.nodeName;
+			let code = t.nodeName;
 			if (code == 'INPUT') {
 				code += '-' + t.type;
 			}
@@ -2079,7 +2705,7 @@ function createClickDispatcher () {
 			}
 		}
 
-		for (var i in keys) {
+		for (let i in keys) {
 			if (i.charAt(0) == '.' && t.classList.contains(i.substring(1))) {
 				invoke(i, e, t);
 				return;
@@ -2092,16 +2718,16 @@ function createClickDispatcher () {
 	}
 
 	function invoke (fragment, e, t) {
-		var result;
+		let result;
 		try {
 			result = keys[fragment](e, t);
 		}
 		catch (e) {
-			console.error(`exception in clickDispatcher: ${e.toString()}\n${e.stack}`);
+			console.error(`${APP_NAME}: exception in clickDispatcher: ${e.toString()}\n${e.stack}`);
 			result = undefined;
 		}
 
-		var isAnchor = false;
+		let isAnchor = false;
 		for (var elm = e.target; elm; elm = elm.parentNode) {
 			if (elm.nodeName == 'A') {
 				isAnchor = true;
@@ -2137,24 +2763,24 @@ function createKeyManager () {
 	const strokes = {};
 
 	function keypress (e) {
-		var focusedNodeName = getFocusedNodeName();
+		let focusedNodeName = getFocusedNodeName();
 		if ((e.code == 13 || e.code == 27) && isSpecialInputElement(focusedNodeName)) {
 			return;
 		}
 
-		var mode = appStates[0] +
+		let mode = appStates[0] +
 			(isTextInputElement(focusedNodeName) ? '.edit' : '');
 		if (!(mode in strokes) || !(e.key in strokes[mode])) {
 			return;
 		}
 
-		var result;
+		let result;
 		try {
 			result = strokes[mode][e.key].handler(e, document.activeElement);
 		}
 		catch (ex) {
 			console.error(
-				`exception in keyManager: ${ex.toString()}\n${e.stack}`);
+				`${APP_NAME}: exception in keyManager: ${ex.toString()}\n${e.stack}`);
 			result = undefined;
 		}
 		if (result === 'passthrough') {
@@ -2164,7 +2790,7 @@ function createKeyManager () {
 	}
 
 	function getFocusedNodeName () {
-		var focusedNodeName = document.activeElement.nodeName.toLowerCase();
+		let focusedNodeName = document.activeElement.nodeName.toLowerCase();
 		if (focusedNodeName == 'input') {
 			focusedNodeName += '.' + document.activeElement.type.toLowerCase();
 		}
@@ -2186,7 +2812,7 @@ function createKeyManager () {
 		if (!(stroke instanceof Array)) {
 			stroke = [stroke];
 		}
-		stroke.forEach(function (s) {
+		stroke.forEach(s => {
 			strokes[mode][s] = {
 				handler: handler,
 				isPrior: isPrior
@@ -2223,7 +2849,7 @@ function createKeyManager () {
 			return;
 		}
 
-		var m = [];
+		let m = [];
 		for (var i in strokes[mode]) {
 			if (strokes[mode][i].isPrior) {
 				m.push(i);
@@ -2243,7 +2869,7 @@ function createKeyManager () {
 }
 
 function createSound (name) {
-	var volume = 50;
+	let volume = 50;
 	return {
 		play: function play () {
 			if (volume <= 0) return;
@@ -2264,25 +2890,9 @@ function createSound (name) {
 	}
 }
 
-function sendToBackend () {
-	var args = Array.prototype.slice.call(arguments);
-	var data, callback;
-	if (args.length > 1 && typeof args[args.length - 1] == 'function') {
-		callback = args.pop();
-	}
-	if (args.length > 1) {
-		data = args.pop();
-	}
-	else {
-		data = {};
-	}
-	data.type = args[0];
-	backend.postMessage(data, callback);
-}
-
 function createMarkStatistics () {
-	var marks, otherMarks, ids;
-	var repliesCount, newEntries;
+	let marks, otherMarks, ids;
+	let repliesCount, newEntries;
 
 	const KEY_MAP = {
 		'管理人': 'admin',
@@ -2296,7 +2906,7 @@ function createMarkStatistics () {
 	}
 
 	function notifyMark (number, content) {
-		var key = KEY_MAP[content];
+		let key = KEY_MAP[content];
 		if (key) {
 			if (!(number in marks[key])) {
 				newEntries[`${key}_${number}`] = 1;
@@ -2342,19 +2952,19 @@ function createMarkStatistics () {
 	}
 
 	function getStatistics (dropDelta) {
-		var extMarks = {};
-		var newMarks = {};
-		var extIds = {};
-		var newIds = {};
-		var currentRepliesCount = getRepliesCount();
+		let extMarks = {};
+		let newMarks = {};
+		let extIds = {};
+		let newIds = {};
+		let currentRepliesCount = getRepliesCount();
 
 		function getMarkData () {
-			var result = {};
+			let result = {};
 
-			for (var i in marks) {
+			for (let i in marks) {
 				result[i] = [];
-				for (var num in marks[i]) {
-					var isNew = (`${i}_${num}`) in newEntries;
+				for (let num in marks[i]) {
+					let isNew = (`${i}_${num}`) in newEntries;
 					if (isNew) {
 						newMarks[num] = 1;
 					}
@@ -2371,12 +2981,12 @@ function createMarkStatistics () {
 		}
 
 		function getOtherMarkData () {
-			var result = {};
+			let result = {};
 
-			for (var host in otherMarks) {
+			for (let host in otherMarks) {
 				result[host] = [];
-				for (var num in otherMarks[host]) {
-					var isNew = (`other_${num}`) in newEntries;
+				for (let num in otherMarks[host]) {
+					let isNew = (`other_${num}`) in newEntries;
 					if (isNew) {
 						newMarks[num] = 1;
 					}
@@ -2393,13 +3003,13 @@ function createMarkStatistics () {
 		}
 
 		function getIdData () {
-			var result = {};
+			let result = {};
 
-			for (var id in ids) {
+			for (let id in ids) {
 				result[id] = [];
 
-				for (var num in ids[id]) {
-					var isNew = (`id_${num}`) in newEntries;
+				for (let num in ids[id]) {
+					let isNew = (`id_${num}`) in newEntries;
 					if (isNew) {
 						newIds[id] = 1;
 					}
@@ -2452,39 +3062,40 @@ function createMarkStatistics () {
 		}
 
 		function outputSubHeader (container, label, count) {
-			var p = container.appendChild(document[CRE]('p'));
+			let p = container.appendChild(document[CRE]('p'));
 			p.classList.add('sub-header');
 			p.textContent = label;
 
-			var pp = p.appendChild(document[CRE]('span'));
+			let pp = p.appendChild(document[CRE]('span'));
 			pp.appendChild(document.createTextNode(`(${count} 回)`));
 		}
 
 		function outputArray (container, a) {
-			for (var i = 0; i < a.length; i++) {
+			for (let i = 0; i < a.length; i++) {
 				container.appendChild(document.createTextNode(' '));
-				var span = container.appendChild(document[CRE]('span'));
-				span.classList.add('a');
-				span.textContent = `No.${a[i].number}`;
-				span.setAttribute('data-number', a[i].number);
-				a[i].isNew && span.classList.add('new');
+				let anchor = container.appendChild(document[CRE]('a'));
+				anchor.href = '#search-item';
+				anchor.textContent = `No.${a[i].number}`;
+				anchor.setAttribute('data-number', a[i].number);
+				a[i].isNew && anchor.classList.add('new');
 			}
 		}
 
-		var markData = statistics.markData;
-		var otherMarkData = statistics.otherMarkData;
-		var idData = statistics.idData;
+		let markData = statistics.markData;
+		let otherMarkData = statistics.otherMarkData;
+		let idData = statistics.idData;
+		let container;
 
-		for (var i in markData) {
-			var container = $(`stat-${i}`);
+		for (let i in markData) {
+			let container = $(`stat-${i}`);
 			if (!container) continue;
 
 			empty(container);
-			var data = markData[i];
+			let data = markData[i];
 			if (data.length) {
-				var li = setListItemVisibility(container, true);
+				let li = setListItemVisibility(container, true);
 				if (li) {
-					var header = $qs('p span', li);
+					let header = $qs('p span', li);
 					if (header) {
 						header.textContent = ` (${markData[i].length})`;
 					}
@@ -2496,12 +3107,12 @@ function createMarkStatistics () {
 			}
 		}
 
-		var container = $('stat-other');
+		container = $('stat-other');
 		if (container) {
 			empty(container);
 			if (Object.keys(otherMarkData).length) {
 				setListItemVisibility(container, true);
-				for (var i in otherMarkData) {
+				for (let i in otherMarkData) {
 					outputSubHeader(container, i, otherMarkData[i].length);
 					outputArray(container, otherMarkData[i]);
 				}
@@ -2511,16 +3122,16 @@ function createMarkStatistics () {
 			}
 		}
 
-		var container = $('stat-id');
+		container = $('stat-id');
 		if (container) {
 			empty(container);
-			var idKeys = Object.keys(idData);
+			let idKeys = Object.keys(idData);
 			if (idKeys.length) {
 				$t('stat-id-header', `(${idKeys.length} ID)`);
-				for (var i in idData) {
-					var li = container.appendChild(document[CRE]('li'));
+				for (let i in idData) {
+					let li = container.appendChild(document[CRE]('li'));
 					outputSubHeader(li, i, idData[i].length);
-					var div = li.appendChild(document[CRE]('div'));
+					let div = li.appendChild(document[CRE]('div'));
 					outputArray(div, idData[i]);
 				}
 			}
@@ -2531,13 +3142,13 @@ function createMarkStatistics () {
 	}
 
 	function updatePostformView (statistics) {
-		var result = false;
-		var marked = false;
-		var identified = false;
+		let result = false;
+		let marked = false;
+		let identified = false;
 
-		for (var i in statistics.count) {
-			var current = statistics.count[i];
-			var diff;
+		for (let i in statistics.count) {
+			let current = statistics.count[i];
+			let diff;
 
 			if (!statistics.delta || (diff = statistics.delta[i]) == undefined || diff == 0) {
 				$t(`replies-${i}`, current);
@@ -2546,7 +3157,7 @@ function createMarkStatistics () {
 			}
 
 			result = true;
-			var s = current + `(${diff > 0 ? '+' : ''}${diff})`;
+			let s = current + `(${diff > 0 ? '+' : ''}${diff})`;
 			$t(`replies-${i}`, s);
 			$t(`pf-replies-${i}`, s);
 
@@ -2559,9 +3170,8 @@ function createMarkStatistics () {
 		}
 
 		if (identified) {
-			var node;
-			if (window.location.hostname == 'may.2chan.net'
-			&& /^\/id\//.test(window.location.pathname)) {
+			let node;
+			if (siteInfo.server == 'may' && siteInfo.board == 'id') {
 				identified = false;
 			}
 			else if ((node = $qs('.topic-wrap .email'))
@@ -2581,7 +3191,7 @@ function createMarkStatistics () {
 			'replies-total', 'replies-mark', 'replies-id',
 			'pf-replies-total', 'pf-replies-mark', 'pf-replies-id'
 		].forEach(function (id) {
-			var e = $(id);
+			let e = $(id);
 			if (!e) return;
 			$t(e, e.textContent.replace(/\([-+]?\d+\)$/, ''));
 		});
@@ -2606,15 +3216,15 @@ function createMarkStatistics () {
 }
 
 function createQueryCompiler () {
-	const lex = /-?"[^"]*"|\(|\)|-\(|\||[^\s|)]+/g;
-	var query;
-	var lastIndex;
-	var reachedToEof;
+	const lex = /-?"[^"]*"|\(|\)|-\(|\||[^\s|\u3000|)]+/g;
+	let query;
+	let lastIndex;
+	let reachedToEof;
 
 	function next () {
 		if (reachedToEof) return null;
 		lastIndex = lex.lastIndex;
-		var re = lex.exec(query);
+		let re = lex.exec(query);
 		if (re) return re[0];
 		reachedToEof = true;
 		return null;
@@ -2629,9 +3239,9 @@ function createQueryCompiler () {
 	}
 
 	function or (v) {
-		var result = [];
+		let result = [];
 		while (true) {
-			var a = and(v);
+			let a = and(v);
 			result.push(a);
 
 			v = next();
@@ -2650,9 +3260,9 @@ function createQueryCompiler () {
 	}
 
 	function and (v) {
-		var result = [];
+		let result = [];
 		while (true) {
-			var a = word(v);
+			let a = word(v);
 			result.push(a);
 
 			v = next();
@@ -2669,7 +3279,7 @@ function createQueryCompiler () {
 
 	function word (v) {
 		if (v == '(') {
-			var a = or(next());
+			let a = or(next());
 			v = next();
 			if (v != ')') {
 				throw new Error('括弧がつり合っていません');
@@ -2677,7 +3287,7 @@ function createQueryCompiler () {
 			return `(${a})`;
 		}
 		else if (v == '-(') {
-			var a = or(next());
+			let a = or(next());
 			v = next();
 			if (v != ')') {
 				throw new Error('括弧がつり合っていません');
@@ -2685,16 +3295,16 @@ function createQueryCompiler () {
 			return `!(${a})`;
 		}
 		else if (v !== null) {
-			var op = '>=';
+			let op = '>=';
 			if (v.charAt(0) == '-') {
 				op = '<';
 				v = v.substring(1);
 			}
 			if (v.charAt(0) == '"' && v.substr(-1) == '"') {
-				v = v.substring(1, v.length - 1);
+				v = getLegalizedStringForSearch(v.substring(1, v.length - 1));
 			}
 			else {
-				v = v.toLowerCase();
+				v = getLegalizedStringForSearch(v);
 			}
 			if (v == '') {
 				return '';
@@ -2761,26 +3371,29 @@ function createQueryCompiler () {
 }
 
 function createUrlStorage () {
-	function getSlot () {
-		var slot = window.localStorage.getItem('postUrl');
-		if (slot != null) {
-			slot = JSON.parse(slot).filter(function (item) {
-				return Date.now() - item.created < 1000 * 60 * 60 * 24 * 2;
-			});
-		}
-		else {
-			slot = [];
-		}
-		return slot;
+	function loadSlot (callback) {
+		chrome.storage.sync.get({openedThreads:[]}, result => {
+			if (chrome.runtime.lastError) {
+				console.error(`${APP_NAME}: ${chrome.runtime.lastError.message}`);
+				callback([]);
+				return;
+			}
+
+			const now = Date.now();
+			result.openedThreads = result.openedThreads.filter(item => item.expire > now);
+			callback(result.openedThreads);
+		});
 	}
 
-	function setSlot (slot) {
-		window.localStorage.setItem('postUrl', JSON.stringify(slot));
+	function saveSlot (slot) {
+		storage.set({
+			openedThreads: slot
+		});
 	}
 
 	function indexOf (slot, key) {
-		var result = -1;
-		slot.some(function (item, i) {
+		let result = -1;
+		slot.some((item, i) => {
 			if (item.key == key) {
 				result = i;
 				return true;
@@ -2795,31 +3408,53 @@ function createUrlStorage () {
 			null;
 	}
 
-	function memo (url) {
-		var key = getKey(url);
+	function memo (url, expire) {
+		let key = getKey(url);
 		if (!key) return;
 
-		var slot = getSlot();
-		var index = indexOf(slot, key);
-		if (index >= 0) {
-			slot[index].count++;
-		}
-		else {
-			slot.push({created: Date.now(), key: key, count: 1});
-		}
-		setSlot(slot);
+		loadSlot(slot => {
+			let index = indexOf(slot, key);
+			if (index >= 0) {
+				slot[index].count++;
+			}
+			else {
+				slot.push({expire: expire, key: key, count: 1});
+			}
+			saveSlot(slot);
+		});
 	}
 
-	function getAll (url) {
-		var result = {};
-		getSlot().forEach(function (item) {
-			var key = item.key.split('-');
-			if (siteInfo.server == key[0] && siteInfo.board == key[1]) {
-				result[key[2]] = item.count;
-			}
+	function getAll () {
+		return new Promise(resolve => {
+			loadSlot(slot => {
+				let result = {};
+				slot.forEach(item => {
+					let key = item.key.split('-');
+					if (siteInfo.server == key[0] && siteInfo.board == key[1]) {
+						result[key[2]] = item.count;
+					}
+				});
+
+				/*
+				 * result is key(threadNumber) - value (count) object like: {
+				 *   '0000000001': 1,
+				 *   '0000000002': 1,
+				 *        :
+				 *        :
+				 * }
+				 */
+
+				resolve(result);
+			});
 		});
-		return result;
 	}
+
+	/*
+	 * TODO: THIS STATEMENT IS TRANSIENT.
+	 * WHEN AKAHUKUPLUS THAT USES chrome.storage HAS FULLY DISTRIBUTED,
+	 * WE SHOULD DELETE THIS CODE.
+	 */
+	window.localStorage.removeItem('postUrl');
 
 	return {
 		memo: memo,
@@ -2829,19 +3464,19 @@ function createUrlStorage () {
 
 function createCatalogPopup (container) {
 	const popups = [];
-	var timer;
+	let timer;
 
 	function _log (s) {
 		//log(s);
 	}
 
 	function mover (e) {
-		if (!config.data.catalog_popup_enabled.value) return;
-		if (transport) return;
+		if (!storage.config.catalog_popup_enabled.value) return;
+		if (transport.isRunning('catalog')) return;
 		if (!cursorPos.moved) return;
 		_log('mover: ' + (e.target.outerHTML || '<#document>').match(/<[^>]*>/)[0]);
 
-		var target;
+		let target;
 		if (e.target.nodeName == 'IMG' || e.target.classList.contains('text')) {
 			target = e.target;
 			while (target && target.nodeName != 'A') {
@@ -2859,9 +3494,9 @@ function createCatalogPopup (container) {
 		}
 
 		closeAll(target);
-		timer = setTimeout(function (target) {
+		timer = setTimeout(target => {
 			timer = null;
-			for (var p = document.elementFromPoint(cursorPos.x, cursorPos.y); p; p = p.parentNode) {
+			for (let p = document.elementFromPoint(cursorPos.x, cursorPos.y); p; p = p.parentNode) {
 				if (p == target) {
 					_log('mover phase 2: target found');
 					prepare(target);
@@ -2872,8 +3507,8 @@ function createCatalogPopup (container) {
 	}
 
 	function indexOf (target) {
-		var result = -1;
-		popups.some(function (item, i) {
+		let result = -1;
+		popups.some((item, i) => {
 			if (item.target == target) {
 				result = i;
 				return true;
@@ -2883,9 +3518,9 @@ function createCatalogPopup (container) {
 	}
 
 	function getRect (elm) {
-		var rect = elm.getBoundingClientRect();
-		var sl = docScrollLeft();
-		var st = docScrollTop();
+		let rect = elm.getBoundingClientRect();
+		let sl = docScrollLeft();
+		let st = docScrollTop();
 		return {
 			left:   sl + rect.left,
 			top:    st + rect.top,
@@ -2904,12 +3539,12 @@ function createCatalogPopup (container) {
 	}
 
 	function clip (rect) {
-		var sl = viewportRect.left + docScrollLeft();
-		var st = viewportRect.top + docScrollTop();
-		var sr = sl + viewportRect.width;
-		var sb = st + viewportRect.height;
-		var right = rect.left + rect.width;
-		var bottom = rect.top + rect.height;
+		let sl = viewportRect.left + docScrollLeft();
+		let st = viewportRect.top + docScrollTop();
+		let sr = sl + viewportRect.width;
+		let sb = st + viewportRect.height;
+		let right = rect.left + rect.width;
+		let bottom = rect.top + rect.height;
 		if ('left' in rect && rect.left < sl) rect.left = sl;
 		if ('left' in rect && right > sr) rect.left = sr - rect.width;
 		if ('top' in rect && rect.top < st) rect.top = st;
@@ -2917,7 +3552,7 @@ function createCatalogPopup (container) {
 	}
 
 	function prepare (target) {
-		var index = indexOf(target);
+		let index = indexOf(target);
 		_log('prepare: index: ' + index +
 			', target: ' + ($qs('.text', target) || {textContent:''}).textContent);
 		if (index >= 0) {
@@ -2925,26 +3560,26 @@ function createCatalogPopup (container) {
 			return;
 		}
 
-		var thumbnail, text, shrinkedRect;
+		let thumbnail, text, shrinkedRect;
 
-		var targetThumbnail = $qs('img', target);
+		let targetThumbnail = $qs('img', target);
 		if (targetThumbnail && targetThumbnail.naturalWidth && targetThumbnail.naturalHeight) {
 			thumbnail = document.body.appendChild(document[CRE]('img'));
 			thumbnail.src = targetThumbnail.src.replace('/cat/', '/thumb/');
 			thumbnail.className = 'catalog-popup hide';
 			thumbnail.setAttribute('data-url', target.href);
-			thumbnail.addEventListener('click', function () {
+			thumbnail.addEventListener('click', (e) => {
 				sendToBackend('open',
 					{
-						url: this.getAttribute('data-url'),
+						url: e.target.getAttribute('data-url'),
 						selfUrl: window.location.href
 					});
 			}, false);
 			shrinkedRect = getRect(targetThumbnail);
 		}
 
-		var targetText = $qs('.text', target);
-		var targetCount = $qs('.info span:first-child', target);
+		let targetText = $qs('.text', target);
+		let targetCount = $qs('.info span:first-child', target);
 		if (targetText || targetCount) {
 			text = document.body.appendChild(document[CRE]('div'));
 			text.className = 'catalog-popup hide';
@@ -2956,7 +3591,7 @@ function createCatalogPopup (container) {
 			}
 		}
 
-		var item = {
+		let item = {
 			state: 'initialize',
 			target: target,
 			thumbnail: thumbnail,
@@ -2967,15 +3602,15 @@ function createCatalogPopup (container) {
 		index = popups.length - 1;
 
 		if (thumbnail && (!thumbnail.naturalWidth || !thumbnail.naturalHeight)) {
-			var handleLoad = function () {
-				this.removeEventListener('load', handleLoad, false);
-				this.removeEventListener('error', handleFail, false);
+			let handleLoad = (e) => {
+				e.target.removeEventListener('load', handleLoad, false);
+				e.target.removeEventListener('error', handleFail, false);
 				handleLoad = handleFail = null;
 				open(target);
 			};
-			var handleFail = function () {
-				this.removeEventListener('load', handleLoad, false);
-				this.removeEventListener('error', handleFail, false);
+			let handleFail = (e) => {
+				e.target.removeEventListener('load', handleLoad, false);
+				e.target.removeEventListener('error', handleFail, false);
 				handleLoad = handleFail = null;
 				open(target);
 			};
@@ -2989,13 +3624,13 @@ function createCatalogPopup (container) {
 	}
 
 	function open (target) {
-		var index = typeof target == 'number' ? target : indexOf(target);
+		let index = typeof target == 'number' ? target : indexOf(target);
 		if (index < 0 || target >= popups.length) {
 			_log(`open: index ${index} is invalid. exit.`);
 			return;
 		}
 
-		var item = popups[index];
+		let item = popups[index];
 		_log(`open: ${item.text.textContent}`);
 		if (item.thumbnail) {
 			if (!item.zoomedRect) {
@@ -3014,10 +3649,10 @@ function createCatalogPopup (container) {
 			}
 			setGeometory(item.thumbnail, item.shrinkedRect);
 			item.thumbnail.classList.remove('hide');
-			setTimeout(function () {setGeometory(item.thumbnail, item.zoomedRect)}, 0);
+			setTimeout(() => {setGeometory(item.thumbnail, item.zoomedRect)}, 0);
 		}
 		if (item.text) {
-			var rect = getRect(item.target);
+			let rect = getRect(item.target);
 			rect = {
 				left: Math.floor(rect.left + (rect.width / 2) - (CATALOG_POPUP_TEXT_WIDTH / 2)),
 				top: (item.shrinkedRect ? item.shrinkedRect.bottom : rect.bottom) + 8,
@@ -3028,29 +3663,29 @@ function createCatalogPopup (container) {
 			item.text.style.top = rect.top + 'px';
 			item.text.style.width = rect.width + 'px';
 			item.text.classList.remove('hide');
-			setTimeout(function () {item.text.classList.add('run')}, 0);
+			setTimeout(() => {item.text.classList.add('run')}, 0);
 		}
 		item.state = 'running';
 		_log('exit open');
 	}
 
 	function close (target) {
-		var index = typeof target == 'number' ? target : indexOf(target);
+		let index = typeof target == 'number' ? target : indexOf(target);
 		if (index < 0 || index >= popups.length) {
 			_log(`close: index ${index} is invalid. exit.`);
 			return;
 		}
 
-		var item = popups[index];
+		let item = popups[index];
 		if (item.state == 'closing') return;
 
-		var handleTransitionend = function (e) {
+		let handleTransitionend = function (e) {
 			if (e && e.target) {
-				var t = e.target;
+				let t = e.target;
 				t.parentNode && t.parentNode.removeChild(t);
 			}
 			if (item && --item.closingCount <= 0 && item.state == 'closing') {
-				for (var i = 0; i < popups.length; i++) {
+				for (let i = 0; i < popups.length; i++) {
 					if (popups[i] == item) {
 						item = null;
 						popups.splice(i, 1);
@@ -3061,7 +3696,7 @@ function createCatalogPopup (container) {
 		};
 		_log(`close: ${item.text.textContent}`);
 
-		var count = 0;
+		let count = 0;
 		if (item.thumbnail) {
 			transitionend(item.thumbnail, handleTransitionend);
 			setGeometory(item.thumbnail, item.shrinkedRect);
@@ -3084,10 +3719,10 @@ function createCatalogPopup (container) {
 
 	function closeAll (except) {
 		_log(`closeAll: closing ${popups.length} popup(s)`);
-		var elms = Array.prototype.slice.call($qsa('body > .catalog-popup'));
-		for (var i = 0; i < popups.length; i++) {
+		let elms = Array.prototype.slice.call($qsa('body > .catalog-popup'));
+		for (let i = 0; i < popups.length; i++) {
 			['thumbnail', 'text'].forEach(function (p) {
-				var index = elms.indexOf(popups[i][p]);
+				let index = elms.indexOf(popups[i][p]);
 				index >= 0 && elms.splice(index, 1);
 			});
 			if (popups[i].target == except) continue;
@@ -3101,7 +3736,7 @@ function createCatalogPopup (container) {
 	function deleteAll () {
 		Array.prototype.forEach.call(
 			$qsa('body > .catalog-popup'),
-			function (node) {
+			node => {
 				node.parentNode && node.parentNode.removeChild(node);
 			}
 		);
@@ -3127,10 +3762,6 @@ function createQuotePopup () {
 	const POOL_ID = 'quote-popup-pool';
 	const ORIGIN_CACHE_ATTR = 'data-quote-origin';
 	const ORIGIN_ID_ATTR = 'data-quote-origin-id';
-	const POPUP_DELAY_MSEC = 1000 * 0.5;
-	const POPUP_HIGHLIGHT_MSEC = 1000 * 2;
-	const POPUP_HIGHLIGHT_TOP_MARGIN = 64;
-	const POPUP_POS_OFFSET = 8;
 
 	var timer;
 	var lastQuoteElement;
@@ -3148,7 +3779,7 @@ function createQuotePopup () {
 		!timer && (timer = setTimeout(function () {
 			timer = null;
 			popup();
-		}, POPUP_DELAY_MSEC));
+		}, QUOTE_POPUP_DELAY_MSEC));
 	}
 
 	function getParent (elm, spec) {
@@ -3342,31 +3973,31 @@ function createQuotePopup () {
 		}
 	}
 
-	function createPopup (quoteOrigin) {
-		var no = quoteOrigin.element.getAttribute('data-number') ||
+	function createPopup (quoteOrigin, poolId) {
+		let no = quoteOrigin.element.getAttribute('data-number') ||
 			$qs('[data-number]', quoteOrigin.element).getAttribute('data-number');
 		quoteOrigin.element.id = `_${no}`;
 
 		// create new popup
-		var div = $(POOL_ID).appendChild(document[CRE]('div'));
+		let div = ($(poolId) || $(POOL_ID)).appendChild(document[CRE]('div'));
 		div.className = 'quote-popup';
 		div.appendChild(quoteOrigin.element.cloneNode(true));
 
 		// some tweaks for contents
-		var noElm = $qs('.no', div);
+		let noElm = $qs('.no', div);
 		if (noElm) {
-			var a = document[CRE]('a');
+			let a = document[CRE]('a');
 			noElm.parentNode.replaceChild(a, noElm);
 			a.className = 'jumpto-quote-anchor';
 			a.href = '#jumpto-quote-origin';
 			a.textContent = noElm.textContent;
 			a.setAttribute(ORIGIN_ID_ATTR, quoteOrigin.element.id);
 		}
-		var checkElm = $qs('input[type="checkbox"]', div);
+		let checkElm = $qs('input[type="checkbox"]', div);
 		if (checkElm) {
 			checkElm.parentNode.removeChild(checkElm);
 		}
-		var iframe;
+		let iframe;
 		while ((iframe = $qs('iframe', div))) {
 			iframe.parentNode.removeChild(iframe);
 		}
@@ -3374,17 +4005,19 @@ function createQuotePopup () {
 		// positioning
 		div.style.visibility = 'hidden';
 		div.style.left = div.style.top = '0';
-		var w = div.offsetWidth;
-		var h = div.offsetHeight;
-		var sl = docScrollLeft();
-		var st = docScrollTop();
-		var cw = viewportRect.width;
-		var ch = viewportRect.height;
-		var l = Math.max(0, Math.min(cursorPos.pagex + POPUP_POS_OFFSET, sl + cw - w));
-		var t = Math.max(0, Math.min(cursorPos.pagey + POPUP_POS_OFFSET, st + ch - h));
+		let w = div.offsetWidth;
+		let h = div.offsetHeight;
+		let sl = docScrollLeft();
+		let st = docScrollTop();
+		let cw = viewportRect.width;
+		let ch = viewportRect.height;
+		let l = Math.max(0, Math.min(cursorPos.pagex + QUOTE_POPUP_POS_OFFSET, sl + cw - w));
+		let t = Math.max(0, Math.min(cursorPos.pagey + QUOTE_POPUP_POS_OFFSET, st + ch - h));
 		div.style.left = l + 'px';
 		div.style.top = t + 'px';
 		div.style.visibility = '';
+
+		return div;
 	}
 
 	function popup () {
@@ -3435,18 +4068,19 @@ function createQuotePopup () {
 
 		target.classList.add('highlight');
 		var st = docScrollTop();
-		var y = Math.max(0, target.getBoundingClientRect().top + st - POPUP_HIGHLIGHT_TOP_MARGIN);
+		var y = Math.max(0, target.getBoundingClientRect().top + st - QUOTE_POPUP_HIGHLIGHT_TOP_MARGIN);
 		y < st && window.scrollTo(0, y);
 		removePopup();
 
 		setTimeout(function () {
 			target.classList.remove('highlight');
-		}, POPUP_HIGHLIGHT_MSEC);
+		}, QUOTE_POPUP_HIGHLIGHT_MSEC);
 	}
 
 	init();
 	return {
-		jumpto: jumpto
+		jumpto: jumpto,
+		createPopup: createPopup
 	};
 }
 
@@ -3456,7 +4090,7 @@ function createSelectionMenu () {
 
 	function init () {
 		window.addEventListener('mouseup', function (e) {
-			setTimeout(function (e) {mup(e)}, 1, e);
+			setTimeout(mup, 0, e);
 		}, false);
 
 		clickDispatcher.add('.selmenu', function (e, t) {
@@ -3521,17 +4155,31 @@ function createSelectionMenu () {
 		switch (key) {
 		case 'quote':
 		case 'pull':
-			var com = $('com');
-			if (com) {
-				quote(com, text, /^quote\b/.test(key));
-				commands.activatePostForm();
-				com.setSelectionRange(com.value.length, com.value.length);
+			{
+				let com = $('com');
+				if (com) {
+					quote(com, text, /^quote\b/.test(key));
+					commands.activatePostForm();
+					com.setSelectionRange(com.value.length, com.value.length);
+				}
 			}
 			break;
 
 		case 'copy':
 		case 'copy-with-quote':
-			backend.setClipboard(key == 'copy' ? text : getQuoted(text));
+			{
+				let quoted = key == 'copy' ? text : getQuoted(text);
+
+				if ('clipboard' in navigator) {
+					navigator.clipboard.writeText(quoted);
+				}
+				else if (WasaviExtensionWrapper.IS_GECKO) {
+					setClipboardGecko(quoted);
+				}
+				else {
+					backend.setClipboard(quoted);
+				}
+			}
 			break;
 
 		case 'google':
@@ -3599,6 +4247,25 @@ function createSelectionMenu () {
 		}
 
 		target.value += '\n';
+	}
+
+	function setClipboardGecko (text) {
+		let textarea = document.body.appendChild(document[CRE]('textarea'));
+		const styles = {
+			position: 'fixed',
+			width: '300px',
+			height: '300px',
+			left: '-400px',
+			top: '0px'
+		};
+		for (let i in styles) {
+			textarea.style[i] = styles[i];
+		}
+		textarea.value = text;
+		textarea.focus();
+		textarea.select();
+		document.execCommand('copy');
+		textarea.parentNode.removeChild(textarea);
 	}
 
 	init();
@@ -3701,15 +4368,14 @@ function createFavicon () {
 			isLoading = true;
 			resources.get(
 				`/images/board/${siteInfo.server}-${siteInfo.board}.png`,
-				{responseType:'dataURL'},
-				data => {
-					if (data) {
-						createLinkNode().href = data.replace(
-							/^data:[^,]+/, 'data:image/png;base64');
-					}
-					isLoading = false;
+				{responseType:'dataURL'}
+			).then(data => {
+				if (data) {
+					createLinkNode().href = data.replace(
+						/^data:[^,]+/, 'data:image/png;base64');
 				}
-			);
+				isLoading = false;
+			});
 			break;
 
 		case 'reply':
@@ -3753,81 +4419,140 @@ function createHistoryStateWrapper (popstateHandler) {
 }
 
 function createTransport () {
-	transportLastUsedTime = Date.now();
-	try {
-		// Firefox's WebExtensions is still incomplete
-		return XPCNativeWrapper(new window.wrappedJSObject.XMLHttpRequest);
+	/*
+	 * - postBase (post, delete, moderate)
+	 * - reloadBase (reload)
+	 * - reloadCatalogBase (reload)
+	 */
+	const transport = {};
+	const lastUsedTime = {};
+
+	function createXMLHttpRequest () {
+		try {
+			// Firefox's WebExtensions is still incomplete
+			return XPCNativeWrapper(new window.wrappedJSObject.XMLHttpRequest);
+		}
+		catch (ex) {
+			return new window.XMLHttpRequest;
+		}
 	}
-	catch (ex) {
-		return new window.XMLHttpRequest;
+
+	function create (tag) {
+		let result = createXMLHttpRequest();
+
+		if (tag) {
+			transport[tag] = result;
+		}
+
+		return result;
 	}
+
+	function release (tag) {
+		if (tag in transport) {
+			delete transport[tag];
+			lastUsedTime[tag] = Date.now();
+		}
+	}
+
+	function abort (tag) {
+		if (tag in transport) {
+			try {
+				transport[tag].abort();
+			}
+			catch (e) {
+			}
+
+			release(tag);
+		}
+	}
+
+	function isRapidAccess (tag) {
+		let result = false;
+
+		if (tag in transport
+		&& Date.now() - lastUsedTime[tag] <= NETWORK_ACCESS_MIN_INTERVAL) {
+			setBottomStatus('ちょっと待ってね。');
+			result = true;
+		}
+
+		return result;
+	}
+
+	function isRunning (tag) {
+		if (tag) {
+			return !!transport[tag];
+		}
+		else {
+			return Object.keys(transport).length > 0;
+		}
+	}
+
+	function getTransport (tag) {
+		if (tag in transport) {
+			return transport[tag];
+		}
+
+		return undefined;
+	}
+
+	return {
+		create: create,
+		release: release,
+		abort: abort,
+		isRapidAccess: isRapidAccess,
+		isRunning: isRunning,
+		get: getTransport
+	};
+}
+
+function createScrollManager (frequencyMsecs) {
+	const listeners = [];
+	let lastScrollTop = 0;
+	let timer;
+
+	function handleScroll () {
+		lastScrollTop = docScrollTop();
+
+		if (timer) return;
+
+		timer = setTimeout(() => {
+			timer = null;
+			listeners.forEach(listener => {
+				try {
+					listener();
+				}
+				catch (e) {
+				}
+			});
+		}, frequencyMsecs);
+	}
+
+	function addEventListener (listener) {
+		let index = listeners.indexOf(listener);
+		if (index < 0) {
+			listeners.push(listener);
+		}
+	}
+
+	function removeEventListener (listener) {
+		let index = listeners.indexOf(listener);
+		if (index >= 0) {
+			listener.splice(index, 1);
+		}
+	}
+
+	window.addEventListener('scroll', handleScroll);
+
+	return {
+		addEventListener: addEventListener,
+		removeEventListener: removeEventListener,
+		get lastScrollTop () {return lastScrollTop}
+	};
 }
 
 /*
  * <<<1 page set-up functions
  */
-
-function setupSticky (selector, initCallback, aMarginTop) {
-	var marginTop = undefined;
-
-	function handleScroll () {
-		var scrollTop = lastScrollTop = docScrollTop();
-
-		var nodes = $qsa(selector);
-		for (var i = 0, goal = nodes.length; i < goal; i++) {
-			var stickyItem = nodes[i];
-			var stickyItemRect = stickyItem.getBoundingClientRect();
-			var containerRect = stickyItem.parentNode.getBoundingClientRect();
-			var needFix = false;
-
-			if (stickyItemRect.height > viewportRect.height) {
-				if (stickyItemRect.top + stickyItemRect.height < viewportRect.bottom) {
-					needFix = true;
-				}
-			}
-			else {
-				if (stickyItemRect.height >= containerRect.height) {
-					continue;
-				}
-				if (containerRect.top - marginTop < 0 && 0 < containerRect.bottom - marginTop) {
-					needFix = true;
-				}
-			}
-			if (needFix) {
-				if (stickyItem.parentNode.style.width == '') {
-					stickyItem.parentNode.style.width = stickyItemRect.width + 'px';
-				}
-				stickyItem.style.position = 'fixed';
-				var bottom = Math.min(containerRect.bottom, viewportRect.bottom);
-				stickyItem.style.top = Math.min(marginTop, bottom - stickyItemRect.height) + 'px';
-			}
-			else {
-				stickyItem.style.position = stickyItem.style.top = stickyItem.style.left = '';
-			}
-		}
-	}
-
-	function init () {
-		var nodes = $qsa(selector);
-		if (nodes.length) {
-			for (var i = 0, goal = nodes.length; i < goal; i++) {
-				var rect2 = nodes[i].getBoundingClientRect();
-				marginTop = marginTop === undefined ? rect2.top : Math.min(marginTop, rect2.top);
-				initCallback && initCallback(nodes[i], rect2);
-			}
-			if (aMarginTop != undefined) {
-				marginTop = aMarginTop;
-			}
-			else {
-				marginTop += docScrollTop();
-			}
-		}
-		window.addEventListener('scroll', handleScroll, false);
-		handleScroll();
-	}
-
-	init();
-}
 
 function setupParallax (selector) {
 	var marginTop = undefined;
@@ -3836,7 +4561,7 @@ function setupParallax (selector) {
 		var node = $qs(selector);
 		if (!node) return;
 		marginTop = node.getBoundingClientRect().top;
-		window.addEventListener('scroll', handleScroll, false);
+		scrollManager.addEventListener(handleScroll);
 		handleScroll();
 		setTimeout(function () {
 			Array.prototype.forEach.call(
@@ -3873,7 +4598,7 @@ function setupVideoViewer () {
 	var timer;
 
 	function init () {
-		window.addEventListener('scroll', handleScroll, false);
+		scrollManager.addEventListener(handleScroll);
 		doit();
 	}
 
@@ -3916,51 +4641,108 @@ function setupVideoViewer () {
 	init();
 }
 
-function setupMouseHoverEvent (element, enterCallback, leaveCallback) {
+function setupMouseHoverEvent (element, nodeName, hoverCallback, leaveCallback) {
+	let lastHoverElement = null;
+
+	function findTarget (e) {
+		while (e) {
+			if (e.nodeName.toLowerCase() == nodeName) return e;
+			e = e.parentNode;
+		}
+		return null;
+	}
+
 	function mover (e) {
-		if (this == e.relatedTarget || isChild(e.relatedTarget)) return;
-		enterCallback.call(element, e);
+		let fromElement = findTarget(e.relatedTarget);
+		let toElement = findTarget(e.target);
+		let needInvokeHoverEvent = false;
+		let needInvokeLeaveEvent = false;
+
+		if (fromElement != toElement) {
+			// causes leave event?
+			if (fromElement) {
+				if (lastHoverElement != null) {
+					needInvokeLeaveEvent = true;
+				}
+			}
+
+			// causes hover event?
+			if (toElement) {
+				if (lastHoverElement != toElement) {
+					needInvokeHoverEvent = true;
+				}
+			}
+
+			// causes leave event?
+			else {
+				if (lastHoverElement != null) {
+					needInvokeLeaveEvent = true;
+				}
+			}
+		}
+
+		if (needInvokeLeaveEvent) {
+			leaveCallback({target: lastHoverElement});
+			lastHoverElement = null;
+		}
+		if (needInvokeHoverEvent) {
+			hoverCallback({target: toElement});
+			lastHoverElement = toElement;
+		}
 	}
 
 	function mout (e) {
-		if (this == e.relatedTarget || isChild(e.relatedTarget)) return;
-		leaveCallback.call(element, e);
-	}
-
-	function isChild (el) {
-		if (el == element) return false;
-		while (el && el != element) {
-			el = el.parentNode;
+		let toElement = findTarget(e.relatedTarget);
+		if (!toElement && lastHoverElement) {
+			leaveCallback({target: lastHoverElement});
+			lastHoverElement = null;
 		}
-		return el == element;
+	};
+
+	element = $(element);
+	if (!element) return;
+	nodeName = nodeName.toLowerCase();
+	hoverCallback && element.addEventListener(MOVER_EVENT_NAME, mover);
+	leaveCallback && element.addEventListener(MOUT_EVENT_NAME, mout);
+}
+
+function setupWindowResizeEvent (frequencyMsecs, handler) {
+	let timer;
+
+	function handleResize (e) {
+		if (timer) {
+			clearTimeout(timer);
+		}
+
+		timer = setTimeout(e => {
+			timer = null;
+			try {
+				handler.call(window, e);
+			}
+			catch (ex) {
+				console.error(`${APP_NAME}: exception in resize handler: ${ex.message}`);
+			}
+		}, frequencyMsecs, e);
 	}
 
-	element = $(element);
-	if (!element) return;
-	enterCallback && element.addEventListener(MOVER_EVENT_NAME, mover, false);
-	leaveCallback && element.addEventListener(MOUT_EVENT_NAME, mout, false);
+	window.addEventListener('resize', handleResize);
+	handler.call(window);
 }
 
-function setupWindowResizeEvent (element, handler) {
-	element = $(element);
-	if (!element) return;
-	window.addEventListener('resize', handler, false);
-	handler.call(element);
-}
-
-function setupTextFieldEvent (items) {
-	var initialComHeight;
+function setupPostFormItemEvent (items) {
+	let initialComHeight;
+	let timer;
 
 	function updateInfoCore (item) {
-		var el = $(item.id);
+		let el = $(item.id);
 		if (!el) return;
 
-		var lines = el.value.replace(/[\r\n\s]+$/, '').split(/\r?\n/);
-		var bytes = lines.join('\r\n').replace(/[^\u0001-\u007f\uff61-\uff9f]/g, '__').length;
-		var linesOvered = item.lines ? lines.length > item.lines : false;
-		var bytesOvered = item.bytes ? bytes > item.byltes : false;
+		let lines = el.value.replace(/[\r\n\s]+$/, '').split(/\r?\n/);
+		let bytes = lines.join('\r\n').replace(/[^\u0001-\u007f\uff61-\uff9f]/g, '__').length;
+		let linesOvered = item.lines ? lines.length > item.lines : false;
+		let bytesOvered = item.bytes ? bytes > item.byltes : false;
 
-		var span = $('comment-info').appendChild(document[CRE]('span'));
+		let span = $('comment-info').appendChild(document[CRE]('span'));
 		linesOvered || bytesOvered && span.classList.add('warn');
 		$t(span, [
 			item.head  ? `${item.head}:` : '',
@@ -3972,11 +4754,12 @@ function setupTextFieldEvent (items) {
 	}
 
 	function fixTextAreaHeight (e) {
-		var comBackend = $('comment-backend');
+		let com = e.target;
+		let comBackend = $('comment-backend');
 		if (!comBackend) return;
-		comBackend.style.width = this.scrollWidth + 'px';
-		$t(comBackend, this.value + (/[\r\n]/.test(this.value.substr(-1)) ? '_' : ''));
-		this.style.height = Math.max(
+		comBackend.style.width = com.scrollWidth + 'px';
+		$t(comBackend, com.value + (/[\r\n]/.test(com.value.substr(-1)) ? '_' : ''));
+		com.style.height = Math.max(
 			initialComHeight, Math.min(
 				comBackend.offsetHeight,
 				Math.floor(viewportRect.height * 0.8))) + 'px';
@@ -3987,26 +4770,133 @@ function setupTextFieldEvent (items) {
 		items.forEach(updateInfoCore);
 	}
 
-	function handlePaste (e) {
-		if (e.target.getAttribute('data-pasting')) return;
-		if (!e.clipboardData.files) return;
-		if (e.clipboardData.files.length == 0) return;
-		if (!$qs('#upfile:not([disabled])')) return;
+	function register (fn) {
+		if (timer) {
+			clearTimeout(timer);
+		}
+		timer = setTimeout(fn, 50);
+	}
 
-		let availableTypes = [
+	function isFileElementReady () {
+		const upfile = $('upfile');
+		if (!upfile) return false;
+		if (upfile.disabled) return false;
+		if (upfile.getAttribute('data-pasting')) return;
+		return true;
+	}
+
+	function findAcceptableFile (files) {
+		const availableTypes = [
 			'image/jpg', 'image/jpeg',
 			'image/png',
-			'image/gif'
-			// video?
+			'image/gif',
+			'video/webm',
+			'video/mp4'
 		];
-		let file = Array.prototype.reduce.call(e.clipboardData.files, (file, f) => {
+		return Array.prototype.reduce.call(files, (file, f) => {
 			if (file) return file;
 			if (availableTypes.indexOf(f.type) >= 0) return f;
 			return null;
 		}, null);
+	}
+
+	function dumpElement (head, elm) {
+		let logs = [];
+		for (; elm; elm = elm.parentNode) {
+			switch (elm.nodeType) {
+			case 1: // ELEMENT_NODE
+				{
+					let result = elm.tagName;
+					if (elm.id != '') {
+						result += `#${elm.id}`;
+					}
+					if (elm.className != '') {
+						result += '.' + elm.className.replace(/\s+/g, '.');
+					}
+					logs.push(result);
+				}
+				break;
+			case 3: // TEXT_NODE
+				logs.push(`"${elm.nodeValue}"`);
+				break;
+			case 9: // DOCUMENT_NODE
+				logs.push('#document');
+				break;
+			default:
+				logs.push(elm.nodeName);
+				break;
+			}
+		}
+		console.log(head + ': ' + logs.join(' → '));
+	}
+
+	function handleDragOver (e) {
+		if (!isFileElementReady()) return;
+		if (!e.dataTransfer || !e.dataTransfer.items) return;
+		if (!findAcceptableFile(e.dataTransfer.items)) return;
+
+		e.preventDefault();
+		//dumpElement('    dragover', e.target);
+
+		register(() => {
+			if (!$('postform-wrap').classList.contains('hover')) {
+				commands.activatePostForm().then(() => {
+				});
+			}
+			$('postform-drop-indicator').classList.remove('hide');
+		});
+	}
+
+	function handleDragEnter (e) {
+		if (!isFileElementReady()) return;
+
+		e.preventDefault();
+		//dumpElement('    dragenter', e.target);
+	}
+
+	function handleDragLeave (e) {
+		if (!isFileElementReady()) return;
+
+		//dumpElement('    dragleave', e.target);
+
+		let isDocument = e.target == document
+			|| e.target == document.documentElement
+			|| e.target == document.body;
+		if (isDocument && $('postform-wrap').classList.contains('hover')) {
+			register(() => {
+				commands.deactivatePostForm().then(() => {
+					$('postform-drop-indicator').classList.add('hide');
+				});
+			});
+		}
+	}
+
+	function handleDrop (e) {
+		if (!isFileElementReady()) return;
+
+		e.preventDefault();
+		$('postform-drop-indicator').classList.add('hide');
+		handlePaste(e);
+		$('com').focus();
+	}
+
+	function handlePaste (e) {
+		const upfile = $('upfile');
+		if (!isFileElementReady()) return;
+
+		const dataTransfer = e.clipboardData || e.dataTransfer;
+		if (!dataTransfer) return;
+
+		if (!dataTransfer.files
+		|| dataTransfer.files.length == 0) {
+			setTimeout(fixTextAreaHeight, 0, e);
+			return;
+		}
+
+		let file = findAcceptableFile(dataTransfer.files);
 		if (!file) return;
 
-		e.target.setAttribute('data-pasting', '1');
+		upfile.setAttribute('data-pasting', '1');
 		setBottomStatus('画像を貼り付けています...', true);
 		resetForm('baseform', 'upfile', 'textonly');
 		overrideUpfile = {
@@ -4017,7 +4907,7 @@ function setupTextFieldEvent (items) {
 		if (siteInfo.maxAttachSize && file.size > siteInfo.maxAttachSize) {
 			getImageFrom(file, img => {
 				if (!img) {
-					e.target.removeAttribute('data-pasting');
+					upfile.removeAttribute('data-pasting');
 					return;
 				}
 
@@ -4033,32 +4923,36 @@ function setupTextFieldEvent (items) {
 
 				getBlobFrom(canvas.toDataURL('image/jpeg', 0.8), blob => {
 					overrideUpfile.data = blob;
-					e.target.removeAttribute('data-pasting');
+					upfile.removeAttribute('data-pasting');
 				});
 			});
 		}
 		else {
 			setPostThumbnail(file, () => {
 				setBottomStatus();
-				e.target.removeAttribute('data-pasting');
+				upfile.removeAttribute('data-pasting');
 			});
 		}
 	}
 
-	var com = $('com');
+	let com = $('com');
 	if (com) {
 		initialComHeight = com.offsetHeight;
-		items.forEach(function (item) {
-			var el = $(item.id);
+		items.forEach(item => {
+			let el = $(item.id);
 			if (!el) return;
 
 			if (el.nodeName == 'TEXTAREA') {
-				el.addEventListener('input', fixTextAreaHeight, false);
+				el.addEventListener('input', fixTextAreaHeight);
 			}
-			el.addEventListener('input', updateInfo, false);
+			el.addEventListener('input', updateInfo);
 		});
 		updateInfo.call(com);
-		com.addEventListener('paste', handlePaste, false);
+		com.addEventListener('paste', handlePaste);
+		document.addEventListener('dragover', handleDragOver);
+		document.addEventListener('dragenter', handleDragEnter, true);
+		document.addEventListener('dragleave', handleDragLeave, true);
+		document.addEventListener('drop', handleDrop);
 	}
 }
 
@@ -4068,7 +4962,7 @@ function setupWheelReload () {
 	var statusHideTimer;
 
 	function handler (e) {
-		if (transport) {
+		if (transport.isRunning()) {
 			e.preventDefault();
 			return;
 		}
@@ -4085,10 +4979,10 @@ function setupWheelReload () {
 			return;
 		}
 
-		var factor = config.data.wheel_reload_threshold_override.value <= 0 ?
+		var factor = storage.config.wheel_reload_threshold_override.value <= 0 ?
 			WHEEL_RELOAD_DEFAULT_FACTOR :
-			config.data.wheel_reload_threshold_override.value;
-		var threshold = config.data.wheel_reload_unit_size.value * factor;
+			storage.config.wheel_reload_threshold_override.value;
+		var threshold = storage.config.wheel_reload_unit_size.value * factor;
 
 		if (wheelDelta == 0) {
 			wheelDelta = threshold;
@@ -4117,673 +5011,79 @@ function setupWheelReload () {
 	window.addEventListener('mousewheel', handler, false);
 }
 
-function setupPostShadowMouseEvent (tabContent, nodeName, className) {
-	var scrollTop;
-	var timer;
+function setupCustomEventHandler () {
+	let statusHideTimer;
+	document.addEventListener(`${APP_NAME}.bottomStatus`, function (e) {
+		let ws = $('wheel-status');
+		if (!ws) return;
+		if ($qs('#dialog-wrap:not(.hide)')) return;
 
-	function registerTimer (scrollTop) {
-		/*
-		clearTimer();
-		timer = setTimeout(function (scrollTop) {
-			window.scrollTo(0, scrollTop);
-		}, 1000, scrollTop);
-		 */
-	}
-
-	function clearTimer () {
-		timer && clearTimeout(timer);
-	}
-
-	function mover (e) {
-		if (!e || e.target.nodeName != nodeName || !e.target.classList.contains(className)) return;
-
-		var number = e.target.getAttribute('data-number');
-		if (!number) return;
-
-		var unit = $qs([
-			`article .topic-wrap[data-number="${number}"]`,
-			`article .reply-wrap > [data-number="${number}"]`
-		].join(','));
-		if (!unit) return;
-
-		var st = docScrollTop();
-		var rect = unit.getBoundingClientRect();
-		scrollTop = st;
-		if (rect.top < 0 || rect.bottom >= viewportRect.height) {
-			window.scrollTo(
-				0,
-				Math.floor(
-					st +
-					rect.top +
-					(rect.height / 2) -
-					(viewportRect.height / 2)));
+		let s = e.detail.message;
+		if (!s || s == '') {
+			ws.classList.add('hide');
 		}
-		unit.classList.add('hilight');
-		clearTimer();
-	}
-
-	function mout (e) {
-		if (!e || e.target.nodeName != nodeName || !e.target.classList.contains(className)) return;
-		Array.prototype.forEach.call(
-			$qsa([
-				'article .topic-wrap.hilight',
-				'article .reply-wrap > .hilight'
-			].join(',')),
-			function (node) {
-				node.classList.remove('hilight');
+		else {
+			ws.classList.remove('hide');
+			$t(ws.getElementsByTagName('span')[0], s);
+			if (statusHideTimer) {
+				clearTimeout(statusHideTimer);
+				statusHideTimer = null;
 			}
-		);
-		registerTimer(scrollTop);
-	}
-
-	function init () {
-		tabContent = $(tabContent);
-		if (!tabContent) return;
-
-		tabContent.addEventListener(MOVER_EVENT_NAME, mover, false);
-		tabContent.addEventListener(MOUT_EVENT_NAME, mout, false);
-
-		nodeName = nodeName.toUpperCase();
-	}
-
-	init();
+			if (!e.detail.persistent) {
+				statusHideTimer = setTimeout(function () {
+					statusHideTimer = null;
+					ws.classList.add('hide');
+				}, 1000 * 3);
+			}
+		}
+	}, false);
 }
 
-function install (mode) {
-	timingLogger.startTag('install');
+function setupSearchResultPopup () {
+	let timer;
 
-	/*
-	 * last modified date
-	 */
-
-	try {
-		siteInfo.lastModified = new Date(document.lastModified).toUTCString();
-	}
-	catch (e) {
-		siteInfo.lastModified = 0;
-	}
-
-	/*
-	 * connection to backend
-	 */
-
-	backend.setMessageListener(function (data) {
-		switch (data.type) {
-		case 'fileio-authorize-response':
-		case 'fileio-write-response':
-			var anchor = $(data.anchorId);
-
-			var message;
-			if (data.error || data.state == 'complete') {
-				if (data.error) {
-					message = '保存失敗';
-				}
-				else {
-					message = '保存完了';
-
-					if (data.status == 200) {
-						anchor.setAttribute('data-image-saved', '1');
-						sounds.imageSaved.volume = config.data.save_image_bell_volume.value;
-						sounds.imageSaved.play();
-					}
-				}
-
-				anchor && setTimeout(function (anchor) {
-					if (/^save-image-anchor-/.test(anchor.id)) {
-						anchor.removeAttribute('id');
-					}
-					$t(anchor, anchor.getAttribute('data-original-text'));
-					anchor.removeAttribute('data-original-text');
-					anchor = null;
-				}, 1000 * 1, anchor);
-			}
-			else {
-				switch (data.state) {
-				case 'authorizing':	message = '認可の確認中...'; break;
-				case 'buffered':	message = 'バッファ済み...'; break;
-				case 'writing':		message = '書き込み中...'; break;
-				}
-			}
-			message && $t(anchor, message);
-			break;
-		case 'notify-viewers':
-			if (data.siteInfo.server == siteInfo.server
-			&&  data.siteInfo.board == siteInfo.board
-			&&  data.siteInfo.resno != siteInfo.resno) {
-				$t('viewers', data.data);
-			}
-			break;
-		default:
-			break;
+	function hover (e) {
+		if (timer) {
+			clearTimeout(timer);
+			timer = null;
 		}
-	});
+		timer = setTimeout(target => {
+			timer = null;
 
-	/*
-	 * instantiate click dispachter
-	 * and register click handlers
-	 */
-
-	clickDispatcher = createClickDispatcher();
-	clickDispatcher
-		.add('#void',        () => {})
-
-		.add('#delete-post',    commands.openDeleteDialog)
-		.add('#config',         commands.openConfigDialog)
-		.add('#help',           commands.openHelpDialog)
-		.add('#draw',           commands.openDrawDialog)
-		.add('#toggle-panel',   commands.togglePanelVisibility)
-		.add('#reload',         commands.reload)
-		.add('#sage',           commands.toggleSage)
-		.add('#search-start',   commands.search)
-		.add('#clear-upfile',   commands.clearUpfile)
-		.add('#toggle-catalog', commands.toggleCatalogVisibility)
-		.add('#track',          commands.registerTrack)
-
-		.add('.del', (e, t) => {
-			commands.openModerateDialog(e, t);
-		})
-		.add('.postno', (e, t) => {
-			let wrap = getWrapElement(t);
-			if (!wrap) return;
-			let comment = $qs('.comment', wrap);
-			if (!comment) return;
-
-			comment = nodeToString(comment);
-
-			if ($qs('.reply-image', wrap) && /^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
-				comment = $qs('.postno', wrap).textContent;
+			let element = document.elementFromPoint(cursorPos.x, cursorPos.y);
+			while (element) {
+				if (element.nodeName == 'A') break;
+				element = element.parentNode;
 			}
 
-			selectionMenu.dispatch('quote', comment);
-		})
-		.add('.save-image',  (e, t) => {
-			commands.saveImage(e, t);
-		})
-		.add('.panel-tab',   (e, t) => {
-			showPanel(panel => {
-				activatePanelTab(t);
-			});
-		})
-		.add('.switch-to', (e, t) => {
-			historyStateWrapper.pushState(t.href);
-			if (pageModes[0] == 'catalog') {
-				toggleCatalogVisibility();
+			if (element == target) {
+				let panelRect = $('panel-aside-wrap').getBoundingClientRect();
+				let targetRect = target.getBoundingClientRect();
+				let originNumber = target.getAttribute('data-number');
+				let originElement = getWrapElement($qs(`#_${originNumber}, [data-number="${originNumber}"]`));
+				let popup = quotePopup.createPopup({element: originElement}, 'quote-popup-pool2');
+				popup.style.left = (panelRect.left - 8 - popup.offsetWidth) + 'px';
+				popup.style.top = Math.min(targetRect.top, viewportRect.height - popup.offsetHeight - 8) + 'px';
+				popup.id = 'search-popup';
 			}
-			commands.reload();
-		})
-		.add('.lightbox',  (e, t) => {
-			if (config.data.auto_save_image.value) {
-				setTimeout((e, t) => {
-					let saveLink = $qs(`.save-image[href="${t.href}"]`);
-					if (!saveLink) return;
-					if (saveLink.getAttribute('data-image-saved')) return;
-
-					commands.saveImage(e, saveLink);
-				}, 1000 * 1, e, t);
-			}
-			if (config.data.lightbox_enabled.value) {
-				if (/\.(?:jpg|gif|png)$/.test(t.href)) {
-					let ignoreThumbnail =
-						t.classList.contains('link-siokara')
-						|| t.classList.contains('siokara-thumbnail');
-
-					lightbox(t, ignoreThumbnail);
-				}
-				else if (/\.(?:webm|mp4)$/.test(t.href)) {
-					displayInlineVideo(t);
-				}
-			}
-			else {
-				return 'passthrough';
-			}
-		})
-		.add('.catalog-order', (e, t) => {
-			let newActive;
-
-			Array.prototype.forEach.call(
-				$qsa('#catalog .catalog-options a'),
-				node => {
-					node.classList.remove('active');
-					if (node == t) {
-						node.classList.add('active');
-						newActive = node;
-					}
-				}
-			);
-
-			if (!newActive) {
-				newActive = $qs('#catalog .catalog-options a');
-				newActive.classList.add('active');
-			}
-
-			let contentId = 'catalog-threads-wrap-' + newActive.href.match(/\w+$/)[0];
-			Array.prototype.forEach.call(
-				$qsa('#catalog .catalog-threads-wrap > div'),
-				node => {
-					node.classList.add('hide');
-					if (node.id == contentId) {
-						node.classList.remove('hide');
-					}
-				}
-			);
-
-			commands.reload();
-		})
-		.add('.sodane', (e, t) => {
-			commands.sodane(e, t);
-		})
-		.add('.sodane-null', (e, t) => {
-			commands.sodane(e, t);
-		})
-		.add('*noclass*', (e, t) => {
-			let re1 = /(.*)#[^#]*$/.exec(t.href);
-			let re2 = /(.*)(#[^#]*)?$/.exec(window.location.href);
-			if (t.target != '_blank') return;
-			if (re1 && re2 && re1[1] == re2[1]) return;
-
-			e.preventDefault();
-			e.stopPropagation();
-			sendToBackend('open', {url:t.href, selfUrl:window.location.href});
-		})
-
-	/*
-	 * instantiate keyboard shortcut manager
-	 * and register shortcut handlers
-	 */
-
-	keyManager = createKeyManager();
-	keyManager
-		.addStroke('command', 'r', commands.reload)
-		.addStroke('command', [' ', '<S-space>'], commands.scrollPage, true)
-		.addStroke('command', 'z', commands.summaryBack)
-		.addStroke('command', '.', commands.summaryNext)
-		.addStroke('command', '?', commands.openHelpDialog)
-		.addStroke('command', 'c', commands.toggleCatalogVisibility)
-		.addStroke('command', 'p', commands.togglePanelVisibility)
-		.addStroke('command', 's', commands.activateStatisticsTab)
-		.addStroke('command', '/', commands.activateSearchTab)
-		.addStroke('command', 'n', commands.activateNoticeTab)
-
-		.addStroke('command', 'i', commands.activatePostForm)
-		.addStroke('command', '\u001b', commands.deactivatePostForm)
-
-		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)
-		.addStroke('command.edit', '\u0013', commands.toggleSage)
-		.addStroke('command.edit', '<S-enter>', commands.post)
-		.addStroke('command.edit', '\u0001', commands.cursorTopOfLine)
-		.addStroke('command.edit', '\u0005', commands.cursorBottomOfLine)
-		//.addStroke('command.edit', 'C-p', commands.cursorPrev)
-		//.addStroke('command.edit', 'C-n', commands.cursorNext)
-		.addStroke('command.edit', '\u0002', commands.cursorBack)
-		.addStroke('command.edit', '\u0006', commands.cursorForward)
-		.addStroke('command.edit', '\u000d', (e, t) => {
-			switch (t.id) {
-			case 'search-text':
-				commands.search(e, t);
-				break;
-			case 'catalog-horz-number':
-				commands.reloadCatalog(e, t);
-				break;
-			default:
-				return 'passthrough';
-			}
-		})
-		.updateManifest();
-
-	/*
-	 * favicon maintainer
-	 */
-
-	favicon = createFavicon();
-
-	/*
-	 * window resize handler
-	 */
-
-	setupWindowResizeEvent(window, function (e) {
-		var vp = document.body.appendChild(document[CRE]('div'));
-		vp.id = 'viewport-rect';
-		viewportRect = vp.getBoundingClientRect();
-		vp.parentNode.removeChild(vp);
-
-		var style = $('dynstyle-comment-maxwidth');
-		if (!style) return;
-		empty(style);
-
-		var text = $qs('article div.text');
-		if (text) {
-			var rect = text.getBoundingClientRect();
-			style.appendChild(document.createTextNode([
-				'.reply-wrap > div:last-child {',
-				`  max-width:${Math.floor(rect.width * 0.9)}px;`,
-				'}'
-			].join('\n')));
-		}
-
-		style.appendChild(document.createTextNode([
-			`.dialog-wrap .dialog-content {`,
-			`  max-width:${Math.floor(viewportRect.width * 0.8)}px;`,
-			`  max-height:${Math.floor(viewportRect.height * 0.8)}px;`,
-			`  min-width:${Math.floor(viewportRect.width * 0.25)}px;`,
-			'}'
-		].join('\n')));
-	});
-
-	/*
-	 * localStorage handler
-	 */
-
-	window.addEventListener('storage', function (e) {
-		if (e.key == config.keyName) {
-			config.reset();
-			config.assign();
-		}
-	}, false);
-
-	/*
-	 * history handler
-	 */
-
-	historyStateWrapper = createHistoryStateWrapper(e => {
-		/*
-		console.log([
-			`  previous page mode: ${pageModes[0]}`,
-			`current page address: ${location.href}`
-		].join('\n'));
-		*/
-
-		let isCatalog = window.location.hash == '#mode=cat';
-
-		if (pageModes[0] == 'catalog' && !isCatalog
-		||  pageModes[0] != 'catalog' && isCatalog) {
-			commands.toggleCatalogVisibility();
-		}
-
-		if (pageModes[0] == 'summary') {
-			commands.reload();
-		}
-		else if (pageModes[0] == 'catalog' && pageModes[1] == 'summary') {
-			let re = /(\d+)\.htm$/.exec(window.location.pathname);
-			let summaryIndex = re ? re[1] : 0;
-
-			// title sync
-			let titleElement = $qs('#header h1 a');
-			let title = titleElement
-				.textContent
-				.replace(/\s*\[ページ\s*\d+\]/, '');
-			if (summaryIndex) {
-				title += ` [ページ ${summaryIndex}]`;
-			}
-			$t(titleElement, title);
-
-			// page navigator sync
-			let navElement = $qs('#postform-wrap .nav-links');
-			let pageCount = navElement.childElementCount;
-			empty(navElement);
-			for (let i = 0; i < pageCount; i++) {
-				if (i == summaryIndex) {
-					let span = navElement.appendChild(document[CRE]('span'));
-					span.className = 'current';
-					$t(span, i);
-				}
-				else {
-					let a = navElement.appendChild(document[CRE]('a'));
-					a.className = 'switch-to';
-					a.href = `${location.protocol}//${location.host}/${siteInfo.board}/${i == 0 ? 'futaba' : i}.htm`;
-					$t(a, i);
-				}
-			}
-		}
-	});
-
-	/*
-	 * mouse cursor tracker
-	 */
-
-	window.addEventListener(MMOVE_EVENT_NAME, function (e) {
-		cursorPos.x = e.clientX;
-		cursorPos.y = e.clientY;
-		cursorPos.pagex = e.pageX;
-		cursorPos.pagey = e.pageY;
-		cursorPos.moved = true;
-	}, false);
-
-	/*
-	 * mouseup handler (equiv to 'onselectionchange' in effect)
-	 */
-
-	selectionMenu = createSelectionMenu();
-
-	/*
-	 * restore cookie value
-	 */
-
-	$t('name', getCookie('namec'));
-	$t('pwd', getCookie('pwdc'));
-
-	/*
-	 * init some hidden parameters
-	 */
-
-	$t(document.getElementsByName('js')[0],
-		'on');
-	$t(document.getElementsByName('scsz')[0],
-		[
-			window.screen.width,
-			window.screen.height,
-			window.screen.colorDepth
-		].join('x'));
-
-	/*
-	 * post form submit listener
-	 */
-
-	(function (postform) {
-		if (!postform) return;
-		postform.addEventListener('submit', function (e) {
-			e.preventDefault();
-			commands.post();
-		}, false);
-	})($('postform'));
-
-	/*
-	 * post switcher
-	 */
-
-	(function (elms, handler) {
-		for (var i = 0; i < elms.length; i++) {
-			elms[i].addEventListener('click', handler, false);
-		}
-	})(document.getElementsByName('post-switch'), function (e) {
-		var upfile = $('upfile');
-		var textonly = $('textonly');
-		var resto = document.getElementsByName('resto')[0];
-
-		switch (e.target.value) {
-		case 'reply':
-			upfile.disabled = textonly.disabled = upfile.getAttribute('data-origin') == 'js';
-			resto.disabled = false;
-			break;
-
-		case 'thread':
-			upfile.disabled = textonly.disabled = false;
-			resto.disabled = true;
-			break;
-		}
-	});
-
-	/*
-	 * allow tegaki link, if baseform element exists or the page is summary
-	 */
-
-	(function (drawButtonWrap) {
-		if (!drawButtonWrap) return;
-		if (document.getElementsByName('baseform').length == 0 && pageModes[0] != 'summary') return;
-
-		drawButtonWrap.classList.remove('hide');
-
-		if (pageModes[0] == 'summary') {
-			var canvas = $qs('.draw-canvas');
-			if (!canvas) return;
-			canvas.width = 640;
-			canvas.height = 480;
-		}
-	})($qs('.draw-button-wrap'));
-
-	/*
-	 * file element change listener
-	 */
-
-	(function (file) {
-		if (!file) return;
-		file.addEventListener('change', function (e) {
-			setPostThumbnail(this.files[0]);
-			resetForm('baseform', 'textonly');
-			overrideUpfile = undefined;
-		}, false);
-	})($('upfile'));
-
-	/*
-	 * comment text box handling
-	 */
-
-	setupTextFieldEvent([
-		{id:'com',              bytes:1000, lines:15},
-		{id:'name',  head:'名', bytes:100},
-		{id:'email', head:'メ', bytes:100},
-		{id:'sub',   head:'題', bytes:100}
-	]);
-
-	/*
-	 * post form visibility handling
-	 */
-
-	(function () {
-		var frameOutTimer;
-		setupMouseHoverEvent(
-			'postform-wrap',
-			function (e) {
-				if (frameOutTimer) {
-					clearTimeout(frameOutTimer);
-					frameOutTimer = null;
-				}
-				commands.activatePostForm();
-			},
-			function (e) {
-				if (frameOutTimer) return;
-
-				frameOutTimer = setTimeout(function () {
-					frameOutTimer = null;
-					var p = document.elementFromPoint(cursorPos.x, cursorPos.y);
-					while (p && p.id != 'postform-wrap') {
-						p = p.parentNode;
-					}
-					if (p) return;
-					var thumb = $('post-image-thumbnail-wrap');
-					if (thumb && thumb.getAttribute('data-available') == '2') {
-						thumb.setAttribute('data-available', '1');
-						return;
-					}
-					commands.deactivatePostForm();
-				}, POSTFORM_DEACTIVATE_DELAY);
-			}
-		);
-	})();
-
-	/*
-	 * sticky image handling
-	 */
-
-	(function (article) {
-		if (!article) return;
-		setupSticky(
-			'article > .image > div', null,
-			article.getBoundingClientRect().top + docScrollTop());
-	})($qs('article'));
-
-	/*
-	 * parallax banner handling
-	 */
-
-	setupParallax('#ad-aside-wrap');
-
-	/*
-	 * inline viewo viewer
-	 */
-
-	setupVideoViewer();
-
-	/*
-	 * mouse wheel handler
-	 */
-
-	setupWheelReload();
-
-	/*
-	 * sounds/
-	 */
-
-	sounds = {
-		detectNewMark: createSound('new-mark'),
-		imageSaved: createSound('image-saved'),
-	};
-
-	/*
-	 * mark statistics panel
-	 */
-
-	setupPostShadowMouseEvent('panel-content-mark', 'span', 'a');
-	setupPostShadowMouseEvent('panel-content-search', 'div', 'a');
-
-	/*
-	 * catalog popup
-	 */
-
-	catalogPopup = createCatalogPopup($qs('#catalog'));
-
-	/*
-	 * url memorizer
-	 */
-
-	urlStorage = createUrlStorage();
-	urlStorage.memo(window.location.href);
-
-	/*
-	 * quote popup
-	 */
-
-	quotePopup = createQuotePopup();
-
-	/*
-	 * switch according to mode of pseudo-query
-	 */
-
-	var queries = (function () {
-		var result = {};
-		window.location.hash
-		.replace(/^#/, '')
-		.split('&').forEach(function (s) {
-			s = s.split('=');
-			s[0] = decodeURIComponent(s[0]);
-			s[1] = s.length >= 2 ? decodeURIComponent(s[1]) : null;
-			result[s[0]] = s[1];
-		});
-		return result;
-	})();
-
-	switch (queries.mode) {
-	case 'cat':
-		setTimeout(() => {
-			commands.toggleCatalogVisibility();
-		}, 1);
-		break;
+		}, QUOTE_POPUP_DELAY_MSEC, e.target);
 	}
 
-	/*
-	 * end!
-	 */
+	function leave (e) {
+		if (timer) {
+			clearTimeout(timer);
+			timer = null;
+		}
+		let popup = $('search-popup');
+		if (popup) {
+			popup.parentNode.removeChild(popup);
+		}
+	}
 
-	timingLogger.endTag();
+	if (siteInfo.resno) {
+		setupMouseHoverEvent('search-result', 'a', hover, leave);
+		setupMouseHoverEvent('panel-content-mark', 'a', hover, leave);
+	}
 }
 
 /*
@@ -4795,7 +5095,7 @@ function lightbox (anchor, ignoreThumbnail) {
 	const CLICK_THRESHOLD_DISTANCE = 4;
 	const CLICK_THRESHOLD_TIME = 500;
 	const WHEEL_SCROLL_UNIT_FACTOR = 0.4;
-	const ZOOMMODE_KEY = 'akahukuplus.lightbox.zoomMode';
+	const ZOOMMODE_KEY = `${APP_NAME}.lightbox.zoomMode`;
 
 	var lightboxWrap;
 	var dimmer;
@@ -4929,14 +5229,23 @@ function lightbox (anchor, ignoreThumbnail) {
 		if (zm == zoomMode && !force) return;
 
 		zoomMode = zm;
-		window.localStorage.setItem(ZOOMMODE_KEY, zm);
+		storage.runtime.lightbox.zoomMode = zm;
+		storage.saveRuntime();
+
+		/*
+		 * TODO: THIS STATEMENT IS TRANSIENT.
+		 * WHEN AKAHUKUPLUS THAT USES chrome.storage HAS FULLY DISTRIBUTED,
+		 * WE SHOULD DELETE THIS CODE.
+		 */
+		window.localStorage.removeItem(ZOOMMODE_KEY);
+
 		applyGeometory(getImageRect());
 	}
 
 	function initZoomMode () {
-		var zm = config.data.lightbox_zoom_mode.value;
+		var zm = storage.config.lightbox_zoom_mode.value;
 		if (zm == 'last') {
-			zm = window.localStorage.getItem(ZOOMMODE_KEY);
+			zm = storage.runtime.lightbox.zoomMode;
 		}
 		setZoomMode(zm);
 	}
@@ -4968,19 +5277,6 @@ function lightbox (anchor, ignoreThumbnail) {
 			applyGeometory(rect, true);
 		}
 
-		// loader image
-		if (!/^data:/.test($qs('img', loaderWrap).src)) {
-			resources.get(
-				'/images/icon128.png',
-				{responseType:'dataURL'},
-				function (data) {
-					data && Array.prototype.forEach.call(
-						$qsa('img', loaderWrap),
-						function (img) {img.src = data}
-					)
-				}
-			);
-		}
 		if (thumbImage) {
 			loaderWrap.classList.add('hide');
 		}
@@ -5271,7 +5567,7 @@ function lightbox (anchor, ignoreThumbnail) {
 			|| window.navigator.language
 			|| window.navigator.userLanguage;
 		var url = 'http://www.google.com/searchbyimage'
-			+ '?sbisrc=akahukuplus'
+			+ `?sbisrc=${APP_NAME}`
 			+ `&hl=${lang.toLowerCase()}`
 			+ `&image_url=${encodeURIComponent(image.src)}`;
 			sendToBackend('open', {url:url, selfUrl:window.location.href});
@@ -6199,49 +6495,48 @@ function modalDialog (opts) {
 		if (isPending) return;
 		resources.get(
 			`/xsl/${xslName}.xsl`,
-			{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 60},
-			function (xsl) {
-				var p = new window.XSLTProcessor;
+			{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 60}
+		).then(xsl => {
+			var p = new window.XSLTProcessor;
+
+			try {
+				var f;
 
 				try {
-					var f;
-
-					try {
-						if (IDEOGRAPH_CONVERSION_UI) {
-							xsl = 新字体の漢字を旧字体に変換(xsl);
-						}
-
-						xsl = (new window.DOMParser()).parseFromString(xsl, "text/xml");
-					}
-					catch (e) {
-						console.error(`xsl parsing failed: ${e.message}`);
-						return;
+					if (IDEOGRAPH_CONVERSION_UI) {
+						xsl = 新字体の漢字を舊字體に変換(xsl);
 					}
 
-					try {
-						p.importStylesheet(xsl);
-					}
-					catch (e) {
-						console.error(`importStylesheet failed: ${e.message}`);
-						return;
-					}
-
-					try {
-						f = fixFragment(p.transformToFragment(xml, document));
-					}
-					catch (e) {
-						console.error(`transformToFragment failed: ${e.message}`);
-						return;
-					}
-
-					appendFragment(content, f);
+					xsl = (new window.DOMParser()).parseFromString(xsl, "text/xml");
 				}
-				finally {
-					isPending = false;
-					startTransition();
+				catch (e) {
+					console.error(`${APP_NAME}: xsl parsing failed: ${e.message}`);
+					return;
 				}
+
+				try {
+					p.importStylesheet(xsl);
+				}
+				catch (e) {
+					console.error(`${APP_NAME}: importStylesheet failed: ${e.message}`);
+					return;
+				}
+
+				try {
+					f = fixFragment(p.transformToFragment(xml, document));
+				}
+				catch (e) {
+					console.error(`${APP_NAME}: transformToFragment failed: ${e.message}`);
+					return;
+				}
+
+				appendFragment(content, f);
 			}
-		);
+			finally {
+				isPending = false;
+				startTransition();
+			}
+		});
 		isPending = true;
 	}
 
@@ -6363,6 +6658,42 @@ function $qsa (selector, node) {
 	return ($(node) || document).querySelectorAll(selector);
 }
 
+function sendToBackend () {
+	if (!backend) return;
+
+	let args = Array.prototype.slice.call(arguments);
+	let data, callback;
+
+	if (args.length > 1 && typeof args[args.length - 1] == 'function') {
+		callback = args.pop();
+	}
+	if (args.length > 1) {
+		data = args.pop();
+	}
+	else {
+		data = {};
+	}
+
+	data.type = args[0];
+	if (callback) {
+		backend.postMessage(data, callback);
+	}
+	else {
+		return new Promise(resolve => {
+			backend.postMessage(data, resolve);
+		});
+	}
+}
+
+function getExtensionId () {
+	// extension id can be retrieved by chrome.runtime.id in chrome,
+	// but Firefox's WebExtensions distinguishes extension id from
+	// runtime UUID.
+	let url = chrome.extension.getURL('README.md');
+	let re = /^[^:]+:\/\/([^\/]+)/.exec(url);
+	return re[1];
+}
+
 function empty (node) {
 	node = $(node);
 	if (!node) return;
@@ -6459,19 +6790,19 @@ function setBoardCookie (key, value, lifeDays) {
 }
 
 function getCatalogSettings () {
-	var data = getCookie('cxyl');
+	let data = getCookie('cxyl');
 	if (data == undefined) {
 		data = [15, 5, 0];
 	}
 	else {
-		data = data.split('x').map(function (a) {return a - 0});
+		data = data.split('x').map(a => a - 0);
 	}
 	return data;
 }
 
 function setBottomStatus (s, persistent) {
-	var ev = document.createEvent('CustomEvent');
-	ev.initCustomEvent('Akahukuplus.bottomStatus', true, true, {
+	let ev = document.createEvent('CustomEvent');
+	ev.initCustomEvent(`${APP_NAME}.bottomStatus`, true, true, {
 		message: s || '',
 		persistent: !!persistent
 	});
@@ -6489,14 +6820,7 @@ function getDOMFromString (s) {
 			, 'text/html');
 	}
 	catch (e) {
-		console.error(e.message);
-	}
-}
-
-function isRapidAccess () {
-	if (Date.now() - transportLastUsedTime <= NETWORK_ACCESS_MIN_INTERVAL) {
-		setBottomStatus('ちょっと待ってね。');
-		return true;
+		console.error(`${APP_NAME}: getDOMFromString failed: ${e.message}`);
 	}
 }
 
@@ -6569,7 +6893,15 @@ function getImageName (href, targetNode) {
 			Array.prototype.some.call(
 				$qsa('.comment', p),
 				node => {
-					let comment = node.textContent;
+					let node2 = node.cloneNode(true);
+					Array.prototype.forEach.call(
+						$qsa('div,iframe', node2),
+						div => {
+							div.parentNode.removeChild(div);
+						}
+					);
+
+					let comment = node2.textContent;
 					if (/^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
 						defaultCommentText = comment;
 						return false;
@@ -6591,7 +6923,7 @@ function getImageName (href, targetNode) {
 		firstCommentText = defaultCommentText;
 	}
 	if (firstCommentText == '') {
-		firstCommentText = 'NA';
+		firstCommentText = 'ｷﾀ━━━(ﾟ∀ﾟ)━━━!!';
 	}
 	// substitute control characters
 	firstCommentText = firstCommentText.replace(/[\u0000-\u001f]+/g, ' ');
@@ -6621,7 +6953,7 @@ function getImageName (href, targetNode) {
 
 
 
-	let f = config.data.save_image_name_template.value.replace(
+	let f = storage.config.save_image_name_template.value.replace(
 		/\$([A-Z]+)/g,
 		($0, $1) => {
 			switch ($1) {
@@ -6655,7 +6987,7 @@ function getImageName (href, targetNode) {
 	f = f.replace(/\\/g, '/');
 	f = f.replace(/\/\/+/g, '/');
 
-	// check imcompatible patterns
+	// check incompatible patterns
 	if (/\.\./.test(f)) return;
 	if (/\/(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])/i.test(f)) return;
 
@@ -6707,28 +7039,44 @@ function docScrollLeft () {
 
 function transitionend (element, callback, backupMsec) {
 	element = $(element);
-	if (!element) return;
+	if (!element) {
+		if (callback) {
+			callback({
+				type: 'transitionend-backup',
+				target: null,
+			});
+		}
+		return;
+	}
 
-	var backupTimer;
-	var handler = function handleTransitionEnd (e) {
+	let backupTimer;
+	let handler = function handleTransitionEnd (e) {
 		if (backupTimer) {
 			clearTimeout(backupTimer);
 			backupTimer = null;
 		}
 		if (element) {
-			element.removeEventListener('transitionend', handleTransitionEnd, false);
+			element.removeEventListener('transitionend', handleTransitionEnd);
 		}
 		if (callback) {
-			callback.call(element, e);
+			callback(e);
 		}
 		handler = element = callback = e = null;
 	};
 
-	element.addEventListener('transitionend', handler, false);
-	backupTimer = setTimeout(function (e) {handler(e)}, backupMsec || 1000, {
+	element.addEventListener('transitionend', handler);
+	backupTimer = setTimeout(handler, backupMsec || 1000, {
 		type: 'transitionend-backup',
 		target: element,
 	});
+}
+
+function delay (msecs) {
+	return new Promise(resolve => setTimeout(resolve, msecs));
+}
+
+function transitionendp (element, backupMsec) {
+	return new Promise(resolve => transitionend(element, resolve, backupMsec));
 }
 
 function log () {
@@ -6782,22 +7130,23 @@ function rangeToString (range) {
 
 // http://stackoverflow.com/a/30666203
 function getBlobFrom (url, callback) {
-	let req = createTransport();
+	let xhr = transport.create();
 
-	req.open('GET', url);
+	xhr.open('GET', url);
 	// Can't use blob directly because of https://crbug.com/412752
-	req.responseType = 'arraybuffer';
-	req.onload = () => {
-		let mime = req.getResponseHeader('content-type');
-		callback(new window.Blob([req.response], {type: mime}));
-		req = null;
+	xhr.responseType = 'arraybuffer';
+	xhr.onload = () => {
+		let mime = xhr.getResponseHeader('content-type');
+		callback(new window.Blob([xhr.response], {type: mime}));
 	};
-	req.onerror = () => {
+	xhr.onerror = () => {
 		callback();
-		req = null;
+	};
+	xhr.onloadend = () => {
+		xhr = null;
 	};
 
-	req.send();
+	xhr.send();
 }
 
 function getImageFrom (target, callback) {
@@ -6847,6 +7196,8 @@ function getReadableSize (s) {
 }
 
 function displayInlineVideo (anchor) {
+	if ($qs('video', anchor.parentNode)) return;
+
 	let thumbnail = $qs('img', anchor);
 	let video = document[CRE]('video');
 	let props = {
@@ -6899,7 +7250,29 @@ function displayInlineVideo (anchor) {
 	}
 }
 
-const 新字体の漢字を旧字体に変換 = (function () {
+function displayInlineAudio (anchor) {
+	if ($qs('audio', anchor.parentNode)) return;
+
+	let audio = document[CRE]('audio');
+	let props = {
+		autoplay: true,
+		controls: true,
+		muted: false,
+		src: anchor.href,
+		volume: 0.2
+	};
+
+	for (let i in props) {
+		audio[i] = props[i];
+	}
+
+	let thumbnail = $qs('img', anchor.parentNode);
+	anchor = thumbnail.parentNode;
+	anchor.parentNode.insertBefore(audio, anchor);
+	thumbnail.classList.add('hide');
+}
+
+const 新字体の漢字を舊字體に変換 = (function () {
 	const map = {
 		亜:'亞',悪:'惡',圧:'壓',囲:'圍',為:'爲',医:'醫',壱:'壹',稲:'稻',飲:'飮',隠:'隱',
 		営:'營',栄:'榮',衛:'衞',駅:'驛',悦:'悅',閲:'閱',円:'圓',縁:'緣',艶:'艷',塩:'鹽',
@@ -7007,7 +7380,7 @@ function postBase (type, form, callback) {
 			let content = node.value;
 
 			if (IDEOGRAPH_CONVERSION_POST) {
-				content = 新字体の漢字を旧字体に変換(content);
+				content = 新字体の漢字を舊字體に変換(content);
 			}
 
 			payload[node.name] = content;
@@ -7108,53 +7481,48 @@ function postBase (type, form, callback) {
 	}
 
 	function multipartPost (data, boundary) {
-		transport.open('POST', form.action);
-		transport.setRequestHeader('Content-Type', `multipart/form-data;boundary=${boundary}`);
-		transport.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
+		xhr.open('POST', form.action);
+		xhr.setRequestHeader('Content-Type', `multipart/form-data;boundary=${boundary}`);
+		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 
-		transport.onload = function () {
-			try {
-				callback && callback(transport.responseText);
-			}
-			finally {
-				transport = form = null;
-				transportLastUsedTime = Date.now();
-			}
+		xhr.onload = () => {
+			callback && callback(xhr.responseText);
 		};
 
-		transport.onerror = function () {
-			try {
-				callback && callback();
-			}
-			finally {
-				transport = form = null;
-				transportLastUsedTime = Date.now();
-			}
+		xhr.onerror = () => {
+			callback && callback();
 		};
 
-		transport.send(data);
+		xhr.onloadend = () => {
+			xhr = form = null;
+			transport.release(type);
+		};
+
+		xhr.send(data);
 	}
 
 	function urlEncodedPost (data) {
-		transport.open('POST', form.action);
-		transport.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-		transport.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
+		xhr.open('POST', form.action);
+		xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 
-		transport.onload = function () {
-			callback && callback(transport.responseText);
-			transport = form = null;
+		xhr.onload = () => {
+			callback && callback(xhr.responseText);
 		};
 
-		transport.onerror = function () {
+		xhr.onerror = () => {
 			callback && callback();
-			transport = form = null;
 		};
 
-		transport.send(data);
+		xhr.onloadend = () => {
+			xhr = form = null;
+			transport.release(type);
+		};
+
+		xhr.send(data);
 	}
 
-	transport = createTransport();
-	transportType = type;
+	let xhr = transport.create(type);
 	sendToBackend('iconv', getIconvPayload(form), handleIconv);
 }
 
@@ -7241,7 +7609,7 @@ function parsePostResponse (response) {
 		re = re[1].replace(/<\/body>.*$/i, '');
 	}
 	else {
-		re = s.replace(/<!DOCTYPE[^>]+>\r?\n?/i, '');
+		re = response.replace(/<!DOCTYPE[^>]+>\r?\n?/i, '');
 	}
 
 	return {error: re || 'なんか変です'};
@@ -7250,9 +7618,6 @@ function parsePostResponse (response) {
 function registerReleaseFormLock () {
 	setTimeout(function () {
 		$qs('fieldset', 'postform').disabled = false;
-		if (transportType == 'post') {
-			transport = null;
-		}
 	}, POSTFORM_LOCK_RELEASE_DELAY);
 }
 
@@ -7260,174 +7625,168 @@ function registerReleaseFormLock () {
  * <<<1 functions for reloading
  */
 
-function reloadBase (callback, errorCallback) {
+function reloadBase (type) {
 	timingLogger.startTag('reloadBase');
-	var now = Date.now();
 
-	transport = createTransport();
-	transportType = 'reload';
-	transport.open('GET', window.location.href);
-	transport.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
-	DEBUG_IGNORE_LAST_MODIFIED && (siteInfo.lastModified = 0);
-	transport.setRequestHeader('If-Modified-Since', siteInfo.lastModified || FALLBACK_LAST_MODIFIED);
-
-	transport.onload = function (e) {
-		timingLogger.endTag();
-
-		var lm = transport.getResponseHeader('Last-Modified');
-		lm && (siteInfo.lastModified = lm);
-
-		timingLogger.startTag('parsing html');
-		var doc;
-		if (transport.status == 200) {
-			doc = getDOMFromString(transport.responseText);
-			if (!doc) {
-				transport = doc = null;
-				errorCallback(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
-				return;
+	function detectionTest (doc) {
+		// for mark detection test
+		Array.prototype.forEach.call(
+			$qsa('blockquote:nth-child(-n+4)', doc),
+			function (node, i) {
+				switch (i) {
+				case 0:
+					// marked
+					node[IAHTML](
+						'afterbegin',
+						'<font color="#ff0000">marked post</font><br>');
+					break;
+				case 1:
+					// marked with bracked
+					node[IAHTML](
+						'afterbegin',
+						'[<font color="#ff0000">marked post</font>]<br>');
+					break;
+				case 2:
+					// deleted with mark
+					node[IAHTML](
+						'afterbegin',
+						'<font color="#ff0000">marked post</font><br>');
+					for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
+					n && n.classList.add('deleted');
+					break;
+				case 3:
+					// deleted with mark
+					node[IAHTML](
+						'afterbegin',
+						'[<font color="#ff0000">marked post</font>]<br>');
+					for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
+					n && n.classList.add('deleted');
+					break;
+				}
 			}
-
-			// for mark detection test
-			/*
-			if (doc) {
-				Array.prototype.forEach.call(
-					$qsa('blockquote:nth-child(-n+4)', doc),
-					function (node, i) {
-						switch (i) {
-						case 0:
-							// marked
-							node[IAHTML](
-								'afterbegin',
-								'<font color="#ff0000">marked post</font><br>');
-							break;
-						case 1:
-							// marked with bracked
-							node[IAHTML](
-								'afterbegin',
-								'[<font color="#ff0000">marked post</font>]<br>');
-							break;
-						case 2:
-							// deleted with mark
-							node[IAHTML](
-								'afterbegin',
-								'<font color="#ff0000">marked post</font><br>');
-							for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
-							n && n.classList.add('deleted');
-							break;
-						case 3:
-							// deleted with mark
-							node[IAHTML](
-								'afterbegin',
-								'[<font color="#ff0000">marked post</font>]<br>');
-							for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
-							n && n.classList.add('deleted');
-							break;
-						}
-					}
-				);
-				// for expiration warning test
-				Array.prototype.forEach.call(
-					$qsa('small + blockquote', doc),
-					function (node, i) {
-						node[IAHTML](
-							'afterend',
-							'<font color="#f00000"><b>このスレは古いので、もうすぐ消えます。</b></font><br>'
-						);
-					}
+		);
+		// for expiration warning test
+		Array.prototype.forEach.call(
+			$qsa('small + blockquote', doc),
+			function (node, i) {
+				node[IAHTML](
+					'afterend',
+					'<font color="#f00000"><b>このスレは古いので、もうすぐ消えます。</b></font><br>'
 				);
 			}
-			*/
-		}
-		timingLogger.endTag();
+		);
+	}
 
-		try {
-			callback && callback(doc, now, transport.status);
-		}
-		catch (ex) {
-			errorCallback && errorCallback(ex);
-		}
-		finally {
-			transport = doc = null;
-			transportLastUsedTime = Date.now();
-		}
-	};
+	return new Promise((resolve, reject) => {
+		const now = Date.now();
 
-	transport.onerror = function (e) {
-		timingLogger.endTag();
-		try {
-			errorCallback && errorCallback(new Error(
+		let xhr = transport.create(type);
+		xhr.open('GET', window.location.href);
+		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
+		DEBUG_IGNORE_LAST_MODIFIED && (siteInfo.lastModified = 0);
+		xhr.setRequestHeader('If-Modified-Since', siteInfo.lastModified || FALLBACK_LAST_MODIFIED);
+
+		xhr.onload = function (e) {
+			timingLogger.endTag();
+
+			let lm = xhr.getResponseHeader('Last-Modified');
+			if (lm) {
+				siteInfo.lastModified = lm;
+			}
+
+			timingLogger.startTag('parsing html');
+			let doc;
+			if (xhr.status == 200) {
+				doc = getDOMFromString(xhr.responseText);
+				if (!doc) {
+					timingLogger.endTag(); // parsing html
+					reject(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
+					return;
+				}
+			}
+			timingLogger.endTag();
+
+			//doc && detectionTest();
+
+			resolve({
+				doc: doc,
+				now: now,
+				status: xhr.status
+			});
+		};
+
+		xhr.onerror = function (e) {
+			timingLogger.endTag();
+
+			reject(new Error(
 				'ネットワークエラーにより内容を取得できません。' +
-				`\n(${transport.status})`));
-		}
-		finally {
-			transport = null;
-			transportLastUsedTime = Date.now();
-		}
-	};
+				`\n(${xhr.status})`));
+		};
 
-	timingLogger.startTag('loading via xhr');
-	transport.send();
+		xhr.onloadend = function () {
+			xhr = null;
+			transport.release(type);
+		};
+
+		xhr.send();
+	});
 }
 
-function reloadCatalogBase (query, callback, errorCallback) {
+function reloadCatalogBase (type, query) {
 	timingLogger.startTag('reloadCatalogBase');
-	var now = Date.now();
-	var url = `${location.protocol}//${location.host}/${siteInfo.board}/futaba.php?mode=cat${query}`
 
-	transport = createTransport();
-	transportType = 'reload';
-	transport.open('GET', url);
-	transport.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
+	return new Promise((resolve, reject) => {
+		const now = Date.now();
+		const url = `${location.protocol}//${location.host}/${siteInfo.board}/futaba.php?mode=cat${query}`
 
-	transport.onload = function (e) {
-		timingLogger.endTag();
+		let xhr = transport.create(type);
+		xhr.open('GET', url);
+		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 
-		timingLogger.startTag('parsing html');
-		var doc;
-		if (transport.status == 200) {
-			doc = transport.responseText;
+		xhr.onload = function (e) {
+			timingLogger.endTag();
 
-			// experimental feature
-			if (IDEOGRAPH_CONVERSION_CONTENT) {
-				doc = 新字体の漢字を旧字体に変換(doc);
+			timingLogger.startTag('parsing html');
+			let doc;
+			if (xhr.status == 200) {
+				doc = xhr.responseText;
+
+				// experimental feature
+				if (IDEOGRAPH_CONVERSION_CONTENT) {
+					doc = 新字体の漢字を舊字體に変換(doc);
+				}
+
+				doc = getDOMFromString(doc);
+				if (!doc) {
+					timingLogger.endTag(); // parsing html
+					reject(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
+					return;
+				}
 			}
+			timingLogger.endTag();
 
-			doc = getDOMFromString(doc);
-			if (!doc) {
-				transport = doc = null;
-				errorCallback(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
-				return;
-			}
-		}
-		timingLogger.endTag();
+			resolve({
+				doc: doc,
+				now: now,
+				status: xhr.status
+			});
+		};
 
-		try {
-			callback && callback(doc, now, transport.status);
-		}
-		catch (ex) {
-			errorCallback && errorCallback(ex);
-		}
-		finally {
-			transport = doc = null;
-			transportLastUsedTime = Date.now();
-		}
-	};
+		xhr.onerror = function (e) {
+			timingLogger.endTag();
 
-	transport.onerror = function (e) {
-		timingLogger.endTag();
-		try {
-			errorCallback && errorCallback(new Error(
+			reject(new Error(
 				'ネットワークエラーにより内容を取得できません。' +
-				`\n(${transport.status})`));
-		}
-		finally {
-			transport = null;
-			transportLastUsedTime = Date.now();
-		}
-	};
+				`\n(${xhr.status})`));
+		};
 
-	timingLogger.startTag('loading via xhr');
-	transport.send();
+		xhr.onloadend = function () {
+			xhr = null;
+			transport.release(type);
+		};
+
+		xhr.send();
+	});
 }
 
 function extractTweets () {
@@ -7476,7 +7835,7 @@ function extractTweets () {
 		tweets[i].classList.remove('link-twitter');
 	}
 
-	setTimeout(function () {extractTweets()}, 991);
+	setTimeout(extractTweets, 991);
 }
 
 function extractIncompleteFiles () {
@@ -7492,7 +7851,7 @@ function extractIncompleteFiles () {
 					node.appendChild(document.createTextNode(data.base));
 				}
 
-				if (/\.(?:jpg|gif|png|webm|mp4)$/.test(data.url)) {
+				if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(data.url)) {
 					node.classList.add('lightbox');
 				}
 
@@ -7509,7 +7868,7 @@ function extractIncompleteFiles () {
 					let thumbAnchor = node.cloneNode();
 					thumbAnchor.classList.add('siokara-thumbnail');
 					thumbDiv.appendChild(thumbAnchor);
-					let img = node.appendChild(document[CRE]('img'));
+					let img = thumbAnchor.appendChild(document[CRE]('img'));
 					img.src = data.thumbnail;
 
 					let saveDiv = div.appendChild(document[CRE]('div'));
@@ -7539,7 +7898,7 @@ function extractIncompleteFiles () {
 		files[i].classList.remove('incomplete');
 	}
 
-	setTimeout(function () {extractIncompleteFiles()}, 907);
+	setTimeout(extractIncompleteFiles, 907);
 }
 
 function extractSiokaraThumbnails () {
@@ -7548,7 +7907,7 @@ function extractSiokaraThumbnails () {
 
 	function getHandler (node) {
 		return function (data) {
-			if (!data && /\.(webm|mp4)$/.test(node.href)) {
+			if (!data && /\.(webm|mp4|mp3|ogg)$/.test(node.href)) {
 				data = chrome.extension.getURL('images/siokara-video.png');
 			}
 			if (data) {
@@ -7590,7 +7949,7 @@ function extractSiokaraThumbnails () {
 		files[i].classList.remove('incomplete-siokara-thumbnail');
 	}
 
-	setTimeout(function () {extractSiokaraThumbnails()}, 909);
+	setTimeout(extractSiokaraThumbnails, 919);
 }
 
 function extractNico2 () {
@@ -7608,7 +7967,7 @@ function extractNico2 () {
 		files[i].removeAttribute('data-nico2-key');
 	}
 
-	setTimeout(function () {extractNico2()}, 911);
+	setTimeout(extractNico2, 911);
 }
 
 /*
@@ -7623,9 +7982,7 @@ function showFetchedRepliesStatus (content, autoHide) {
 		fetchStatus.classList.remove('hide');
 		$t(fetchStatus, content);
 		if (autoHide) {
-			setTimeout(function () {
-				showFetchedRepliesStatus();
-			}, RELOAD_LOCK_RELEASE_DELAY);
+			setTimeout(showFetchedRepliesStatus, RELOAD_LOCK_RELEASE_DELAY);
 		}
 	}
 	else {
@@ -7853,11 +8210,12 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 	if (typeof lowBoundNumber != 'number') {
 		lowBoundNumber = -1;
 	}
+	timingLogger.reset().startTag(`proccessing remaining replies`, `lowBoundNumber:${lowBoundNumber}`);
 	xmlGenerator.remainingReplies(
 		context, null, null, lowBoundNumber,
 		function (xml, index, count, count2) {
-			timingLogger.startTag('processRemainingReplies callback');
-			var worked = false;
+			timingLogger.startTag(`processRemainingReplies callback`, `index:${index}, count:${count}, count2:${count2}`);
+			let worked = false;
 
 			markStatistics.updatePostformView({
 				count: {
@@ -7869,21 +8227,16 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 			});
 
 			if (xml) {
-				var container = getReplyContainer(index);
+				let container = getReplyContainer(index);
 				if (!container) return;
 
 				if (lowBoundNumber >= 0) {
-					timingLogger.startTag('update marked posts');
-					worked = updateMarkedReplies(xml, container, count2 + 1, count) || worked;
-					timingLogger.endTag();
-
-					timingLogger.startTag('update reply ids');
-					worked = updateReplyIDs(xml, container, count2 + 1, count) || worked;
-					timingLogger.endTag();
-
-					timingLogger.startTag('update reply sodanes');
-					worked = updateReplySodanes(xml, container, count2 + 1, count) || worked;
-					timingLogger.endTag();
+					timingLogger.startTag('update marked replies, ids, sodanes');
+					let markUpdated = updateMarkedReplies(xml, container, count2 + 1, count);
+					let idUpdated = updateReplyIDs(xml, container, count2 + 1, count);
+					let sodaneUpdated = updateReplySodanes(xml, container, count2 + 1, count);
+					worked = markUpdated || idUpdated || sodaneUpdated;
+					timingLogger.endTag(`markUpdated:${markUpdated}, idUpdated:${idUpdated}, sodaneUpdated:${sodaneUpdated}`);
 				}
 
 				if (lowBoundNumber < 0) {
@@ -7895,30 +8248,36 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 				}
 
 				try {
-					timingLogger.startTag('generate new replies xml');
-					var f = fixFragment(xsltProcessor.transformToFragment(xml, document));
+					timingLogger.startTag('generate new replies fragment from xml');
+					let f = fixFragment(xsltProcessor.transformToFragment(xml, document));
 					if ($qs('.reply-wrap', f)) {
 						lowBoundNumber >= 0 && createRule(container);
 						appendFragment(container, f);
 						stripTextNodes(container);
-						worked = true;
+						if (lowBoundNumber < 0) {
+							worked = true;
+						}
 					}
 					timingLogger.endTag();
 				}
 				catch (e) {
-					console.error('processRemainingReplies: exception(1), ' + e.message);
+					console.error(`${APP_NAME}: processRemainingReplies: exception(1), ${e.message}`);
 				}
 
 				try {
 					worked && callback && callback();
 				}
 				catch (e) {
-					console.error('processRemainingReplies: exception(2), ' + e.message);
+					console.error(`${APP_NAME}: processRemainingReplies: exception(2), ${e.message}`);
 				}
+
+				timingLogger.endTag(`worked:${worked}`);
 			}
 			else {
+				let newStat;
+
 				if (pageModes[0] == 'reply') {
-					var newStat = markStatistics.getStatistics(lowBoundNumber < 0);
+					newStat = markStatistics.getStatistics(lowBoundNumber < 0);
 
 					markStatistics.updatePanelView(newStat);
 					if (markStatistics.updatePostformView(newStat)) {
@@ -7931,49 +8290,53 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 
 				}
 
+				timingLogger.startTag('misc updates');
 				favicon.update();
 				extractTweets();
 				extractSiokaraThumbnails();
 				extractNico2();
 				extractIncompleteFiles();
+				timingLogger.endTag();
 
 				try {
 					callback && callback(newStat);
 				}
 				catch (e) {
-					console.error('processRemainingReplies: exception(3), ' + e.message);
+					console.error(`${APP_NAME}: processRemainingReplies: exception(3), ${e.message}`);
 				}
+
+				timingLogger.forceEndTag();
 			}
 
-			timingLogger.endTag();
 			return worked;
 		}
 	);
 }
 
 function scrollToNewReplies () {
-	var rule = getRule();
+	const rule = getRule();
 	if (!rule) return;
 
-	var scrollTop = docScrollTop();
-	var diff = rule.nextSibling.getBoundingClientRect().top - Math.floor(viewportRect.height / 2);
+	const scrollTop = docScrollTop();
+	const diff = rule.nextSibling.getBoundingClientRect().top - Math.floor(viewportRect.height / 2);
 	if (diff <= 0) return;
 
-	var startTime = Date.now();
-	var timeLimit = startTime + RELOAD_AUTO_SCROLL_CONSUME;
-	var log = [];
+	const startTime = Date.now();
+	const timeLimit = startTime + RELOAD_AUTO_SCROLL_CONSUME;
+	const timerPrecision = 5;
 
 	setTimeout(function handleScroll () {
-		if (Date.now() < timeLimit) {
+		const now = Date.now();
+		if (now < timeLimit) {
 			window.scrollTo(
 				0,
-				scrollTop + Math.floor(diff * ((Date.now() - startTime) / RELOAD_AUTO_SCROLL_CONSUME)));
-			setTimeout(function () {handleScroll()}, 10);
+				scrollTop + diff * ((now - startTime) / RELOAD_AUTO_SCROLL_CONSUME));
+			setTimeout(handleScroll, timerPrecision);
 		}
 		else {
 			window.scrollTo(0, scrollTop + diff);
 		}
-	}, 10);
+	}, timerPrecision);
 }
 
 /*
@@ -8089,89 +8452,212 @@ function setPostThumbnail (file, callback) {
 	});
 }
 
-function getExtensionId () {
-	// extension id can be retrieved by chrome.runtime.id in chrome,
-	// but Firefox's WebExtensions distinguishes extension id from
-	// runtime UUID.
-	let url = chrome.extension.getURL('README.md');
-	let re = /^[^:]+:\/\/([^\/]+)/.exec(url);
-	return re[1];
-}
-
 /*
- * <<<1 panel tab handling functions
+ * <<<1 common panel tab handling functions
  */
 
 function showPanel (callback) {
-	var ad = $('ad-aside-wrap');
-	var panel = $('panel-aside-wrap');
+	let panel = $('panel-aside-wrap');
 
-	if (ad.classList.contains('hide')) {
-		callback && callback(panel);
-		return;
+	// hide ad container
+	$('ad-aside-wrap').classList.add('hide');
+
+	// if catalog mode, ensure right margin
+	if (pageModes[0] == 'catalog') {
+		Array.from($qsa('#catalog .catalog-threads-wrap > div'))
+			.forEach(div => {div.style.marginRight = '24%';});
 	}
 
-	ad.classList.add('hide');
-
-	if (panel.classList.contains('hide') && !panel.classList.contains('run')) {
-		panel.classList.remove('hide');
-		callback && transitionend(panel, function (e) {
-			callback(e.target);
+	if (panel.classList.contains('run')) {
+		callback && callback(panel);
+	}
+	else {
+		// show panel container
+		setTimeout(() => {panel.classList.add('run')}, 0);
+		callback && transitionend(panel, e => {
+			callback(panel);
 		});
-		setTimeout(function () {panel.classList.add('run')}, 0);
 	}
 }
 
 function hidePanel (callback) {
-	var ad = $('ad-aside-wrap');
-	var panel = $('panel-aside-wrap');
+	let panel = $('panel-aside-wrap');
 
-	if (!ad.classList.contains('hide')) {
-		callback && callback(panel);
-		return;
-	}
+	if (panel.classList.contains('run')) {
+		setTimeout(() => {panel.classList.remove('run')}, 0);
+		transitionend(panel, e => {
+			// if catalog mode, restore right margin
+			if (pageModes[0] == 'catalog') {
+				Array.from($qsa('#catalog .catalog-threads-wrap > div'))
+					.forEach(div => {div.style.marginRight = '';});
+			}
+			// summary/reply mode: show ad container
+			else {
+				$('ad-aside-wrap').classList.remove('hide');
+			}
 
-	if (!panel.classList.contains('hide') && panel.classList.contains('run')) {
-		transitionend(panel, function (e) {
-			e.target.classList.add('hide');
-			$('ad-aside-wrap').classList.remove('hide');
 			callback && callback(e.target);
 		});
-		setTimeout(function () {panel.classList.remove('run')}, 0);
+	}
+	else {
+		callback && callback(panel);
 	}
 }
 
 function activatePanelTab (tab) {
-	var re = /#(.+)/.exec(tab.href);
-	if (!re) return;
+	let tabId = /#(.+)/.exec(tab.href);
+	if (!tabId) return;
+	tabId = tabId[1];
 
 	Array.prototype.forEach.call(
 		$qsa('.panel-tab-wrap .panel-tab', 'panel-aside-wrap'),
 		function (node) {
 			node.classList.remove('active');
-			if (node.getAttribute('href') == '#' + re[1]) {
+			if (node.getAttribute('href') == `#${tabId}`) {
 				node.classList.add('active');
 			}
 		}
 	);
 
-	var activePanelContent;
 	Array.prototype.forEach.call(
-		$qsa('.panel-content-wrap > div', 'panel-aside-wrap'),
+		$qsa('.panel-content-wrap', 'panel-aside-wrap'),
 		function (node) {
 			node.classList.add('hide');
-			if (node.id == 'panel-content-' + re[1]) {
+			if (node.id == `panel-content-${tabId}`) {
 				node.classList.remove('hide');
-				activePanelContent = node;
 			}
 		}
 	);
-	if (activePanelContent) {
-		activePanelContent.style.height = '';
-		var wrapRect = activePanelContent.parentNode.getBoundingClientRect();
-		activePanelContent.style.height = wrapRect.height + 'px';
-	}
 }
+
+/*
+ * <<<1 search panel tab handling functions
+ */
+
+function searchBase (opts) {
+	let query = $('search-text').value;
+	if (/^[\s\u3000]*$/.test(query)) {
+		return;
+	}
+
+	let tester = createQueryCompiler().compile(query);
+	if (tester.message) {
+		$t('search-result-count', tester.message);
+		return;
+	}
+
+	let result = $('search-result');
+	let matched = 0;
+	$('search-guide').classList.add('hide');
+	empty(result);
+
+	let nodes = Array.from($qsa(opts.targetNodesSelector));
+	if (opts.sort) {
+		nodes.sort(opts.sort);
+	}
+
+	nodes.forEach(node => {
+		let text = [];
+		Array.prototype.forEach.call(
+			$qsa(opts.targetElementSelector, node),
+			subNode => {
+				let t = opts.getTextContent(subNode);
+				t = t.replace(/^\s+|\s+$/g, '');
+				text.push(t);
+			}
+		);
+		text = getLegalizedStringForSearch(text.join('\t'));
+
+		if (tester.test(text)) {
+			let anchor = result.appendChild(document[CRE]('a'));
+			let postNumber = opts.getPostNumber(node);
+			anchor.href = '#search-item';
+			anchor.setAttribute('data-number', postNumber);
+			opts.fillItem(anchor, node);
+			matched++;
+		}
+	});
+
+	$t('search-result-count', `${matched} 件を抽出`);
+}
+
+const getLegalizedStringForSearch = (function () {
+	const map = {
+		// alphabet
+		A:'a', B:'b', C:'c', D:'d', E:'e', F:'f', G:'g', H:'h',
+		I:'i', J:'j', K:'k', L:'l', M:'m', N:'n', O:'o', P:'p',
+		Q:'q', R:'r', S:'s', T:'t', U:'u', V:'v', W:'w', X:'x',
+		Y:'y', Z:'z',
+
+		// full width letter but except: ＼
+		'　':' ',
+		'！':'!', '＂':'"', '＃':'#', '＄':'$', '％':'%', '＆':'&',
+		'＇':"'", '（':'(', '）':')', '＊':'*', '＋':'+', '，':',',
+		'－':'-', '．':'.', '／':'/', '０':'0', '１':'1', '２':'2',
+		'３':'3', '４':'4', '５':'5', '６':'6', '７':'7', '８':'8',
+		'９':'9', '：':':', '；':';', '＜':'<', '＝':'=', '＞':'>',
+		'？':'?', '＠':'@', 'Ａ':'a', 'Ｂ':'b', 'Ｃ':'c', 'Ｄ':'d',
+		'Ｅ':'e', 'Ｆ':'f', 'Ｇ':'g', 'Ｈ':'h', 'Ｉ':'i', 'Ｊ':'j',
+		'Ｋ':'k', 'Ｌ':'l', 'Ｍ':'m', 'Ｎ':'n', 'Ｏ':'o', 'Ｐ':'p',
+		'Ｑ':'q', 'Ｒ':'r', 'Ｓ':'s', 'Ｔ':'t', 'Ｕ':'u', 'Ｖ':'v',
+		'Ｗ':'w', 'Ｘ':'x', 'Ｙ':'u', 'Ｚ':'z', '［':'[', '］':']',
+		'＾':'^', '＿':'_', '｀':'`', 'ａ':'a', 'ｂ':'b', 'ｃ':'c',
+		'ｄ':'d', 'ｅ':'e', 'ｆ':'f', 'ｇ':'g', 'ｈ':'h', 'ｉ':'i',
+		'ｊ':'j', 'ｋ':'k', 'ｌ':'l', 'ｍ':'m', 'ｎ':'n', 'ｏ':'o',
+		'ｐ':'p', 'ｑ':'q', 'ｒ':'r', 'ｓ':'s', 'ｔ':'t', 'ｕ':'u',
+		'ｖ':'v', 'ｗ':'w', 'ｘ':'x', 'ｙ':'y', 'ｚ':'z', '｛':'{',
+		'｜':'|', '｝':'}', '～':'~',
+
+		// half width kana
+		'ｱ':'ア',  'ｲ':'イ',  'ｳ':'ウ',  'ｴ':'エ',  'ｵ':'オ',
+		                      'ｳﾞ':'ヴ',
+		'ｧ':'ァ',  'ｨ':'ィ',  'ｩ':'ゥ',  'ｪ':'ェ',  'ｫ':'ォ',
+		'ｶ':'カ',  'ｷ':'キ',  'ｸ':'ク',  'ｹ':'ケ',  'ｺ':'コ',
+		'ｶﾞ':'ガ', 'ｷﾞ':'ギ', 'ｸﾞ':'グ', 'ｹﾞ':'ゲ', 'ｺﾞ':'ゴ',
+		'ｻ':'サ',  'ｼ':'シ',  'ｽ':'ス',  'ｾ':'セ',  'ｿ':'ソ',
+		'ｻﾞ':'ザ', 'ｼﾞ':'ジ', 'ｽﾞ':'ズ', 'ｾﾞ':'ゼ', 'ｿﾞ':'ゾ',
+		'ﾀ':'タ',  'ﾁ':'チ',  'ﾂ':'ツ',  'ﾃ':'テ',  'ﾄ':'ト',
+		'ﾀﾞ':'ダ', 'ﾁﾞ':'ヂ', 'ﾂﾞ':'ヅ', 'ﾃﾞ':'デ', 'ﾄﾞ':'ド',
+		'ｯ':'ッ',
+		'ﾅ':'ナ',  'ﾆ':'ニ',  'ﾇ':'ヌ',  'ﾈ':'ネ',  'ﾉ':'ノ',
+		'ﾊ':'ハ',  'ﾋ':'ヒ',  'ﾌ':'フ',  'ﾍ':'ヘ',  'ﾎ':'ホ',
+		'ﾊﾞ':'バ', 'ﾋﾞ':'ビ', 'ﾌﾞ':'ブ', 'ﾍﾞ':'ベ', 'ﾎﾞ':'ボ',
+		'ﾊﾟ':'パ', 'ﾋﾟ':'ピ', 'ﾌﾟ':'プ', 'ﾍﾟ':'ペ', 'ﾎﾟ':'ポ',
+		'ﾏ':'マ',  'ﾐ':'ミ',  'ﾑ':'ム',  'ﾒ':'メ',  'ﾓ':'モ',
+		'ﾔ':'ヤ',  'ﾕ':'ユ',  'ﾖ':'ヨ',
+		'ｬ':'ャ',  'ｭ':'ュ',  'ｮ':'ョ',
+		'ﾗ':'ラ',  'ﾘ':'リ',  'ﾙ':'ル',  'ﾚ':'レ',  'ﾛ':'ロ',
+		'ﾜ':'ワ',  'ｦ':'ヲ',  'ﾝ':'ン',
+		'ﾜ':'ヷ',  'ｦ':'ヺ',
+
+		// half width letter
+		'｡':'。',  '､':'、',  '｢':'「',  '｣':'」',  '･':'・', 'ｰ':'ー',
+		'ﾞ':'゛',  'ﾟ':'゜'
+	};
+	const key = new RegExp([
+		'[A-Z]',								// alphabet
+		'[\u3000\uff01-\uff3b\uff3d-\uff5e]',	// full width letter but except: ＼
+		'[\uff66-\uff9d][ﾞﾟ]?',					// half width kana
+		'[｡､｢｣･ｰﾞﾟ]'							// half width letter
+	].join('|'), 'g');
+
+	return s => ('' + s).replace(key, $0 => {
+		// available mapping
+		if ($0 in map) {
+			return map[$0];
+		}
+		// kana + voiced mark
+		if ($0.substr(-1) == 'ﾞ') {
+			return map[$0[0]] + '\\u3099';
+		}
+		// kana + semi voiced mark
+		if ($0.substr(-1) == 'ﾟ') {
+			return map[$0[0]] + '\\u309a';
+		}
+		// MUST NOT REACHED
+		return $0;
+	});
+})();
 
 /*
  * <<<1 application commands
@@ -8185,25 +8671,34 @@ const commands = {
 
 	activatePostForm: function () {
 		catalogPopup.deleteAll();
-		$('postform-wrap').classList.add('hover');
-		$('com').focus();
-		setPostThumbnailVisibility(true);
+		let postformWrap = $('postform-wrap');
+		postformWrap.classList.add('hover');
+
+		return transitionendp(postformWrap, 400).then(() => {
+			$('com').focus();
+			setPostThumbnailVisibility(true);
+		});
 	},
-	deactivatePostForm: function () {
-		$('postform-wrap').classList.remove('hover');
-		document.activeElement.blur();
-		document.body.focus();
-		setPostThumbnailVisibility(false);
+	deactivatePostForm: function (callback) {
+		let postformWrap = $('postform-wrap');
+		postformWrap.classList.remove('hover');
+		return transitionendp(postformWrap, 400).then(() => {
+			document.activeElement.blur();
+			document.body.focus();
+			setPostThumbnailVisibility(false);
+		});
 	},
 	scrollPage: function (e) {
-		var st = docScrollTop();
-		var sh = document.documentElement.scrollHeight;
-		if (!e.shift && lastScrollTop >= sh - viewportRect.height) {
+		let sh = document.documentElement.scrollHeight;
+		if (!e.shift && scrollManager.lastScrollTop >= sh - viewportRect.height) {
 			commands.invokeMousewheelEvent();
 		}
-		else {
+		else if (storage.config.hook_space_key.value) {
 			window.scrollBy(
 				0, parseInt(viewportRect.height / 2) * (e.shift ? -1 : 1));
+		}
+		else {
+			return 'passthrough';
 		}
 	},
 	invokeMousewheelEvent: function () {
@@ -8220,17 +8715,21 @@ const commands = {
 		setPostThumbnail();
 	},
 	summaryBack: function () {
-		if (pageModes[0] != 'summary') return;
-		var current = $qs('.nav .nav-links .current');
+		let current = $qs('.nav .nav-links .current');
 		if (!current || !current.previousSibling) return;
 		historyStateWrapper.pushState(current.previousSibling.href);
+		if (pageModes[0] == 'catalog') {
+			commands.toggleCatalogVisibility();
+		}
 		commands.reload();
 	},
 	summaryNext: function () {
-		if (pageModes[0] != 'summary') return;
-		var current = $qs('.nav .nav-links .current');
+		let current = $qs('.nav .nav-links .current');
 		if (!current || !current.nextSibling) return;
 		historyStateWrapper.pushState(current.nextSibling.href);
+		if (pageModes[0] == 'catalog') {
+			commands.toggleCatalogVisibility();
+		}
 		commands.reload();
 	},
 
@@ -8239,35 +8738,33 @@ const commands = {
 	 */
 
 	reload: function () {
-		if (isRapidAccess()) return;
-
-		//timingLogger.locked = false;
-		setTimeout(function () {
-			switch (pageModes[0]) {
-			case 'summary':
-				commands.reloadSummary();
-				break;
-			case 'reply':
-				commands.reloadReplies();
-				break;
-			case 'catalog':
-				commands.reloadCatalog();
-				break;
-			}
-		}, 1);
+		switch (pageModes[0]) {
+		case 'summary':
+			commands.reloadSummary();
+			break;
+		case 'reply':
+			commands.reloadReplies();
+			break;
+		case 'catalog':
+			commands.reloadCatalog();
+			break;
+		}
 	},
 	reloadSummary: function () {
-		var content = $('content');
-		var indicator = $('content-loading-indicator');
-		var footer = $('footer');
+		const TRANSPORT_TYPE = 'reload-summary';
 
-		if (transport) {
-			if (transportType == 'reload') {
-				try {transport.abort()} catch (e) {}
-				transport = null;
-				indicator.classList.add('error');
-				$t(indicator, '中断しました');
-			}
+		let content = $('content');
+		let indicator = $('content-loading-indicator');
+		let footer = $('footer');
+
+		if (transport.isRunning(TRANSPORT_TYPE)) {
+			transport.abort(TRANSPORT_TYPE);
+			indicator.classList.add('error');
+			$t(indicator, '中断しました');
+			return;
+		}
+
+		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
 			return;
 		}
 
@@ -8279,107 +8776,112 @@ const commands = {
 		content.style.height = content.offsetHeight + 'px';
 		content.classList.add('init');
 		indicator.classList.remove('hide');
+		indicator.classList.remove('error');
 		footer.classList.add('hide');
 
-		reloadBase(
-			function (doc, now, status) {
-				switch (status) {
-				case 304:
-					window.scrollTo(0, 0);
-					setTimeout(function () {
-						footer.classList.remove('hide');
-						content.classList.remove('init');
-						content = indicator = null;
-						timingLogger.endTag();
-					}, WAIT_AFTER_RELOAD);
-					return;
-				}
+		Promise.all([
+			transitionendp(content, 400),
+			reloadBase(TRANSPORT_TYPE)
+		]).then(data => {
+			const [transitionResult, reloadResult] = data;
+			const {doc, now, status} = reloadResult;
 
-				if (!doc) {
-					throw new Error('内容が変だよ。');
-				}
+			let fragment;
 
-				timingLogger.startTag('generate internal xml');
-				try {
-					var fragment = (function () {
-						timingLogger.startTag('generate');
-						var xml = xmlGenerator.run(doc.documentElement[IHTML]).xml;
-						timingLogger.endTag();
+			switch (status) {
+			case 304:
+				window.scrollTo(0, 0);
+				return delay(WAIT_AFTER_RELOAD).then(() => {
+					footer.classList.remove('hide');
+					content.classList.remove('init');
+					content = indicator = null;
+					timingLogger.endTag();
+				});
+			}
 
-						timingLogger.startTag('applying data bindings');
-						applyDataBindings(xml);
-						timingLogger.endTag();
+			if (!doc) {
+				throw new Err(`内容が変だよ (${status})`);
+			}
 
-						timingLogger.startTag('transforming');
-						xsltProcessor.setParameter(null, 'render_mode', 'threads');
-						var result = fixFragment(xsltProcessor.transformToFragment(xml, document));
-						timingLogger.endTag();
-
-						return result;
-					})();
-				}
-				catch (ex) {
-					throw new Error(
-						'内部 xml からの html への変形に失敗しました。' +
-						`\n(${ex.message})`);
-				}
+			timingLogger.startTag('generate internal xml');
+			try {
+				timingLogger.startTag('generate');
+				let xml = xmlGenerator.run(doc.documentElement[IHTML]).xml;
 				timingLogger.endTag();
 
-				timingLogger.startTag(`waiting (max ${WAIT_AFTER_RELOAD}msecs)`);
-				setTimeout(function () {
-					timingLogger.endTag();
+				timingLogger.startTag('applying data bindings');
+				applyDataBindings(xml);
+				timingLogger.endTag();
 
-					timingLogger.startTag('appending the contents');
-					empty(content);
-					window.scrollTo(0, 0);
-					content.style.height = '';
-					appendFragment(content, fragment);
-					fragment = null;
-					timingLogger.endTag();
-
-					timingLogger.startTag('waiting transition');
-					setTimeout(function () {
-						timingLogger.endTag();
-
-						timingLogger.startTag('transition');
-						transitionend(content, function () {
-							timingLogger.endTag();
-							footer.classList.remove('hide');
-							footer = null;
-
-							favicon.update();
-							extractTweets();
-							extractSiokaraThumbnails();
-							extractNico2();
-							extractIncompleteFiles();
-
-							sendToBackend(
-								'notify-viewers',
-								{
-									data: $('viewers').textContent - 0,
-									siteInfo: siteInfo
-								});
-
-							timingLogger.endTag();
-						});
-						content.classList.remove('init');
-						content = indicator = null;
-					}, 0);
-				}, Math.max(0, WAIT_AFTER_RELOAD - (Date.now() - now)));
-			},
-			function (e) {
-				indicator.classList.add('error');
-				$t(indicator, e.message);
+				timingLogger.startTag('transforming');
+				xsltProcessor.setParameter(null, 'render_mode', 'threads');
+				fragment = fixFragment(xsltProcessor.transformToFragment(xml, document));
+				timingLogger.endTag();
 			}
-		);
+			catch (ex) {
+				throw new Error(
+					'内部 xml からの html への変形に失敗しました。' +
+					`\n(${ex.message})`);
+			}
+			finally {
+				timingLogger.endTag();
+			}
+
+			timingLogger.startTag(`waiting (max ${WAIT_AFTER_RELOAD} msecs)`);
+			return delay(Math.max(0, WAIT_AFTER_RELOAD - (Date.now() - now)))
+			.then(() => {
+				timingLogger.endTag();
+
+				timingLogger.startTag('appending the contents');
+				empty(content);
+				window.scrollTo(0, 0);
+				content.style.height = '';
+				appendFragment(content, fragment);
+				fragment = null;
+				timingLogger.endTag();
+
+				timingLogger.startTag('transition');
+				content.classList.remove('init');
+				return transitionendp(content, 400);
+			})
+			.then(() => {
+				timingLogger.endTag();
+
+				footer.classList.remove('hide');
+				content = indicator = footer = null;
+
+				favicon.update();
+				extractTweets();
+				extractSiokaraThumbnails();
+				extractNico2();
+				extractIncompleteFiles();
+
+				sendToBackend(
+					'notify-viewers',
+					{
+						data: $('viewers').textContent - 0,
+						siteInfo: siteInfo
+					});
+
+				timingLogger.forceEndTag();
+			});
+		}).catch(err => {
+			footer.classList.remove('hide');
+			indicator.classList.add('error');
+			$t(indicator, err.message);
+			console.error(`${APP_NAME}: reloadSummary failed: ${err.message}`);
+		});
 	},
 	reloadReplies: function () {
-		if (transport) {
-			if (transportType == 'reload') {
-				try {transport.abort()} catch (e) {}
-				transport = null;
-				showFetchedRepliesStatus('中断しました', true);
-			}
+		const TRANSPORT_TYPE = 'reload-replies';
+
+		if (transport.isRunning(TRANSPORT_TYPE)) {
+			transport.abort(TRANSPORT_TYPE);
+			showFetchedRepliesStatus('中断しました', true);
+			return;
+		}
+
+		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
 			return;
 		}
 
@@ -8387,104 +8889,117 @@ const commands = {
 			return;
 		}
 
+		timingLogger.reset().startTag('reloading replies');
 		setBottomStatus('読み込み中...', true);
 		removeRule();
 		markStatistics.resetPostformView();
 
-		reloadBase(
-			function (doc, now, status) {
-				switch (status) {
-				case 404:
-					$t('expires-remains', '-');
-					$t('pf-expires-remains', '-');
-					showFetchedRepliesStatus();
-					setBottomStatus('完了: 404 Not found');
-					$t('reload-anchor', 'Not found. ファイルがないよ。');
-					return;
-				case 304:
-					showFetchedRepliesStatus('更新なし', true);
-					setBottomStatus('完了: 更新なし');
-					return;
-				}
+		reloadBase(TRANSPORT_TYPE)
+		.then(reloadResult => {
+			const {doc, now, status} = reloadResult;
 
-				if (!doc) {
-					showFetchedRepliesStatus(`内容が変だよ (${status})`);
-					setBottomStatus('完了: エラー ' + status);
-					return;
-				}
+			let result;
 
-				timingLogger.startTag('generate internal xml');
-				try {
-					timingLogger.startTag('generate');
-					var result = xmlGenerator.run(doc.documentElement[IHTML], null, 0);
-					timingLogger.endTag();
+			switch (status) {
+			case 404:
+				$t('expires-remains', '-');
+				$t('pf-expires-remains', '-');
+				showFetchedRepliesStatus();
+				setBottomStatus('完了: 404 Not found');
+				$t('reload-anchor', 'Not found. ファイルがないよ。');
+				timingLogger.forceEndTag();
+				return;
+			case 304:
+				showFetchedRepliesStatus('更新なし', true);
+				setBottomStatus('完了: 更新なし');
+				timingLogger.forceEndTag();
+				return;
+			}
 
-					timingLogger.startTag('applying data bindings');
-					applyDataBindings(result.xml);
-					timingLogger.endTag();
+			if (!doc) {
+				throw new Err(`内容が変だよ (${status})`);
+			}
 
-					timingLogger.startTag('update topic id');
-					updateMarkedTopic(result.xml, document);
-					updateTopicID(result.xml, document);
-					updateTopicSodane(result.xml, document);
-
-					timingLogger.endTag();
-				}
-				catch (ex) {
-					throw new Error(
-						'内部 xml からの html への変形に失敗しました。' +
-						`\n(${ex.message})`);
-				}
+			timingLogger.startTag('generate internal xml');
+			try {
+				timingLogger.startTag('generate');
+				result = xmlGenerator.run(doc.documentElement[IHTML], null, 0);
 				timingLogger.endTag();
 
-				var lastNumber = ($qs([
-					'article:nth-of-type(1)',
-					'.reply-wrap:last-child',
-					'[data-number]'
-				].join(' ')) || $qs([
-					'article:nth-of-type(1)',
-					'.topic-wrap'
-				].join(' '))).getAttribute('data-number') - 0;
+				timingLogger.startTag('applying data bindings');
+				applyDataBindings(result.xml);
+				timingLogger.endTag();
 
-				sendToBackend(
-					'notify-viewers',
-					{
-						viewers: $('viewers').textContent - 0,
-						siteInfo: siteInfo
-					});
-
-				timingLogger.startTag('processing remaining replies');
-				processRemainingReplies(result.remainingRepliesContext, lastNumber,
-					function (newStat) {
-						if (newStat) {
-							timingLogger.endTag();
-							timingLogger.endTag();
-							setBottomStatus(
-								'完了: ' + (newStat.delta.total ?
-											`新着 ${newStat.delta.total} レス` :
-											'新着レスなし'));
-							scrollToNewReplies();
-						}
-					}
-				);
-			},
-			function (e) {
-				showFetchedRepliesStatus(e.message);
-				setBottomStatus(e.message);
-				console.error(e.message);
+				timingLogger.startTag('update topic mark,id,sodane');
+				updateMarkedTopic(result.xml, document);
+				updateTopicID(result.xml, document);
+				updateTopicSodane(result.xml, document);
+				timingLogger.endTag();
 			}
-		);
+			catch (ex) {
+				throw new Error(
+					'内部 xml からの html への変形に失敗しました。' +
+					`\n(${ex.message})`);
+			}
+			finally {
+				timingLogger.endTag();
+			}
+
+			let lastNumber = ($qs([
+				'article:nth-of-type(1)',
+				'.reply-wrap:last-child',
+				'[data-number]'
+			].join(' ')) || $qs([
+				'article:nth-of-type(1)',
+				'.topic-wrap'
+			].join(' '))).getAttribute('data-number') - 0;
+
+			sendToBackend(
+				'notify-viewers',
+				{
+					viewers: $('viewers').textContent - 0,
+					siteInfo: siteInfo
+				});
+
+			timingLogger.forceEndTag();
+
+			// process remaiing replies
+			processRemainingReplies(result.remainingRepliesContext, lastNumber,
+				function (newStat) {
+					if (newStat) {
+						setBottomStatus(
+							'完了: ' + (newStat.delta.total ?
+										`新着 ${newStat.delta.total} レス` :
+										'新着レスなし'));
+						scrollToNewReplies();
+					}
+				}
+			);
+		})
+		.catch(err => {
+			showFetchedRepliesStatus(err.message);
+			setBottomStatus(err.message);
+			timingLogger.forceEndTag();
+			console.error(`${APP_NAME}: reloadReplies failed: ${err.message}`);
+		});
 	},
 	reloadCatalog: function () {
-		if (transport) {
-			if (transportType == 'reload') {
-				try {transport.abort()} catch (e) {}
-				transport = null;
-			}
+		const TRANSPORT_TYPE = 'reload-catalog';
+
+		if (transport.isRunning(TRANSPORT_TYPE)) {
+			transport.abort(TRANSPORT_TYPE);
 			return;
 		}
 
-		var sortMap = {
+		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
+			return;
+		}
+
+		if (pageModes[0] != 'catalog') {
+			return;
+		}
+
+		const sortMap = {
 			'#catalog-order-default': {n:0, key:'default'},
 			'#catalog-order-new': {n:1, key:'new'},
 			'#catalog-order-old': {n:2, key:'old'},
@@ -8492,263 +9007,287 @@ const commands = {
 			'#catalog-order-less': {n:4, key:'less'},
 			'#catalog-order-hist': {n:9, key:'hist'}
 		};
-		var p = $qs('#catalog .catalog-options a.active');
-		var sortType = sortMap[p ? p.getAttribute('href') : '#catalog-order-default'];
-		var wrap = $('catalog-threads-wrap-' + sortType.key);
 
-		//
-		(function () {
-			var textLength = 0;
-			var withText = $('catalog-with-text');
-			var cs = getCatalogSettings();
+		let p = $qs('#catalog .catalog-options a.active');
+		let sortType = sortMap[p ? p.getAttribute('href') : '#catalog-order-default'];
+		let wrap = $(`catalog-threads-wrap-${sortType.key}`);
 
-			if (/^[1-9][0-9]*$/.test(cs[2])) {
-				textLength = cs[2];
-			}
+		// update catalog settings
+		if (!wrap.firstChild) {
+			let currentCs = getCatalogSettings();
+			$('catalog-horz-number').value = currentCs[0];
+			$('catalog-vert-number').value = currentCs[1];
+			$('catalog-with-text').checked = currentCs[2] > 0;
+		}
 
-			if (textLength == 0 && withText.checked) {
-				textLength = config.data.catalog_text_max_length.value;
-			}
-			else if (textLength > 0 && !withText.checked) {
-				textLength = 0;
-			}
-
-			withText.checked = textLength > 0;
-			commands.updateCatalogSettings({
-				x: $('catalog-horz-number').value,
-				y: $('catalog-vert-number').value,
-				text: textLength
-			});
-		})();
+		commands.updateCatalogSettings({
+			x: $('catalog-horz-number').value,
+			y: $('catalog-vert-number').value,
+			text: $('catalog-with-text').checked ? storage.config.catalog_text_max_length.value : 0
+		});
 
 		setBottomStatus('読み込み中...', true);
 		catalogPopup.deleteAll();
 		wrap.classList.add('run');
-		reloadCatalogBase(
-			sortType ? `&sort=${sortType.n}` : '',
-			function (doc, now, status) {
-				var insertee = wrap.firstChild;
-				var newIndicator = wrap.childNodes.length ? 'new' : '';
-				var newClass = wrap.childNodes.length ? 'new' : '';
-				var latestNumber = 0;
-				var horzActual = $qsa('table[align="center"] tr:first-child td', doc).length;
-				var vertActual = $qsa('table[align="center"] tr', doc).length;
-				var currentCs = getCatalogSettings();
 
-				//
-				var cellImageWidth = Math.floor(CATALOG_THUMB_WIDTH * config.data.catalog_thumbnail_scale.value);
-				var cellImageHeight = Math.floor(CATALOG_THUMB_HEIGHT * config.data.catalog_thumbnail_scale.value);
-				var anchorWidth = cellImageWidth + CATALOG_ANCHOR_PADDING;
+		Promise.all([
+			transitionendp(wrap, 400),
+			reloadCatalogBase(TRANSPORT_TYPE, sortType ? `&sort=${sortType.n}` : ''),
+			urlStorage.getAll()
+		]).then(data => {
+			const [transitionResult, reloadResult, openedThreads] = data;
+			const {doc, now, status} = reloadResult;
 
-				if ($('catalog-horz-number').value == '') {
-					$('catalog-horz-number').value = currentCs[0];
+			const attributeConverter1 = {
+				'href': (anchor, name, value) => {
+					anchor.setAttribute(name, `/${siteInfo.board}/${value}`);
+				},
+				'target': (anchor, name, value) => {
+					anchor.setAttribute(name, value);
 				}
-				if ($('catalog-vert-number').value == '') {
-					$('catalog-vert-number').value = currentCs[1];
+			};
+
+			const attributeConverter2 = {
+				'data-src': (img, pad, name, value) => {
+					img.src = restoreDistributedImageURL(
+						storage.config.catalog_thumbnail_scale.value >= 1.5 ?
+							value.replace('/cat/', '/thumb/') : value);
+				},
+				'width': (img, pad, name, value) => {
+					value = Math.floor((value - 0) * storage.config.catalog_thumbnail_scale.value);
+					img.style.width = value + 'px';
+				},
+				'height': (img, pad, name, value) => {
+					value = Math.floor((value - 0) * storage.config.catalog_thumbnail_scale.value);
+					img.style.height = value + 'px';
+				},
+				'alt': (img, pad, name, value) => {
+					img.setAttribute('alt', value);
 				}
+			};
 
-				wrap.style.maxWidth = ((anchorWidth + CATALOG_ANCHOR_MARGIN) * horzActual) + 'px';
+			const cellImageWidth = Math.floor(CATALOG_THUMB_WIDTH * storage.config.catalog_thumbnail_scale.value);
+			const cellImageHeight = Math.floor(CATALOG_THUMB_HEIGHT * storage.config.catalog_thumbnail_scale.value);
+			const anchorWidth = cellImageWidth + CATALOG_ANCHOR_PADDING;
+			const horzActual = $qsa('table[align="center"] tr:first-child td', doc).length;
+			const vertActual = $qsa('table[align="center"] tr', doc).length;
+			const currentCs = getCatalogSettings();
+			const newIndicator = wrap.childNodes.length ? 'new' : '';
+			const newClass = wrap.childNodes.length ? 'new' : '';
 
-				const attributeConverter1 = {
-					'href': (anchor, name, value) => {
-						anchor.setAttribute(name, `/${siteInfo.board}/${value}`);
-					},
-					'target': (anchor, name, value) => {
-						anchor.setAttribute(name, value);
+			let insertee = wrap.firstChild;
+			let latestNumber = 0;
+
+			wrap.style.maxWidth = ((anchorWidth + CATALOG_ANCHOR_MARGIN) * horzActual) + 'px';
+
+			/*
+			 * traverse all anchors in new catalog
+			 */
+
+			Array.prototype.forEach.call(
+				$qsa('table[align="center"] td a', doc),
+				node => {
+					let threadNumber = /(\d+)\.htm/.exec(node.getAttribute('href'));
+					if (!threadNumber) return;
+
+					let repliesCount = 0, from, to;
+
+					threadNumber = threadNumber[1] - 0;
+					if (threadNumber > latestNumber) {
+						latestNumber = threadNumber;
 					}
-				};
 
-				const attributeConverter2 = {
-					'data-src': (img, pad, name, value) => {
-						img.src = restoreDistributedImageURL(
-							config.data.catalog_thumbnail_scale.value >= 1.5 ?
-								value.replace('/cat/', '/thumb/') : value);
-					},
-					'width': (img, pad, name, value) => {
-						value = Math.floor((value - 0) * config.data.catalog_thumbnail_scale.value);
-						img.style.width = value + 'px';
-					},
-					'height': (img, pad, name, value) => {
-						value = Math.floor((value - 0) * config.data.catalog_thumbnail_scale.value);
-						img.style.height = value + 'px';
-						pad.style.height = (cellImageHeight - value) + 'px';
-					},
-					'alt': (img, pad, name, value) => {
-						img.setAttribute('alt', value);
+					// number of replies
+					from = $qs('font', node.parentNode);
+					if (from) {
+						repliesCount = from.textContent - 0;
 					}
-				};
 
-				Array.prototype.forEach.call(
-					$qsa('table[align="center"] td a', doc),
-					function (node) {
-						var repliesCount = 0, from, to;
-						var id = /(\d+)\.htm/.exec(node.getAttribute('href'));
-						if (!id) return;
-						id = id[1] - 0;
-						if (id > latestNumber) {
-							latestNumber = id;
+					// find anchor already exists
+					let anchor = $(`c-${sortType.key}-${threadNumber}`);
+					if (anchor) {
+						// found. reuse it
+						if (anchor == insertee) {
+							insertee = insertee.nextSibling;
 						}
+						anchor.parentNode.insertBefore(anchor, insertee);
 
-						// number of replies
-						from = $qs('font', node.parentNode);
-						if (from) {
-							repliesCount = from.textContent - 0;
-						}
-
-						// anchor cell
-						var anchor = $(`c-${sortType.key}-${id}`);
-						if (anchor) {
-							if (anchor == insertee) {
-								insertee = insertee.nextSibling;
-							}
-							anchor.parentNode.insertBefore(anchor, insertee);
-
-							var info = $qs('.info', anchor);
-							var oldRepliesCount = info.firstChild.textContent - 0;
-							info.firstChild.textContent = repliesCount;
-							if (repliesCount != oldRepliesCount) {
-								anchor.className = repliesCount > CATALOG_LONG_CLASS_THRESHOLD ? 'long' : '';
-								info.lastChild.textContent =
-									(repliesCount > oldRepliesCount ? '+' : '') +
-									(repliesCount - oldRepliesCount);
-							}
-							else {
-								anchor.className = '';
-								info.lastChild.textContent = '';
-							}
-
-							return;
+						// update reply number and class name
+						let info = $qs('.info', anchor);
+						let oldRepliesCount = info.firstChild.textContent - 0;
+						info.firstChild.textContent = repliesCount;
+						if (repliesCount != oldRepliesCount) {
+							anchor.className = repliesCount > CATALOG_LONG_CLASS_THRESHOLD ? 'long' : '';
+							info.lastChild.textContent =
+								(repliesCount > oldRepliesCount ? '+' : '') +
+								(repliesCount - oldRepliesCount);
 						}
 						else {
-							anchor = wrap.insertBefore(document[CRE]('a'), insertee);
-							anchor.id = `c-${sortType.key}-${id}`;
-							anchor.setAttribute('data-number', id);
+							anchor.className = '';
+							info.lastChild.textContent = '';
 						}
-						anchor.style.width = anchorWidth + 'px';
 
-						// image
-						var pad = anchor.appendChild(document[CRE]('div'));
+						return;
+					}
 
-						// attribute conversion #1
-						for (let atr in attributeConverter1) {
-							let value = node.getAttribute(atr);
+					// not found. create new one
+					anchor = wrap.insertBefore(document[CRE]('a'), insertee);
+					anchor.id = `c-${sortType.key}-${threadNumber}`;
+					anchor.setAttribute('data-number', `${threadNumber},0`);
+					anchor.style.width = anchorWidth + 'px';
+					anchor.className = newClass;
+
+					// image
+					let imageWrap = anchor.appendChild(document[CRE]('div'));
+					imageWrap.className = 'image';
+					imageWrap.style.height = cellImageHeight + 'px';
+
+					// attribute conversion #1
+					for (let atr in attributeConverter1) {
+						let value = node.getAttribute(atr);
+						if (value == null) continue;
+						attributeConverter1[atr](anchor, atr, value);
+					}
+
+					from = $qs('img', node);
+					if (from) {
+						to = imageWrap.appendChild(document[CRE]('img'));
+
+						// attribute conversion #2
+						for (let atr in attributeConverter2) {
+							let value = from.getAttribute(atr);
 							if (value == null) continue;
-							attributeConverter1[atr](anchor, atr, value);
+							attributeConverter2[atr](to, imageWrap, atr, value);
 						}
 
-						from = $qs('img', node);
-						if (from) {
-							to = anchor.appendChild(document[CRE]('img'));
+						let imageNumber = /(\d+)s\.jpg/.exec(to.src)[1];
+						anchor.setAttribute('data-number', `${threadNumber},${imageNumber}`);
+					}
 
-							// attribute conversion #2
-							for (let atr in attributeConverter2) {
-								let value = from.getAttribute(atr);
-								if (value == null) continue;
-								attributeConverter2[atr](to, pad, atr, value);
-							}
+					// text
+					from = $qs('small', node.parentNode);
+					if (from) {
+						to = anchor.appendChild(document[CRE]('div'));
+						to.className = 'text';
+						to.textContent = getTextForCatalog(
+							from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!'), 4);
+						to.setAttribute('data-text', from.textContent);
+					}
+
+					to = anchor.appendChild(document[CRE]('div'));
+					to.className = 'info';
+					to.appendChild(document[CRE]('span')).textContent = repliesCount;
+					to.appendChild(document[CRE]('span')).textContent = newIndicator;
+				}
+			);
+
+			switch (sortType.n) {
+			// default, old
+			case 0: case 2:
+				{
+					let deleteLimit = Math.floor((latestNumber - siteInfo.logSize) * 1.5); // TODO: number is heuristic
+					//let logs = [];
+
+					// process all remaining anchors which have not changed and find dead thread
+					while (insertee) {
+						let [threadNumber, imageNumber] = insertee.getAttribute('data-number').split(',');
+						threadNumber -= 0;
+						imageNumber -= 0;
+
+						let isAdult = imageNumber > 0 && now - imageNumber >= siteInfo.minThreadLifeTime;
+
+						if (threadNumber < deleteLimit
+						&& (siteInfo.minThreadLifeTime == 0 || isAdult)) {
+							let tmp = insertee.nextSibling;
+							insertee.parentNode.removeChild(insertee);
+							insertee = tmp;
+							//logs.push(`${threadNumber} removed. latest:${latestNumber}, deleteLimit:${deleteLimit}, isAdult:${isAdult}`);
 						}
 						else {
-							pad.style.height = cellImageHeight + 'px';
+							insertee.className = '';
+							$qs('.info', insertee).lastChild.textContent = '';
+							insertee = insertee.nextSibling;
 						}
-
-						// text
-						from = $qs('small', node.parentNode);
-						if (from) {
-							to = anchor.appendChild(document[CRE]('div'));
-							to.className = 'text';
-							to.textContent = getTextForCatalog(
-								from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!'), 4);
-							to.setAttribute('data-text', from.textContent);
-						}
-
-						to = anchor.appendChild(document[CRE]('div'));
-						to.className = 'info';
-						to.appendChild(document[CRE]('span')).textContent = repliesCount;
-						to.appendChild(document[CRE]('span')).textContent = newIndicator;
-
-						// finish
-						anchor.className = newClass;
-					}
-				);
-
-				var urls = urlStorage.getAll(window.location.href);
-
-				switch (sortType.n) {
-				case 0: case 2:
-					while (insertee) {
-						insertee.className = '';
-						$qs('.info', insertee).lastChild.textContent = '';
-						insertee = insertee.nextSibling;
 					}
 
-					var deleteLimit = latestNumber - siteInfo.logSize;
-					var warnLimit = Math.floor(latestNumber - siteInfo.logSize * CATALOG_EXPIRE_WARN_RATIO);
-					var node = wrap.firstChild;
-					while (node) {
-						var n = node.getAttribute('data-number') - 0;
-						if (n in urls) {
+					// pick up and mark old threads
+					let warnLimit = Math.floor(latestNumber - siteInfo.logSize * CATALOG_EXPIRE_WARN_RATIO);
+					for (let node = wrap.firstChild; node; node = node.nextSibling) {
+						let [threadNumber, imageNumber] = node.getAttribute('data-number').split(',');
+
+						if (threadNumber in openedThreads) {
 							node.classList.add('soft-visited');
 						}
-						if (n < deleteLimit) {
-							var tmp = node.nextSibling;
-							node.parentNode.removeChild(node);
-							node = tmp;
-						}
-						else {
-							if (n < warnLimit) {
-								node.classList.add('warned');
-							}
-							node = node.nextSibling;
+
+						threadNumber -= 0;
+						imageNumber -= 0;
+
+						let isAdult = imageNumber > 0 && now - imageNumber >= siteInfo.minThreadLifeTime;
+
+						if (threadNumber < warnLimit
+						&& (siteInfo.minThreadLifeTime == 0 || isAdult)) {
+							node.classList.add('warned');
+							//logs.push(`${threadNumber} warned. warnLimit:${warnLimit}, isAdult:${isAdult}`);
 						}
 					}
-					break;
-				default:
+				}
+				break;
+			// new, most, less, hist
+			default:
+				{
 					while (insertee) {
-						var tmp = insertee.nextSibling;
+						let tmp = insertee.nextSibling;
 						insertee.parentNode.removeChild(insertee);
 						insertee = tmp;
 					}
 
-					var node = wrap.firstChild;
-					while (node) {
-						var n = node.getAttribute('data-number') - 0;
-						if (n in urls) {
+					for (let node = wrap.firstChild; node; node = node.nextSibling) {
+						let [threadNumber, imageNumber] = insertee.getAttribute('data-number').split(',');
+						threadNumber -= 0;
+						imageNumber -= 0;
+
+						if (threadNumber in openedThreads) {
 							node.classList.add('soft-visited');
 						}
-						node = node.nextSibling;
 					}
-					break;
 				}
-
-				wrap.classList.remove('run');
-				setBottomStatus('完了');
-				window.scrollTo(0, 0);
-			},
-			function (e) {
-				wrap.classList.remove('run');
-				setBottomStatus('カタログの読み込みに失敗しました');
+				break;
 			}
-		);
+
+			let activePanel = $qs('#panel-aside-wrap:not(.hide) .panel-tab.active');
+			if (activePanel && /#search/.test(activePanel.href)) {
+				commands.searchCatalog();
+			}
+
+			wrap.classList.remove('run');
+			setBottomStatus('完了');
+			window.scrollTo(0, 0);
+		}).catch(err => {
+			wrap.classList.remove('run');
+			setBottomStatus('カタログの読み込みに失敗しました');
+			window.scrollTo(0, 0);
+		});
 	},
 	post: function () {
-		if (transport) {
-			if (transportType == 'post') {
-				try {transport.abort()} catch (e) {}
-				setBottomStatus('中断しました');
-				registerReleaseFormLock();
-			}
+		const TRANSPORT_TYPE = 'post';
+
+		if (transport.isRunning(TRANSPORT_TYPE)) {
+			transport.abort(TRANSPORT_TYPE);
+			setBottomStatus('中断しました');
+			registerReleaseFormLock();
 			return;
 		}
 
-		if (isRapidAccess()) return;
+		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
+			return;
+		}
 
 		setBottomStatus('投稿中...');
 		$qs('fieldset', 'postform').disabled = true;
 
 		postBase(
-			'post',
-			$('postform'),
-			function (response) {
+			TRANSPORT_TYPE, $('postform'),
+			response => {
 				if (!response) {
 					setBottomStatus('サーバからの応答が変です');
 					registerReleaseFormLock();
@@ -8760,17 +9299,17 @@ const commands = {
 
 				//log('got post result:\n' + response.replace(/.{1,72}/g, '$&\n'));
 
-				var result = parsePostResponse(response);
+				let result = parsePostResponse(response);
 				if (result.redirect) {
-					registerReleaseFormLock();
 					setTimeout(function () {
+						registerReleaseFormLock();
 						commands.deactivatePostForm();
 						setPostThumbnail();
 						resetForm('com', 'upfile', 'textonly', 'baseform');
 						overrideUpfile = undefined;
 						setBottomStatus('投稿完了');
 
-						var pageMode = pageModes[0];
+						let pageMode = pageModes[0];
 						if (pageMode == 'reply' && $('post-switch-thread').checked) {
 							pageMode = 'summary';
 						}
@@ -8779,25 +9318,25 @@ const commands = {
 						case 'summary':
 						case 'catalog':
 							if (result.redirect != '') {
-								sendToBackend(
-									'open',
-									{url:result.redirect, selfUrl:window.location.href});
+								sendToBackend('open', {
+									url: result.redirect,
+									selfUrl:window.location.href
+								});
 							}
 							if ($('post-switch-reply')) {
 								$('post-switch-reply').click();
 							}
 							break;
 						case 'reply':
-							transportLastUsedTime = 0;
 							commands.reload();
 							break;
 						}
 					}, WAIT_AFTER_POST);
-					return;
 				}
-
-				registerReleaseFormLock();
-				window.alert(result.error || 'なんかエラー');
+				else {
+					registerReleaseFormLock();
+					window.alert(result.error || 'なんかエラー');
+				}
 			}
 		);
 	},
@@ -8813,7 +9352,7 @@ const commands = {
 		t.textContent = '...';
 
 		let url = `${location.protocol}//${location.host}/sd.php?${siteInfo.board}.${postNumber}`
-		let xhr = createTransport();
+		let xhr = transport.create();
 		xhr.open('GET', url);
 		xhr.onload = () => {
 			setTimeout(() => {
@@ -8858,10 +9397,10 @@ const commands = {
 		$t(t, '保存中...');
 
 		sendToBackend('save-image', {
-			url:href,
-			path:config.data.storage.value.replace('msonedrive', 'onedrive') + ':' + f,
-			mimeType:getImageMimeType(href),
-			anchorId:id
+			url: href,
+			path: storage.config.storage.value.replace('msonedrive', 'onedrive') + ':' + f,
+			mimeType: getImageMimeType(href),
+			anchorId: id
 		});
 	},
 
@@ -8870,7 +9409,16 @@ const commands = {
 	 */
 
 	openDeleteDialog: () => {
-		if (transport && transportType == 'delete') return;
+		const TRANSPORT_TYPE = 'delete';
+
+		if (transport.isRunning(TRANSPORT_TYPE)) {
+			transport.abort(TRANSPORT_TYPE);
+			return;
+		}
+
+		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
+			return;
+		}
 
 		modalDialog({
 			title: '記事削除',
@@ -8905,7 +9453,7 @@ const commands = {
 
 				form.action = `/${siteInfo.board}/futaba.php`;
 				$t(status, '削除をリクエストしています...');
-				postBase('delete', form,
+				postBase(TRANSPORT_TYPE, form,
 					response => {
 						response = response.replace(/\r\n|\r|\n/g, '\t');
 						let result = parsePostResponse(response);
@@ -8952,37 +9500,37 @@ const commands = {
 				let itemsNode = xml.documentElement.appendChild(xml[CRE]('items'));
 				itemsNode.setAttribute('prefix', 'config-item.');
 
-				let data = config.data;
+				let config = storage.config;
 				let f = IDEOGRAPH_CONVERSION_UI ?
-					新字体の漢字を旧字体に変換 : s => s;
-				for (let i in data) {
+					新字体の漢字を舊字體に変換 : s => s;
+				for (let i in config) {
 					let item = itemsNode.appendChild(xml[CRE]('item'));
 					item.setAttribute('internal', i);
-					item.setAttribute('name', f(data[i].name));
-					item.setAttribute('value', data[i].value);
-					item.setAttribute('type', data[i].type);
-					'desc' in data[i] && item.setAttribute('desc', f(data[i].desc));
-					'min' in data[i] && item.setAttribute('min', data[i].min);
-					'max' in data[i] && item.setAttribute('max', data[i].max);
+					item.setAttribute('name', f(config[i].name));
+					item.setAttribute('value', config[i].value);
+					item.setAttribute('type', config[i].type);
+					'desc' in config[i] && item.setAttribute('desc', f(config[i].desc));
+					'min' in config[i] && item.setAttribute('min', config[i].min);
+					'max' in config[i] && item.setAttribute('max', config[i].max);
 
-					if ('list' in data[i]) {
-						for (let j in data[i].list) {
+					if ('list' in config[i]) {
+						for (let j in config[i].list) {
 							let li = item.appendChild(xml[CRE]('li'));
-							li.textContent = f(data[i].list[j]);
+							li.textContent = f(config[i].list[j]);
 							li.setAttribute('value', j);
-							j == data[i].value && li.setAttribute('selected', 'true');
+							j == config[i].value && li.setAttribute('selected', 'true');
 						}
 					}
 				}
 				dialog.initFromXML(xml, 'config-dialog');
 			},
 			onok: dialog => {
-				let storage = {};
+				let storageData = {};
 				populateTextFormItems(dialog.content, item => {
-					storage[item.name.replace(/^config-item\./, '')] = item.value;
+					storageData[item.name.replace(/^config-item\./, '')] = item.value;
 				});
-				config.assign(storage);
-				config.save();
+				storage.assignConfig(storageData);
+				storage.saveConfig();
 				applyDataBindings(xmlGenerator.run('').xml);
 			}
 		});
@@ -8997,7 +9545,7 @@ const commands = {
 
 		let baseUrl = `${location.protocol}//${location.host}/`;
 		let moderatorUrl = `${baseUrl}del.php?b=${siteInfo.board}&d=${getPostNumber(anchor)}`;
-		let xhr = createTransport();
+		let xhr = transport.create();
 		xhr.open('GET', moderatorUrl);
 		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 		xhr.onload = () => {
@@ -9007,7 +9555,7 @@ const commands = {
 
 			let doc = getDOMFromString(
 				IDEOGRAPH_CONVERSION_UI ?
-					新字体の漢字を旧字体に変換(xhr.responseText) :
+					新字体の漢字を舊字體に変換(xhr.responseText) :
 					xhr.responseText);
 
 			modalDialog({
@@ -9072,8 +9620,8 @@ const commands = {
 						);
 
 						// select last used reason, if available
-						if (lastDelReason) {
-							let node = $qs(`input[type="radio"][value="${lastDelReason}"`, form);
+						if (storage.runtime.del.lastReason) {
+							let node = $qs(`input[type="radio"][value="${storage.runtime.del.lastReason}"`, form);
 							if (node) {
 								node.checked = true;
 							}
@@ -9105,7 +9653,8 @@ const commands = {
 							Array.prototype.forEach.call(
 								$qsa('input[type="radio"]:checked', form),
 								node => {
-									lastDelReason = node.value;
+									storage.runtime.del.lastReason = node.value;
+									storage.saveRuntime();
 									node.checked = false;
 								}
 							);
@@ -9129,6 +9678,8 @@ const commands = {
 		};
 		xhr.onerror = () => {
 			anchor.removeAttribute('data-busy');
+		};
+		xhr.onloadend = () => {
 			xhr = null;
 		};
 		xhr.send();
@@ -9319,9 +9870,13 @@ const commands = {
 			threads.classList.add('hide');
 			catalog.classList.remove('hide');
 			ad.classList.add('hide');
-			panel.classList.add('hide');
 			pageModes.unshift('catalog');
 			$t($qs('#header a[href="#toggle-catalog"] span'), siteInfo.resno ? 'スレッド' : 'サマリー');
+
+			if (panel.classList.contains('run')) {
+				Array.from($qsa('#catalog .catalog-threads-wrap > div'))
+					.forEach(div => {div.style.marginRight = '24%';});
+			}
 
 			let active = $qs(
 				'#catalog .catalog-threads-wrap > div:not([class*="hide"])');
@@ -9337,7 +9892,6 @@ const commands = {
 			threads.classList.remove('hide');
 			catalog.classList.add('hide');
 			ad.classList.remove('hide');
-			panel.classList.add('hide');
 			$t($qs('#header a[href="#toggle-catalog"] span'), 'カタログ');
 			catalogPopup.deleteAll();
 			pageModes.shift();
@@ -9345,21 +9899,21 @@ const commands = {
 		}
 	},
 	updateCatalogSettings: function (settings) {
-		var cs = getCatalogSettings();
+		let cs = getCatalogSettings();
 		if ('x' in settings) {
-			var tmp = parseInt(settings.x);
+			let tmp = parseInt(settings.x, 10);
 			if (!isNaN(tmp) && tmp >= 1 && tmp <= 20) {
 				cs[0] = tmp;
 			}
 		}
 		if ('y' in settings) {
-			var tmp = parseInt(settings.y);
+			let tmp = parseInt(settings.y, 10);
 			if (!isNaN(tmp) && tmp >= 1 && tmp <= 100) {
 				cs[1] = tmp;
 			}
 		}
 		if ('text' in settings) {
-			var tmp = parseInt(settings.text);
+			let tmp = parseInt(settings.text, 10);
 			if (!isNaN(tmp) && tmp >= 0 && tmp <= 1000) {
 				cs[2] = tmp;
 			}
@@ -9381,12 +9935,10 @@ const commands = {
 	 */
 
 	togglePanelVisibility: function () {
-		var ad = $('ad-aside-wrap');
-		var panel = $('panel-aside-wrap');
-		if (ad.classList.contains('hide') && !panel.classList.contains('hide')) {
+		if ($('panel-aside-wrap').classList.contains('run')) {
 			commands.hidePanel();
 		}
-		else if (!ad.classList.contains('hide') && panel.classList.contains('hide')) {
+		else {
 			commands.showPanel();
 		}
 	},
@@ -9394,25 +9946,24 @@ const commands = {
 		hidePanel();
 	},
 	showPanel: function () {
-		showPanel(function (panel) {
-			activatePanelTab($qs('.panel-tab.active'));
-		});
+		showPanel();
 	},
 	activateStatisticsTab: function () {
-		showPanel(function (panel) {
-			activatePanelTab($qs('.panel-tab[href="#mark"]'));
-		});
+		activatePanelTab($qs('.panel-tab[href="#mark"]'));
+		showPanel();
 	},
 	activateSearchTab: function () {
-		showPanel(function (panel) {
-			activatePanelTab($qs('.panel-tab[href="#search"]'));
+		let searchTab = $qs('.panel-tab[href="#search"]');
+		activatePanelTab(searchTab);
+		$t($qs('span', searchTab),
+			(pageModes[0] == 'catalog' ? 'スレ' : 'レス') + '検索');
+		showPanel(panel => {
 			$('search-text').focus();
 		});
 	},
 	activateNoticeTab: function () {
-		showPanel(function (panel) {
-			activatePanelTab($qs('.panel-tab[href="#notice"]'));
-		});
+		activatePanelTab($qs('.panel-tab[href="#notice"]'));
+		showPanel();
 	},
 
 	/*
@@ -9420,46 +9971,102 @@ const commands = {
 	 */
 
 	search: function () {
-		var tester = createQueryCompiler().compile($('search-text').value);
-		if (tester.message) {
-			$t('search-result-count', tester.message);
-			return;
+		if (pageModes[0] == 'catalog') {
+			commands.searchCatalog();
 		}
+		else {
+			commands.searchComment();
+		}
+	},
+	searchComment: function () {
+		searchBase({
+			targetNodesSelector: 'article .topic-wrap, article .reply-wrap',
+			targetElementSelector: '.sub, .name, .postdate, span.user-id, .email, .comment',
+			getTextContent: node => {
+				return node.textContent;
+			},
+			getPostNumber: node => {
+				return node.getAttribute('data-number')
+					|| $qs('[data-number]', node).getAttribute('data-number');
+			},
+			fillItem: (anchor, target) => {
+				anchor.textContent = $qs('.comment', target).textContent;
+			}
+		});
+	},
+	searchCatalog: function () {
+		let currentMode = $qs('#catalog .catalog-options a.active');
+		if (!currentMode) return;
 
-		var result = $('search-result');
-		var matched = 0;
-		$('search-guide').classList.add('hide');
-		empty(result);
+		let re = currentMode = /#catalog-order-(\w+)/.exec(currentMode.href);
+		if (!re) return;
 
-		Array.prototype.forEach.call(
-			$qsa('article .topic-wrap, article .reply-wrap'),
-			function (node) {
-				var text = [];
-				Array.prototype.forEach.call(
-					$qsa('.sub, .name, .postdate, span.user-id, .email, .comment', node),
-					function (subNode) {
-						var t = subNode.textContent;
-						t = t.replace(/^\s+|\s+$/g, '');
-						t = t.toLowerCase();
-						if (t.length) {
-							text.push(t);
-						}
+		currentMode = re[1];
+
+		searchBase({
+			targetNodesSelector: `#catalog-threads-wrap-${currentMode} a`,
+			targetElementSelector: '.text, .info :first-child',
+			sort: (a, b) => {
+				if (a.classList.contains('new')) {
+					return -1;
+				}
+				if (b.classList.contains('new')) {
+					return 1;
+				}
+				return 0;
+			},
+			getTextContent: node => {
+				return node.getAttribute('data-text') || node.textContent;
+			},
+			getPostNumber: node => {
+				return node.getAttribute('data-number');
+			},
+			fillItem: (anchor, target) => {
+				anchor.href = target.href;
+				anchor.target = target.target;
+				if (target.classList.contains('new')) {
+					anchor.classList.add('new');
+				}
+
+				let img = $qs('img', target);
+				if (img) {
+					anchor.appendChild(img.cloneNode(false));
+				}
+
+				let text = $qs('[data-text]', target);
+				if (text) {
+					anchor.appendChild(document.createTextNode(text.getAttribute('data-text')));
+				}
+
+				let sentinel = anchor.appendChild(document[CRE]('div'));
+				sentinel.className = 'sentinel';
+
+				let info = $qsa('.info span', target);
+				if (info) {
+					if (target.classList.contains('new')) {
+						$t(sentinel, `${info[0].textContent} レス (new)`);
 					}
-				);
-				text = text.join('\t');
-
-				if (tester.test(text)) {
-					var div = result.appendChild(document[CRE]('div'));
-					div.textContent = text;
-					div.className = 'a';
-					div.setAttribute('data-number',
-						node.getAttribute('data-number') || $qs('[data-number]', node).getAttribute('data-number'));
-					matched++;
+					else {
+						$t(sentinel, `${info[0].textContent}${info[1].textContent} レス`);
+					}
+				}
+				else {
+					$t(sentinel, '--');
 				}
 			}
-		);
+		});
+	},
 
-		$t('search-result-count', `${matched} 件を抽出`);
+	/*
+	 * debug commands
+	 */
+
+	reloadExtension: () => {
+		resources.clearCache();
+		sendToBackend('reload');
+	},
+	toggleLogging: (e, t) => {
+		timingLogger.locked = !t.value;
 	}
 };
 
@@ -9467,16 +10074,184 @@ const commands = {
  * <<<1 bootstrap
  */
 
-if (document.title != NOTFOUND_TITLE) {
-	if ($qs('meta[name="generator"][content="akahukuplus"]')) {
-		window.location.reload();
+timingLogger = createTimingLogger();
+timingLogger.startTag(`booting ${APP_NAME}`);
+
+storage = createPersistentStorage();
+storage.onChanged = (changes, areaName) => {
+	if ('config' in changes) {
+		storage.assignConfig(changes.config.newValue);
+		applyDataBindings(xmlGenerator.run('').xml);
 	}
-	else {
-		timingLogger = createTimingLogger();
-		timingLogger.startTag('booting akahukuplus');
-		initialStyle(true);
-		document.addEventListener('DOMContentLoaded', handleDOMContentLoaded, false);
+	else if ('runtime' in changes) {
+		storage.assignRuntime(changes.runtime.newValue);
 	}
+};
+
+transport = createTransport();
+resources = createResourceManager();
+
+if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/res\/(\d+)\.htm/)) {
+	siteInfo.server = RegExp.$1;
+	siteInfo.board = RegExp.$2;
+	siteInfo.resno = RegExp.$3 - 0;
+	pageModes.unshift('reply');
+}
+else if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)/)) {
+	siteInfo.server = RegExp.$1;
+	siteInfo.board = RegExp.$2;
+	pageModes.unshift('summary');
+}
+
+initialStyle(true);
+
+timingLogger.startTag('waiting multiple promise completion');
+Promise.all([
+	// settings loader promise
+	new Promise(resolve => {
+		chrome.storage.sync.get(
+			{
+				version: '0.0.1',
+				migrated: false,
+				config: storage.getAllConfig(),
+				runtime: storage.runtime
+			},
+			result => {
+				if (chrome.runtime.lastError) {
+					throw new Error(chrome.runtime.lastError.message);
+				}
+
+				resolve(result);
+			}
+		);
+	}),
+
+	// backend connector promise
+	new Promise(resolve => {
+		connectToBackend(connectStatus => {
+			resolve(connectStatus);
+		});
+	}),
+
+	// DOM construction watcher promise
+	new Promise(resolve => {
+		function next () {
+			scriptWatcher.disconnect();
+			scriptWatcher = undefined;
+			initialStyle(false);
+			if (!NOTFOUND_TITLE.test(document.title)) {
+				bootVars.bodyHTML = document.documentElement[IHTML];
+				document.body[IHTML] =
+					`${APP_NAME}: ` +
+					`ページを再構成しています。ちょっと待ってね。`;
+				resolve(true);
+			}
+			else {
+				resolve(false);
+			}
+		}
+
+		if (document.readyState == 'complete'
+		|| document.readyState == 'interactive') {
+			next();
+		}
+		else {
+			document.addEventListener(
+				'DOMContentLoaded',
+				function handler (e) {
+					document.removeEventListener(e.type, handler);
+					next();
+				}
+			);
+		}
+	}),
+
+	// fundamental xsl file loader promise
+	resources.get(
+		'/xsl/fundamental.xsl',
+		{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 10})
+]).then(data => {
+	let [storageData, backendConnected, runnable, xsl] = data;
+	timingLogger.endTag();
+
+	if (!runnable) {
+		timingLogger.forceEndTag();
+		return;
+	}
+
+	if (!backendConnected) {
+		throw new Error(
+			`${APP_NAME}: ` +
+			`バックエンドに接続できません。中止します。`);
+	}
+
+	if (xsl === null) {
+		throw new Error(
+			`${APP_NAME}: ` +
+			`内部用の XSL ファイルの取得に失敗しました。中止します。`);
+	}
+
+	if (version != storageData.version) {
+		// TODO: storage format upgrade goes here
+
+		storage.set({version: version});
+	}
+
+	if (version != window.localStorage.getItem(`${APP_NAME}_version`)) {
+		resources.clearCache();
+		window.localStorage.setItem(`${APP_NAME}_version`, version);
+	}
+
+	if (!storageData.migrated) {
+		/*
+		 * TODO: THIS BLOCK IS TRANSIENT.
+		 * WHEN AKAHUKUPLUS THAT USES chrome.storage HAS FULLY DISTRIBUTED,
+		 * WE SHOULD DELETE THIS IF-BLOCK.
+		 */
+
+		const migratable = true;
+		const localKey = `${APP_NAME}_config`;
+		let migrateData = {migrated: true};
+
+		// migrate config data from localStorage
+		let localData = window.localStorage.getItem(localKey);
+		if (localData !== null) {
+			try {
+				localData = JSON.parse(localData);
+			}
+			catch (e) {
+				localData = null;
+			}
+		}
+		if (localData !== null) {
+			for (let i in storageData.config) {
+				if (i in localData) {
+					storageData.config[i] = localData[i];
+				}
+			}
+
+			migrateData.config = storageData.config;
+		}
+		if (migratable) {
+			storage.set(migrateData);
+			window.localStorage.removeItem(localKey);
+		}
+	}
+
+	storage.assignConfig(storageData.config);
+	storage.assignRuntime(storageData.runtime);
+
+	return sendToBackend('initialized')
+		.then(() => transformWholeDocument(xsl));
+})
+.catch(err => {
+	timingLogger.forceEndTag();
+	console.error(err);
+	initialStyle(false);
+	document.body[IHTML] = `${APP_NAME}: ${err.message}`;
+	$t(document.body.appendChild(document[CRE]('pre')), err.stack);
+});
+
 }
 
 // vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker fmr=<<<,>>> :

@@ -233,7 +233,15 @@
 		this.runType = 'chrome-extension';
 		this.doPostMessage = function (data, callback) {
 			try {
-				chrome.runtime.sendMessage(data, callback);
+				chrome.runtime.sendMessage(data, response => {
+					if (chrome.runtime.lastError) {
+						console.error(`${extensionName}: chrome.runtime.sendMessage failed (${chrome.runtime.lastError.message})`);
+						callback();
+					}
+					else {
+						callback(response);
+					}
+				});
 			}
 			catch (e) {}
 		};

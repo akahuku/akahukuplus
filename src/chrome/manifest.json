@@ -17,9 +17,14 @@
 		"128": "images/icon128.png"
 	},
 	"permissions": [
-		"tabs", "clipboardRead", "clipboardWrite", "webRequest", "webRequestBlocking",
-		"http://*/*",
-		"https://*/*"
+		"tabs",
+		"clipboardRead", "clipboardWrite",
+		"webRequest", "webRequestBlocking",
+		"storage",
+		"*://*.2chan.net/*",
+		"*://*.nijibox2.com/*",
+		"*://*.nijibox5.com/*",
+		"*://*.nijibox6.com/*"
 	],
 	"background": {
 		"page": "backend/main.html"

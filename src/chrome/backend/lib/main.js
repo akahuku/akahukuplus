@@ -7,8 +7,11 @@
 (function (global) {
 	'use strict';
 
+	/* <<<1 consts */
+	const RELOAD_FLAG_KEY = 'reload_all_tabs';
+
 	/* <<<1 variables */
-	var ext = require('./kosian/Kosian').Kosian(global, {
+	const ext = require('./kosian/Kosian').Kosian(global, {
 		appName: 'akahukuplus',
 		openBaseUrlPattern: /^https?:\/\/[^.]+\.2chan\.net(?::\d+)?\/[^\/]+\//,
 		cryptKeyPath: 'LICENSE',
@@ -24,48 +27,40 @@
 			onedrive: {
 				enabled: true
 			}
-		},
-		contentScripts: getContentScriptsSpec()
+		}
 	});
 
-	var sjisUtils = require('./SjisUtils').SjisUtils;
-	var fetchTweets = require('./FetchTweets').FetchTweets();
-	var completeUpfiles = require('./CompleteUpfiles').CompleteUpfiles();
-	var saveImage = require('./SaveImage').SaveImage();
-	var initializingTabIds = {};
+	const sjisUtils = require('./SjisUtils').SjisUtils;
+	const fetchTweets = require('./FetchTweets').FetchTweets();
+	const completeUpfiles = require('./CompleteUpfiles').CompleteUpfiles();
+	const saveImage = require('./SaveImage').SaveImage();
+	const initializingTabIds = {};
 
 	/* <<<1 functions */
-	function getContentScriptsSpec () {
-		var self = require('sdk/self');
-		if (!self) return null;
-
-		return [
-			{
-				name: 'akahukuplus',
-				matches: [
-					/^https?:\/\/[^.]+\.2chan\.net\/[^\/]+\/(?:futaba|(?:res\/)?\d+)\.html?\b.*(#[^#]*)?$/
-				],
-				exclude_matches: [
-					'http://dec.2chan.net/up/*',
-					'http://dec.2chan.net/up2/*',
-					'https://dec.2chan.net/up/*',
-					'https://dec.2chan.net/up2/*'
-				],
-				js: [
-					'frontend/extension_wrapper.js',
-					'frontend/qeema.js',
-					'frontend/akahukuplus.js'
-				],
-				run_at: 'start'
-			}
-		];
+	function delay (callback, msecs, ...args) {
+		return new Promise(resolve => {
+			args.unshift(() => {
+				resolve(callback());
+			}, msecs);
+			setTimeout.apply(null, args);
+		});
 	}
 
-	function optimizeAssetLoadingOnChrome () {
-		var cancelParam = {cancel: true};
-		var throughParam = {cancel: false};
-		var regexFutabaContent = /^https?:\/\/[^.]+\.2chan\.net(:\d+)?\/[^\/]+\/(?:(?:futaba|\d+)|res\/\d+)\.html?/;
-		var regexFutabaAsset = /^https?:\/\/[^.]+\.2chan\.net(:\d+)?\//;
+	function getAllFutabaTabs () {
+		return new Promise(resolve => {
+			chrome.tabs.query({}, tabs => {
+				let futabaTabs = tabs.filter(tab => /^https?:\/\/[^.]+\.2chan\.net\//.test(tab.url));
+				resolve(futabaTabs);
+			});
+		});
+	}
+
+	function optimizeAssetLoading () {
+		let cancelParam = {cancel: true};
+		let throughParam = {cancel: false};
+		let regexFutabaContent = /^https?:\/\/[^.]+\.2chan\.net(:\d+)?\/[^\/]+\/(?:(?:futaba|\d+)|res\/\d+)\.html?/;
+		let regexFutabaAsset = /^https?:\/\/[^.]+\.2chan\.net(:\d+)?\//;
+		let isGecko = typeof InstallTrigger == 'object';
 
 		chrome.webRequest.onBeforeRequest.addListener(
 			function (details) {
@@ -78,14 +73,22 @@
 					}
 					break;
 
-//				case 'image':
-//					if (regexFutabaAsset.test(details.url)) {
-//						return throughParam;
-//					}
-//					break;
+				case 'image':
+					// image blocking is still unstable on firefox (2018-10)
+					if (isGecko && regexFutabaAsset.test(details.url)) {
+						return throughParam;
+					}
+					break;
 				}
 
 				if (details.url.startsWith('chrome-extension://')) {
+					return throughParam;
+				}
+
+				// Currently moz-extension: scheme does not seem to be
+				// affected by WebRequest, but it is no problem writing
+				// this code. (2018-10)
+				if (details.url.startsWith('moz-extension://')) {
 					return throughParam;
 				}
 
@@ -103,10 +106,66 @@
 		);
 	}
 
+	function reloadAllFutabaTabs () {
+		let needReload = localStorage.getItem(RELOAD_FLAG_KEY);
+
+		if (needReload) {
+			localStorage.removeItem(RELOAD_FLAG_KEY);
+		}
+
+		if (needReload && ext.isDev) {
+
+			function getCurrentTab () {
+				return new Promise(resolve => {
+					chrome.tabs.query(
+						{active: true, currentWindow: true},
+						tabs => resolve(tabs[0].id)
+					);
+				});
+			}
+
+			function activateTab (id) {
+				return new Promise(resolve => {
+					chrome.tabs.update(id, {active: true}, () => resolve());
+				});
+			}
+
+			function reloadTab (id) {
+				return new Promise(resolve => {
+					chrome.tabs.reload(id, () => resolve());
+				});
+			}
+
+			function delayReload (id, msecs) {
+				return new Promise(resolve => {
+					return delay(() => {
+						return activateTab(id)
+						.then(() => reloadTab(id))
+						.then(() => resolve());
+					}, msecs);
+				});
+			}
+
+			function delayReloadTabs (tabs, msecs) {
+				return tabs.reduce((seq, tab) => {
+					return seq.then(() => delayReload(tab.id, msecs));
+				}, Promise.resolve());
+			}
+
+			let currentTabId;
+			getCurrentTab()
+			.then(id => {currentTabId = id})
+			.then(() => getAllFutabaTabs())
+			.then(tabs => delayReloadTabs(tabs, 3000))
+			.then(() => delay(() => {}, 3000))
+			.then(() => activateTab(currentTabId));
+		}
+	}
+
 	/** <<<2 request handlers */
 	function handleGetResource (path, asDataURL, callback) {
-		var html5FileEnabled = global.Blob && global.FileReader;
-		var opts = {noCache:true};
+		let html5FileEnabled = global.Blob && global.FileReader;
+		let opts = {noCache:true};
 		if (asDataURL) {
 			if (html5FileEnabled) {
 				opts.responseType = 'blob';
@@ -116,11 +175,11 @@
 			}
 		}
 		ext.resource(
-			path, function (data) {
+			path, data => {
 				if (asDataURL) {
 					if (html5FileEnabled && data instanceof global.Blob) {
-						var fr = new FileReader;
-						fr.onload = function () {
+						let fr = new FileReader;
+						fr.onload = () => {
 							callback(fr.result);
 							fr.onload = null;
 							fr = data = null;
@@ -128,8 +187,8 @@
 						fr.readAsDataURL(data);
 					}
 					else if (typeof data == 'string') {
-						var tmp = [];
-						for (var i = 0, goal = data.length; i < goal; i++) {
+						let tmp = [];
+						for (let i = 0, goal = data.length; i < goal; i++) {
 							tmp[i] = data.charCodeAt(i) & 0xff;
 						}
 						data = 'data:application/octet-stream;base64,' +
@@ -148,13 +207,22 @@
 		return true;
 	}
 
-	// browser specific code
-	if (global.chrome) {
-		optimizeAssetLoadingOnChrome();
+	function handleNotifyViewers (payload) {
+		getAllFutabaTabs().then(tabs => {
+			tabs.forEach(tab => {
+				chrome.tabs.sendMessage(tab.id, payload);
+			});
+		});
+	}
+
+	function handleReloadExtension () {
+		if (!ext.isDev) return;
+		localStorage.setItem(RELOAD_FLAG_KEY, '1');
+		chrome.runtime.reload();
 	}
 
 	/** <<<2 request handler entry */
-	ext.receive(function (command, data, sender, respond) {
+	ext.receive((command, data, sender, respond) => {
 
 		function res (arg) {
 			if (respond) {
@@ -166,9 +234,8 @@
 			}
 		}
 
+		let lateResponse = false;
 		try {
-			var lateResponse = false;
-
 			switch (command.type) {
 			case 'init':
 				res({
@@ -180,6 +247,7 @@
 				break;
 			case 'initialized':
 				delete initializingTabIds[sender.replace(/_\d+$/, '')];
+				//console.log(`tab ${sender} unlocked`);
 				break;
 			case 'iconv':
 				res(sjisUtils.toSjis(data));
@@ -217,11 +285,14 @@
 				ext.sound.play(data.key, {volume: data.volume});
 				break;
 			case 'notify-viewers':
-				ext.broadcastToAllTabs({
+				handleNotifyViewers({
 					type: 'notify-viewers',
 					data: data.viewers,
 					siteInfo: data.siteInfo
 				});
+				break;
+			case 'reload':
+				lateResponse = handleReloadExtension();
 				break;
 			}
 		}
@@ -230,6 +301,9 @@
 			return lateResponse;
 		}
 	});
+
+	optimizeAssetLoading();
+	reloadAllFutabaTabs();
 
 })(this);
 
