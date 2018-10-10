@@ -24,9 +24,6 @@ const POSTFORM_DEACTIVATE_DELAY = 500;
 const POSTFORM_LOCK_RELEASE_DELAY = 1000;
 const RELOAD_LOCK_RELEASE_DELAY = 1000 * 3;
 const RELOAD_AUTO_SCROLL_CONSUME = 300;
-const WHEEL_RELOAD_UNIT_SIZE = 120;
-const WHEEL_RELOAD_DEFAULT_FACTOR = 3;
-const WHEEL_RELOAD_THRESHOLD_OVERRIDE = 0;
 const NETWORK_ACCESS_MIN_INTERVAL = 1000 * 3;
 const QUOTE_POPUP_DELAY_MSEC = 1000 * 0.5;
 const QUOTE_POPUP_HIGHLIGHT_MSEC = 1000 * 2;
@@ -98,7 +95,8 @@ const siteInfo = {
 	minThreadLifeTime: 0,
 	lastModified: 0,
 	subHash: {},
-	nameHash: {}
+	nameHash: {},
+	latestNumber: 0
 };
 const cursorPos = {
 	x: 0,
@@ -874,7 +872,7 @@ function install (mode) {
 		{id:'sub',   head:'題', bytes:100}
 	]);
 
-	// handle post form sivibility
+	// handle post form visibility
 	(() => {
 		let frameOutTimer;
 		$('postform-wrap').addEventListener('mouseenter', e => {
@@ -911,7 +909,7 @@ function install (mode) {
 	setupParallax('#ad-aside-wrap');
 
 	/*
-	 * inline viewo viewer
+	 * inline video viewer
 	 */
 
 	setupVideoViewer();
@@ -2141,6 +2139,9 @@ function createXMLGenerator () {
 					threadNumberNode.setAttribute('lead', re[1]);
 					threadNumberNode.setAttribute('trail', re[2]);
 				}
+				if (threadIndex == 0) {
+					siteInfo.latestNumber = threadNumber;
+				}
 			}
 
 			// posted date
@@ -2290,6 +2291,12 @@ function createXMLGenerator () {
 				});
 			}
 
+			if (threadIndex == 0) {
+				if (result.repliesNode.childElementCount) {
+					siteInfo.latestNumber = $qs('number', result.repliesNode.lastElementChild).textContent - 0;
+				}
+			}
+
 			result.repliesNode.setAttribute("total", result.repliesCount);
 			result.repliesNode.setAttribute("hidden", hiddenRepliesCount);
 
@@ -2369,19 +2376,23 @@ function createXMLGenerator () {
 }
 
 function createPersistentStorage () {
+	/*
+	 * NOTE: the 'desc' property will be treated as HTML fragment.
+	 */
 	const data = {
 		wheel_reload_unit_size: {
 			type:'int',
-			value:WHEEL_RELOAD_UNIT_SIZE,
+			value:120,
 			name:'ホイールの1目盛りの単位移動量',
-			desc:'通常は120',
+			desc:`通常は120だった気がするけど, 環境によってはもっと小さい値かもしれません。
+右のテキストボックス上でホイールを回すと移動量が表示されるので, それらのうち最小の正の値を入力してください`,
 		},
 		wheel_reload_threshold_override: {
 			type:'int',
-			value:WHEEL_RELOAD_THRESHOLD_OVERRIDE,
+			value:3,
 			name:'ホイールリロード発動量',
-			desc:'ページ末尾で何回ホイールを回したときリロードを行うかを指定する。通常は0',
-			min:0
+			desc:'ページ末尾で何回ホイールを回したときリロードを行うかを指定する',
+			min:1
 		},
 		catalog_popup_enabled: {
 			type:'bool',
@@ -2410,21 +2421,31 @@ function createPersistentStorage () {
 				msonedrive:'Microsoft OneDrive',
 				local:'local'
 			},
-			desc:'localストレージを使用できるのは現在Chromeのみです。詳細は https://akahuku.github.io/akahukuplus/how-to-save-image-with-chrome.html を参照してください。'
+			desc:`localストレージを使用できるのは現在Chromeのみです。
+詳細は <a href="https://akahuku.github.io/akahukuplus/how-to-save-image-with-chrome.html" target="_blank">ドキュメント</a> を参照してください。`
 		},
 		save_image_name_template: {
 			type:'string',
 			value:'$SERVER/$BOARD/$SERIAL.$EXT',
 			name:'保存するファイル名のテンプレート',
-			desc:'以下のマクロを使用できます: ' +
-				'$SERVER (サーバ名)、$BOARD (板名)、$THREAD (スレッド番号)、' +
-				'$YEAR (画像の投稿年)、$MONTH (画像の投稿月)、$DAY (画像の投稿日)、' +
-				'$SERIAL (画像番号)、$DIST (画像の分散キー)、$TEXT (スレッド本文)、$EXT (拡張子)'
+			desc:`以下のマクロを使用できます:
+<ul>
+	<li>$SERVER (サーバ名)</li>
+	<li>$BOARD (板名)</li>
+	<li>$THREAD (スレッド番号)</li>
+	<li>$YEAR (画像の投稿年)</li>
+	<li>$MONTH (画像の投稿月)</li>
+	<li>$DAY (画像の投稿日)</li>
+	<li>$SERIAL (画像番号)</li>
+	<li>$DIST (画像の分散キー)</li>
+	<li>$TEXT (スレッド本文)</li>
+	<li>$EXT (拡張子)</li>
+</ul>`
 		},
 		auto_save_image: {
 			type:'bool',
 			value:false,
-			name:'画像を開いた際に自動的に保存する'
+			name:'画像を開いた際に自動的に保存'
 		},
 		save_image_bell_volume: {
 			type:'int',
@@ -2435,7 +2456,7 @@ function createPersistentStorage () {
 		lightbox_enabled: {
 			type:'bool',
 			value:true,
-			name:'画像を lightbox で表示する'
+			name:'画像を lightbox で表示'
 		},
 		lightbox_zoom_mode: {
 			type:'list',
@@ -2452,12 +2473,12 @@ function createPersistentStorage () {
 		banner_enabled: {
 			type:'bool',
 			value:true,
-			name:'バナーを表示する'
+			name:'バナーを表示'
 		},
 		hook_space_key: {
 			type:'bool',
 			value:true,
-			name:'スペースキーによるスクロールを制御する'
+			name:'スペースキーによるスクロールを制御'
 		}
 	};
 	let runtime = {
@@ -3415,6 +3436,7 @@ function createUrlStorage () {
 		loadSlot(slot => {
 			let index = indexOf(slot, key);
 			if (index >= 0) {
+				slot[index].expire = expire;
 				slot[index].count++;
 			}
 			else {
@@ -3431,6 +3453,7 @@ function createUrlStorage () {
 				slot.forEach(item => {
 					let key = item.key.split('-');
 					if (siteInfo.server == key[0] && siteInfo.board == key[1]) {
+						//console.log(`key: ${item.key} expire: ${(new Date(item.expire)).toLocaleString()}`);
 						result[key[2]] = item.count;
 					}
 				});
@@ -4957,9 +4980,8 @@ function setupPostFormItemEvent (items) {
 }
 
 function setupWheelReload () {
-	var accum = 0;
-	var lastWheeled = 0;
-	var statusHideTimer;
+	let accum = 0;
+	let lastWheeled = 0;
 
 	function handler (e) {
 		if (transport.isRunning()) {
@@ -4967,22 +4989,26 @@ function setupWheelReload () {
 			return;
 		}
 
-		var now = Date.now();
-		var wheelDelta = e.wheelDelta;
-		var st = docScrollTop();
-		var sh = document.documentElement.scrollHeight;
+		if (e.target.classList.contains('dialog-content-wrap')) {
+			e.preventDefault();
+			return;
+		}
 
-		if (wheelDelta > 0 || st < sh - viewportRect.height) {
+		const now = Date.now();
+		const st = docScrollTop();
+		const sh = document.documentElement.scrollHeight;
+
+		let wheelDelta = e.deltaY;
+
+		if (wheelDelta < 0 || st < sh - viewportRect.height) {
 			lastWheeled = now;
 			accum = 0;
 			setBottomStatus();
 			return;
 		}
 
-		var factor = storage.config.wheel_reload_threshold_override.value <= 0 ?
-			WHEEL_RELOAD_DEFAULT_FACTOR :
-			storage.config.wheel_reload_threshold_override.value;
-		var threshold = storage.config.wheel_reload_unit_size.value * factor;
+		const factor = storage.config.wheel_reload_threshold_override.value;
+		const threshold = storage.config.wheel_reload_unit_size.value * factor;
 
 		if (wheelDelta == 0) {
 			wheelDelta = threshold;
@@ -4997,7 +5023,7 @@ function setupWheelReload () {
 		accum += Math.abs(wheelDelta);
 
 		if (accum < threshold) {
-			setBottomStatus('リロードぢから：' + Math.min(Math.floor(accum / threshold * 100), 99) + '%');
+			setBottomStatus(`リロードぢから：${Math.min(Math.floor(accum / threshold * 100), 99)}%`);
 			return;
 		}
 
@@ -5008,7 +5034,7 @@ function setupWheelReload () {
 		commands.reload();
 	}
 
-	window.addEventListener('mousewheel', handler, false);
+	window.addEventListener('wheel', handler, false);
 }
 
 function setupCustomEventHandler () {
@@ -5574,12 +5600,13 @@ function lightbox (anchor, ignoreThumbnail) {
 	}
 
 	function handleStroke (e) {
-		var ev = document.createEvent('MouseEvents');
-		ev.initMouseEvent(
-			'mousewheel', true, true, window[USW] || window,
-			0, 0, 0, 0, 0,
-			e.ctrl, false, e.shift, false,
-			0, null);
+		let view = window[USW] || window;
+		let ev = new WheelEvent('wheel', {
+			bubbles: true, cancelable: true, view: view,
+			detail: 0, screenX: 0, screenY: 0, clientX: 0, clientY: 0,
+			ctrlKey: e.ctrl, altKey: false, shiftKey: e.shift, metaKey: false,
+			button: 0, relatedTarget: null
+		});
 		receiver.dispatchEvent(ev);
 	}
 
@@ -6552,6 +6579,12 @@ function modalDialog (opts) {
 		keyManager
 			.addStroke('dialog', '\u001b', handleCancel)
 			.addStroke('dialog', '\u000d', handleOk)
+			.addStroke('dialog.edit', ['\u000d', '<S-enter>'], (e, t) => {
+				if (t.nodeName != 'TEXTAREA'
+				|| !t.classList.contains('config-item')) {
+					return 'passthrough';
+				}
+			})
 			.updateManifest();
 
 		contentWrap.addEventListener('mousedown', handleMouseCancel, false);
@@ -6715,7 +6748,7 @@ function appendFragment (container, f) {
 	if (!container) return;
 	if (f) container.appendChild(f);
 	Array.prototype.forEach.call(
-		$qsa('[data-doe]'),
+		$qsa('[data-doe]', container),
 		function (node) {
 			var doe = node.getAttribute('data-doe');
 			node.removeAttribute('data-doe');
@@ -6801,10 +6834,13 @@ function getCatalogSettings () {
 }
 
 function setBottomStatus (s, persistent) {
-	let ev = document.createEvent('CustomEvent');
-	ev.initCustomEvent(`${APP_NAME}.bottomStatus`, true, true, {
-		message: s || '',
-		persistent: !!persistent
+	let ev = new CustomEvent(`${APP_NAME}.bottomStatus`, {
+		bubbles: true,
+		cancelable: true,
+		detail: {
+			message: s || '',
+			persistent: !!persistent
+		}
 	});
 	document.dispatchEvent(ev);
 }
@@ -6953,9 +6989,9 @@ function getImageName (href, targetNode) {
 
 
 
-	let f = storage.config.save_image_name_template.value.replace(
-		/\$([A-Z]+)/g,
-		($0, $1) => {
+	let f = storage.config.save_image_name_template.value
+		.replace(/[\r\n]/g, '')
+		.replace(/\$([A-Z]+)/g, ($0, $1) => {
 			switch ($1) {
 			case 'SERVER':
 				return siteInfo.server;
@@ -6980,8 +7016,7 @@ function getImageName (href, targetNode) {
 			default:
 				return $0;
 			}
-		}
-	);
+		});
 
 	f = '/' + f;
 	f = f.replace(/\\/g, '/');
@@ -8702,13 +8737,12 @@ const commands = {
 		}
 	},
 	invokeMousewheelEvent: function () {
-		var ev = document.createEvent('MouseEvents');
-		var view = window[USW] || window;
-		ev.initMouseEvent('mousewheel', true, true, view,
-			0, 0, 0, 0, 0,
-			false, false, false, false,
-			0, null);
-		view.dispatchEvent(ev);
+		let view = window[USW] || window;
+		let ev = new WheelEvent('wheel', {
+			bubbles: true, cancelable: true, view: view,
+			detail: 0, deltaX: 0, deltaY: 0, deltaZ: 0
+		});
+		document.body.dispatchEvent(ev);
 	},
 	clearUpfile: function () {
 		resetForm('upfile');
@@ -8984,14 +9018,16 @@ const commands = {
 		});
 	},
 	reloadCatalog: function () {
-		const TRANSPORT_TYPE = 'reload-catalog';
+		const TRANSPORT_MAIN_TYPE = 'reload-catalog-main';
+		const TRANSPORT_SUB_TYPE = 'reload-catalog-sub';
 
-		if (transport.isRunning(TRANSPORT_TYPE)) {
-			transport.abort(TRANSPORT_TYPE);
+		if (transport.isRunning(TRANSPORT_MAIN_TYPE)) {
+			transport.abort(TRANSPORT_MAIN_TYPE);
+			transport.abort(TRANSPORT_SUB_TYPE);
 			return;
 		}
 
-		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
+		if (transport.isRapidAccess(TRANSPORT_MAIN_TYPE)) {
 			return;
 		}
 
@@ -9032,10 +9068,11 @@ const commands = {
 
 		Promise.all([
 			transitionendp(wrap, 400),
-			reloadCatalogBase(TRANSPORT_TYPE, sortType ? `&sort=${sortType.n}` : ''),
+			reloadCatalogBase(TRANSPORT_MAIN_TYPE, sortType ? `&sort=${sortType.n}` : ''),
+			reloadBase(TRANSPORT_SUB_TYPE),
 			urlStorage.getAll()
 		]).then(data => {
-			const [transitionResult, reloadResult, openedThreads] = data;
+			const [transitionResult, reloadResult, summaryReloadResult, openedThreads] = data;
 			const {doc, now, status} = reloadResult;
 
 			const attributeConverter1 = {
@@ -9076,7 +9113,6 @@ const commands = {
 			const newClass = wrap.childNodes.length ? 'new' : '';
 
 			let insertee = wrap.firstChild;
-			let latestNumber = 0;
 
 			wrap.style.maxWidth = ((anchorWidth + CATALOG_ANCHOR_MARGIN) * horzActual) + 'px';
 
@@ -9093,9 +9129,6 @@ const commands = {
 					let repliesCount = 0, from, to;
 
 					threadNumber = threadNumber[1] - 0;
-					if (threadNumber > latestNumber) {
-						latestNumber = threadNumber;
-					}
 
 					// number of replies
 					from = $qs('font', node.parentNode);
@@ -9181,11 +9214,20 @@ const commands = {
 				}
 			);
 
+			// find latest post number
+			if (summaryReloadResult.status >= 200 && summaryReloadResult.status <= 299) {
+				const firstThread = $qs('div.thre', summaryReloadResult.doc);
+				const comments = $qsa('input[type="checkbox"][value="delete"]', firstThread);
+				if (comments.length) {
+					siteInfo.latestNumber = comments[comments.length - 1].name - 0;
+				}
+			}
+
 			switch (sortType.n) {
 			// default, old
 			case 0: case 2:
 				{
-					let deleteLimit = Math.floor((latestNumber - siteInfo.logSize) * 1.5); // TODO: number is heuristic
+					const deleteLimit = siteInfo.latestNumber - siteInfo.logSize;
 					//let logs = [];
 
 					// process all remaining anchors which have not changed and find dead thread
@@ -9201,7 +9243,7 @@ const commands = {
 							let tmp = insertee.nextSibling;
 							insertee.parentNode.removeChild(insertee);
 							insertee = tmp;
-							//logs.push(`${threadNumber} removed. latest:${latestNumber}, deleteLimit:${deleteLimit}, isAdult:${isAdult}`);
+							//logs.push(`${threadNumber} removed. latest:${siteInfo.latestNumber}, deleteLimit:${deleteLimit}, isAdult:${isAdult}`);
 						}
 						else {
 							insertee.className = '';
@@ -9211,7 +9253,7 @@ const commands = {
 					}
 
 					// pick up and mark old threads
-					let warnLimit = Math.floor(latestNumber - siteInfo.logSize * CATALOG_EXPIRE_WARN_RATIO);
+					const warnLimit = Math.floor(siteInfo.latestNumber - siteInfo.logSize * CATALOG_EXPIRE_WARN_RATIO);
 					for (let node = wrap.firstChild; node; node = node.nextSibling) {
 						let [threadNumber, imageNumber] = node.getAttribute('data-number').split(',');
 
@@ -9523,6 +9565,20 @@ const commands = {
 					}
 				}
 				dialog.initFromXML(xml, 'config-dialog');
+
+				// special element for mouse wheel unit
+				setTimeout(() => {
+					let wheelUnit = $qs('input[name="config-item.wheel_reload_unit_size"]');
+					if (wheelUnit) {
+						let span = wheelUnit.parentNode.insertBefore(
+							document[CRE]('span'), wheelUnit.nextSibling);
+						span.id = 'wheel-indicator';
+						wheelUnit.addEventListener('wheel', e => {
+							$('wheel-indicator').textContent = `移動量: ${e.deltaY}`;
+							e.preventDefault();
+						});
+					}
+				}, 100);
 			},
 			onok: dialog => {
 				let storageData = {};

@@ -1547,6 +1547,11 @@ article.summary .replies {
 .dialog-wrap .close-button:hover {
 }
 
+.dialog-wrap #wheel-indicator {
+	margin:0 0 0 4px;
+	font-size:small;
+}
+
 /*
  * rule
  */
