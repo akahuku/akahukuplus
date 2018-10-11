@@ -45,6 +45,7 @@ const IDEOGRAPH_CONVERSION_POST = false;
 const IDEOGRAPH_CONVERSION_UI = false;
 const FALLBACK_LAST_MODIFIED = 'Fri, 01 Jan 2010 00:00:00 GMT';
 const HEADER_MARGIN_BOTTOM = 16;
+const FALLBACK_JPEG_QUALITY = 0.8;
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
@@ -858,9 +859,12 @@ function install (mode) {
 	(file => {
 		if (!file) return;
 		file.addEventListener('change', e => {
-			setPostThumbnail(e.target.files[0]);
+			setBottomStatus('サムネイルを生成しています...', true);
 			resetForm('baseform', 'textonly');
 			overrideUpfile = undefined;
+			setPostThumbnail(e.target.files[0]).finally(() => {
+				setBottomStatus();
+			});
 		}, false);
 	})($('upfile'));
 
@@ -1099,7 +1103,7 @@ function createResourceManager () {
 		return `resource:${key}`;
 	}
 
-	function get (key, opts) {
+	function get (key, opts) { /*returns promise*/
 		opts || (opts = {});
 		let resKey = getResKey(key);
 		let responseType = opts.responseType || 'text';
@@ -3446,7 +3450,7 @@ function createUrlStorage () {
 		});
 	}
 
-	function getAll () {
+	function getAll () { /*returns promise*/
 		return new Promise(resolve => {
 			loadSlot(slot => {
 				let result = {};
@@ -4406,7 +4410,7 @@ function createFavicon () {
 			if (!thumb) break;
 
 			isLoading = true;
-			getImageFrom(restoreDistributedImageURL(thumb.src), img => {
+			getImageFrom(restoreDistributedImageURL(thumb.src)).then(img => {
 				if (img) {
 					overwriteFavicon(img, createLinkNode());
 				}
@@ -4927,35 +4931,36 @@ function setupPostFormItemEvent (items) {
 			data: file
 		};
 
+		let p;
 		if (siteInfo.maxAttachSize && file.size > siteInfo.maxAttachSize) {
-			getImageFrom(file, img => {
-				if (!img) {
-					upfile.removeAttribute('data-pasting');
-					return;
-				}
+			p = getImageFrom(file).then(img => {
+				if (!img) return;
 
 				let canvas = document[CRE]('canvas');
 				canvas.width = img.naturalWidth;
 				canvas.height = img.naturalHeight;
+
 				let c = canvas.getContext('2d');
 				c.fillStyle = '#000000';
 				c.fillRect(0, 0, canvas.width, canvas.height);
 				c.drawImage(img, 0, 0);
 
-				setPostThumbnail(canvas, () => setBottomStatus());
-
-				getBlobFrom(canvas.toDataURL('image/jpeg', 0.8), blob => {
-					overrideUpfile.data = blob;
-					upfile.removeAttribute('data-pasting');
-				});
+				return Promise.all([
+					setPostThumbnail(canvas),
+					getBlobFrom(canvas.toDataURL('image/jpeg', FALLBACK_JPEG_QUALITY)).then(blob => {
+						overrideUpfile.data = blob;
+					})
+				]);
 			});
 		}
 		else {
-			setPostThumbnail(file, () => {
-				setBottomStatus();
-				upfile.removeAttribute('data-pasting');
-			});
+			p = setPostThumbnail(file);
 		}
+
+		p = p.finally(() => {
+			setBottomStatus();
+			upfile.removeAttribute('data-pasting');
+		});
 	}
 
 	let com = $('com');
@@ -6691,7 +6696,7 @@ function $qsa (selector, node) {
 	return ($(node) || document).querySelectorAll(selector);
 }
 
-function sendToBackend () {
+function sendToBackend () { /*returns promise*/
 	if (!backend) return;
 
 	let args = Array.prototype.slice.call(arguments);
@@ -7106,11 +7111,11 @@ function transitionend (element, callback, backupMsec) {
 	});
 }
 
-function delay (msecs) {
+function delay (msecs) { /*returns promise*/
 	return new Promise(resolve => setTimeout(resolve, msecs));
 }
 
-function transitionendp (element, backupMsec) {
+function transitionendp (element, backupMsec) { /*returns promise*/
 	return new Promise(resolve => transitionend(element, resolve, backupMsec));
 }
 
@@ -7164,56 +7169,60 @@ function rangeToString (range) {
 }
 
 // http://stackoverflow.com/a/30666203
-function getBlobFrom (url, callback) {
-	let xhr = transport.create();
+function getBlobFrom (url) { /*returns promise*/
+	return new Promise(resolve => {
+		let xhr = transport.create();
 
-	xhr.open('GET', url);
-	// Can't use blob directly because of https://crbug.com/412752
-	xhr.responseType = 'arraybuffer';
-	xhr.onload = () => {
-		let mime = xhr.getResponseHeader('content-type');
-		callback(new window.Blob([xhr.response], {type: mime}));
-	};
-	xhr.onerror = () => {
-		callback();
-	};
-	xhr.onloadend = () => {
-		xhr = null;
-	};
+		xhr.open('GET', url);
+		// Can't use blob directly because of https://crbug.com/412752
+		xhr.responseType = 'arraybuffer';
+		xhr.onload = () => {
+			let mime = xhr.getResponseHeader('content-type');
+			resolve(new window.Blob([xhr.response], {type: mime}));
+		};
+		xhr.onerror = () => {
+			resolve();
+		};
+		xhr.onloadend = () => {
+			xhr = null;
+		};
 
-	xhr.send();
+		xhr.send();
+	});
 }
 
-function getImageFrom (target, callback) {
-	let url;
-	let needRevoke = false;
-	let tagName = 'img';
-	let loadEvent = 'onload';
+function getImageFrom (target) { /*returns promise*/
+	return new Promise(resolve => {
+		let url;
+		let needRevoke = false;
+		let tagName = 'img';
+		let loadEvent = 'onload';
 
-	if (target instanceof File || target instanceof Blob) {
-		url = URL.createObjectURL(target);
-		needRevoke = true;
-		if (target.type.startsWith('video/')) {
-			tagName = 'video';
-			loadEvent = 'onloadeddata';
+		if (target instanceof File || target instanceof Blob) {
+			url = URL.createObjectURL(target);
+			needRevoke = true;
+			if (target.type.startsWith('video/')) {
+				tagName = 'video';
+				loadEvent = 'onloadeddata';
+			}
 		}
-	}
-	else {
-		url = target;
-	}
+		else {
+			url = target;
+		}
 
-	let img = document[CRE](tagName);
-	img[loadEvent] = () => {
-		needRevoke && URL.revokeObjectURL(url);
-		callback(img);
-		img = null;
-	};
-	img.onerror = () => {
-		needRevoke && URL.revokeObjectURL(url);
-		callback();
-		img = null;
-	};
-	img.src = url;
+		let img = document[CRE](tagName);
+		img[loadEvent] = () => {
+			needRevoke && URL.revokeObjectURL(url);
+			resolve(img);
+			img = null;
+		};
+		img.onerror = () => {
+			needRevoke && URL.revokeObjectURL(url);
+			resolve();
+			img = null;
+		};
+		img.src = url;
+	});
 }
 
 function getPostTimeRegex () {
@@ -7660,7 +7669,7 @@ function registerReleaseFormLock () {
  * <<<1 functions for reloading
  */
 
-function reloadBase (type) {
+function reloadBase (type) { /*returns promise*/
 	timingLogger.startTag('reloadBase');
 
 	function detectionTest (doc) {
@@ -7767,7 +7776,7 @@ function reloadBase (type) {
 	});
 }
 
-function reloadCatalogBase (type, query) {
+function reloadCatalogBase (type, query) { /*returns promise*/
 	timingLogger.startTag('reloadCatalogBase');
 
 	return new Promise((resolve, reject) => {
@@ -8378,35 +8387,31 @@ function scrollToNewReplies () {
  * <<<1 functions which handles a thumbnail for posting image
  */
 
-function setPostThumbnailVisibility (visible) {
-	var thumb = $('post-image-thumbnail-wrap');
-	if (!thumb) return;
+function setPostThumbnailVisibility (visible) { /*returns promise*/
+	const thumb = $('post-image-thumbnail-wrap');
+	if (!thumb) return Promise.resolve();
 	if (!thumb.getAttribute('data-available')) {
 		thumb.classList.add('hide');
-		return;
+		return Promise.resolve();
 	}
 
 	thumb.classList.remove('hide');
 
-	transitionend(thumb, function (e) {
-		if (!e.target.classList.contains('run')) {
-			e.target.classList.add('hide');
-		}
-	});
-
-	setTimeout(function () {
+	return delay(0).then(() => {
+		// show
 		if (visible) {
 			thumb.classList.add('run');
+			return transitionendp(thumb, 400);
 		}
+
+		// hide
 		else {
-			if (!thumb.classList.contains('run')) {
+			thumb.classList.remove('run');
+			return transitionendp(thumb, 400).then(() => {
 				thumb.classList.add('hide');
-			}
-			else {
-				thumb.classList.remove('run');
-			}
+			});
 		}
-	}, 0);
+	});
 }
 
 function getThumbnailSize (width, height, maxWidth, maxHeight) {
@@ -8425,7 +8430,7 @@ function getThumbnailSize (width, height, maxWidth, maxHeight) {
 	}
 }
 
-function doDisplayThumbnail (thumbWrap, thumb, img) {
+function doDisplayThumbnail (thumbWrap, thumb, img) { /*returns promise*/
 	let containerWidth = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
 	let containerHeight = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
 	let naturalWidth = img.naturalWidth || img.videoWidth || img.width;
@@ -8452,38 +8457,32 @@ function doDisplayThumbnail (thumbWrap, thumb, img) {
 	thumb.width = canvas.width;
 	thumb.height = canvas.height;
 	thumb.src = canvas.toDataURL();
-	setTimeout(() => {commands.activatePostForm()}, 0);
+	return delay(0).then(() => commands.activatePostForm());
 }
 
-function setPostThumbnail (file, callback) {
+function setPostThumbnail (file) { /*returns promise*/
 	let thumbWrap = $('post-image-thumbnail-wrap');
 	let thumb = $('post-image-thumbnail');
 
-	if (!thumbWrap || !thumb) return;
+	if (!thumbWrap || !thumb) return Promise.resolve();
 
 	if (!file || 'type' in file && !/^(?:image\/(?:jpeg|png|gif))|video\/(?:webm|mp4)$/.test(file.type)) {
 		thumbWrap.removeAttribute('data-available');
-		setPostThumbnailVisibility(false);
-		callback && callback();
-		return;
+		return setPostThumbnailVisibility(false);
 	}
 
 	if (file instanceof HTMLCanvasElement) {
-		doDisplayThumbnail(thumbWrap, thumb, file);
-		thumbWrap = thumb = null;
-		callback && callback();
-		return;
+		return doDisplayThumbnail(thumbWrap, thumb, file);
 	}
 
 	$t('post-image-thumbnail-info', `${file.type}, ${getReadableSize(file.size)}`);
 
-	getImageFrom(file, img => {
+	return getImageFrom(file).then(img => {
+		let result;
 		if (img) {
-			doDisplayThumbnail(thumbWrap, thumb, img);
+			result = doDisplayThumbnail(thumbWrap, thumb, img);
 		}
-
-		thumbWrap = thumb = null;
-		callback && callback();
+		return result;
 	});
 }
 
@@ -8704,24 +8703,27 @@ const commands = {
 	 * general functionalities
 	 */
 
-	activatePostForm: function () {
+	activatePostForm: function () { /*returns promise*/
 		catalogPopup.deleteAll();
-		let postformWrap = $('postform-wrap');
+		$('com').focus();
+		const postformWrap = $('postform-wrap');
 		postformWrap.classList.add('hover');
 
-		return transitionendp(postformWrap, 400).then(() => {
-			$('com').focus();
-			setPostThumbnailVisibility(true);
-		});
+		return Promise.all([
+			transitionendp(postformWrap, 400),
+			setPostThumbnailVisibility(true)
+		]);
 	},
-	deactivatePostForm: function (callback) {
-		let postformWrap = $('postform-wrap');
+	deactivatePostForm: function (callback) { /*returns promise*/
+		const postformWrap = $('postform-wrap');
 		postformWrap.classList.remove('hover');
-		return transitionendp(postformWrap, 400).then(() => {
-			document.activeElement.blur();
-			document.body.focus();
-			setPostThumbnailVisibility(false);
-		});
+		document.activeElement.blur();
+		document.body.focus();
+
+		return Promise.all([
+			transitionendp(postformWrap, 400),
+			setPostThumbnailVisibility(false)
+		]);
 	},
 	scrollPage: function (e) {
 		let sh = document.documentElement.scrollHeight;
@@ -8744,47 +8746,46 @@ const commands = {
 		});
 		document.body.dispatchEvent(ev);
 	},
-	clearUpfile: function () {
+	clearUpfile: function () { /*returns promise*/
 		resetForm('upfile');
-		setPostThumbnail();
+		return setPostThumbnail();
 	},
-	summaryBack: function () {
+	summaryBack: function () { /*returns promise*/
 		let current = $qs('.nav .nav-links .current');
 		if (!current || !current.previousSibling) return;
 		historyStateWrapper.pushState(current.previousSibling.href);
 		if (pageModes[0] == 'catalog') {
 			commands.toggleCatalogVisibility();
 		}
-		commands.reload();
+		return commands.reload();
 	},
-	summaryNext: function () {
+	summaryNext: function () { /*returns promise*/
 		let current = $qs('.nav .nav-links .current');
 		if (!current || !current.nextSibling) return;
 		historyStateWrapper.pushState(current.nextSibling.href);
 		if (pageModes[0] == 'catalog') {
 			commands.toggleCatalogVisibility();
 		}
-		commands.reload();
+		return commands.reload();
 	},
 
 	/*
 	 * reload/post
 	 */
 
-	reload: function () {
+	reload: function () { /*returns promise*/
 		switch (pageModes[0]) {
 		case 'summary':
-			commands.reloadSummary();
-			break;
+			return commands.reloadSummary();
 		case 'reply':
-			commands.reloadReplies();
-			break;
+			return commands.reloadReplies();
 		case 'catalog':
-			commands.reloadCatalog();
-			break;
+			return commands.reloadCatalog();
+		default:
+			throw new Error(`Unknown page mode: ${pageModes[0]}`);
 		}
 	},
-	reloadSummary: function () {
+	reloadSummary: function () { /*returns promise*/
 		const TRANSPORT_TYPE = 'reload-summary';
 
 		let content = $('content');
@@ -8795,15 +8796,15 @@ const commands = {
 			transport.abort(TRANSPORT_TYPE);
 			indicator.classList.add('error');
 			$t(indicator, '中断しました');
-			return;
+			return Promise.resolve();
 		}
 
 		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
-			return;
+			return Promise.resolve();
 		}
 
 		if (pageModes[0] != 'summary') {
-			return;
+			return Promise.resolve();
 		}
 
 		$t(indicator, '読み込み中です。ちょっとまってね。');
@@ -8813,7 +8814,7 @@ const commands = {
 		indicator.classList.remove('error');
 		footer.classList.add('hide');
 
-		Promise.all([
+		return Promise.all([
 			transitionendp(content, 400),
 			reloadBase(TRANSPORT_TYPE)
 		]).then(data => {
@@ -8912,15 +8913,15 @@ const commands = {
 		if (transport.isRunning(TRANSPORT_TYPE)) {
 			transport.abort(TRANSPORT_TYPE);
 			showFetchedRepliesStatus('中断しました', true);
-			return;
+			return Promise.resolve();
 		}
 
 		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
-			return;
+			return Promise.resolve();
 		}
 
 		if (pageModes[0] != 'reply') {
-			return;
+			return Promise.resolve();
 		}
 
 		timingLogger.reset().startTag('reloading replies');
@@ -8928,7 +8929,7 @@ const commands = {
 		removeRule();
 		markStatistics.resetPostformView();
 
-		reloadBase(TRANSPORT_TYPE)
+		return reloadBase(TRANSPORT_TYPE)
 		.then(reloadResult => {
 			const {doc, now, status} = reloadResult;
 
@@ -9001,10 +9002,9 @@ const commands = {
 			processRemainingReplies(result.remainingRepliesContext, lastNumber,
 				function (newStat) {
 					if (newStat) {
-						setBottomStatus(
-							'完了: ' + (newStat.delta.total ?
-										`新着 ${newStat.delta.total} レス` :
-										'新着レスなし'));
+						let message = newStat.delta.total ?
+							`新着 ${newStat.delta.total} レス` : '新着レスなし';
+						setBottomStatus(`完了: ${message}`);
 						scrollToNewReplies();
 					}
 				}
@@ -9017,22 +9017,22 @@ const commands = {
 			console.error(`${APP_NAME}: reloadReplies failed: ${err.message}`);
 		});
 	},
-	reloadCatalog: function () {
+	reloadCatalog: function () { /*returns promise*/
 		const TRANSPORT_MAIN_TYPE = 'reload-catalog-main';
 		const TRANSPORT_SUB_TYPE = 'reload-catalog-sub';
 
 		if (transport.isRunning(TRANSPORT_MAIN_TYPE)) {
 			transport.abort(TRANSPORT_MAIN_TYPE);
 			transport.abort(TRANSPORT_SUB_TYPE);
-			return;
+			return Promise.resolve();
 		}
 
 		if (transport.isRapidAccess(TRANSPORT_MAIN_TYPE)) {
-			return;
+			return Promise.resolve();
 		}
 
 		if (pageModes[0] != 'catalog') {
-			return;
+			return Promise.resolve();
 		}
 
 		const sortMap = {
@@ -9066,7 +9066,7 @@ const commands = {
 		catalogPopup.deleteAll();
 		wrap.classList.add('run');
 
-		Promise.all([
+		return Promise.all([
 			transitionendp(wrap, 400),
 			reloadCatalogBase(TRANSPORT_MAIN_TYPE, sortType ? `&sort=${sortType.n}` : ''),
 			reloadBase(TRANSPORT_SUB_TYPE),
@@ -9228,7 +9228,6 @@ const commands = {
 			case 0: case 2:
 				{
 					const deleteLimit = siteInfo.latestNumber - siteInfo.logSize;
-					//let logs = [];
 
 					// process all remaining anchors which have not changed and find dead thread
 					while (insertee) {
@@ -9236,14 +9235,32 @@ const commands = {
 						threadNumber -= 0;
 						imageNumber -= 0;
 
-						let isAdult = imageNumber > 0 && now - imageNumber >= siteInfo.minThreadLifeTime;
+						let isDead = false;
+						if (siteInfo.minThreadLifeTime == 0) {
+							if (threadNumber < deleteLimit) {
+								isDead = true;
+							}
+						}
+						else {
+							if (imageNumber == 0) {
+								if (threadNumber < deleteLimit) {
+									isDead = true;	// TODO: text-only thread may be considered to be dead even
+													// though it is alive
+								}
+							}
+							else {
+								// treat imageNumber as the birth time of thread
+								let age = now - imageNumber;
+								if (threadNumber < deleteLimit && age > siteInfo.minThreadLifeTime) {
+									isDead = true;
+								}
+							}
+						}
 
-						if (threadNumber < deleteLimit
-						&& (siteInfo.minThreadLifeTime == 0 || isAdult)) {
+						if (isDead) {
 							let tmp = insertee.nextSibling;
 							insertee.parentNode.removeChild(insertee);
 							insertee = tmp;
-							//logs.push(`${threadNumber} removed. latest:${siteInfo.latestNumber}, deleteLimit:${deleteLimit}, isAdult:${isAdult}`);
 						}
 						else {
 							insertee.className = '';
@@ -9267,9 +9284,8 @@ const commands = {
 						let isAdult = imageNumber > 0 && now - imageNumber >= siteInfo.minThreadLifeTime;
 
 						if (threadNumber < warnLimit
-						&& (siteInfo.minThreadLifeTime == 0 || isAdult)) {
+						&& (siteInfo.minThreadLifeTime == 0 || imageNumber == 0 || isAdult)) {
 							node.classList.add('warned');
-							//logs.push(`${threadNumber} warned. warnLimit:${warnLimit}, isAdult:${isAdult}`);
 						}
 					}
 				}
@@ -9418,7 +9434,7 @@ const commands = {
 		};
 		xhr.send();
 	},
-	saveImage: function (e, t) {
+	saveImage: function (e, t) { /*returns promise*/
 		if (t.getAttribute('data-original-text')) return;
 
 		let href = t.getAttribute('data-href') || t.href;
@@ -9438,7 +9454,7 @@ const commands = {
 		t.setAttribute('data-original-text', t.textContent);
 		$t(t, '保存中...');
 
-		sendToBackend('save-image', {
+		return sendToBackend('save-image', {
 			url: href,
 			path: storage.config.storage.value.replace('msonedrive', 'onedrive') + ':' + f,
 			mimeType: getImageMimeType(href),
@@ -9758,25 +9774,28 @@ const commands = {
 			let thumb = $('post-image-thumbnail');
 			if (!thumbWrap || !thumb) return;
 
-			getImageFrom(dataURL, img => {
+			getImageFrom(dataURL).then(img => {
+				let result;
 				if (img) {
-					let baseform = document.getElementsByName('baseform')[0];
-					if (pageModes[0] == 'summary'
-					 || pageModes[0] == 'catalog') {
-						getBlobFrom(dataURL, blob => {
+					if (pageModes[0] == 'summary' || pageModes[0] == 'catalog') {
+						result = getBlobFrom(dataURL).then(blob => {
 							overrideUpfile = {
 								name: 'tegaki.png',
 								data: blob
 							};
 						});
 					}
-					else if (baseform) {
-						baseform.value = dataURL.replace(/^[^,]+,/, '');
+					else {
+						let baseform = document.getElementsByName('baseform')[0];
+						if (baseform) {
+							baseform.value = dataURL.replace(/^[^,]+,/, '');
+						}
 					}
 					resetForm('upfile', 'textonly');
 					doDisplayThumbnail(thumbWrap, thumb, img);
 				}
 				thumbWrap = thumb = null;
+				return result;
 			});
 		});
 	},

@@ -903,7 +903,7 @@ article.summary .replies {
 
 .post-image-thumbnail-outer {
 	display:inline-block;
-	margin:0 8px 8px 0;
+	margin:0 8px 24px 0;
 	border:8px solid #ffe;
 	border-radius:4px;
 	box-shadow:0 0 8px 2px rgba(0,0,0,.5);
