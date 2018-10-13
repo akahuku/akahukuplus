@@ -6,7 +6,11 @@
  * @author akahuku@gmail.com
  */
 
-if (true) {
+if (document.querySelector('meta[name="generator"][content="akahukuplus"]')) {
+	console.log('akahukuplus: multiple execution of content script.');
+	window.location.reload();
+}
+else {
 
 /*
  * consts
@@ -61,6 +65,8 @@ const IAHTML = d('jotfsuBekbdfouIUNM');
 const USW = d('votbgfXjoepx');
 const CRE = d('dsfbufFmfnfou');
 const ONER = d('pofssps');
+
+const MESSAGE_BACKEND_CONNECTION_ERROR = 'バックエンドに接続できません。ページをリロードしてください。';
 
 /*
  * <<<1 globals
@@ -261,6 +267,7 @@ function transformWholeDocument (xsl) {
 		timingLogger.endTag();
 	}
 	catch (e) {
+		console.error(`${APP_NAME}: transformWholeDocument: ${err.stack}`);
 		throw new Error(
 			`${APP_NAME}: XSL ファイルの DOM ツリー構築に失敗しました。中止します。`);
 	}
@@ -272,6 +279,7 @@ function transformWholeDocument (xsl) {
 		timingLogger.endTag();
 	}
 	catch (e) {
+		console.error(`${APP_NAME}: transformWholeDocument: ${err.stack}`);
 		throw new Error(
 			`${APP_NAME}: XSL ファイルの評価に失敗しました。中止します。`);
 	}
@@ -1018,7 +1026,7 @@ function applyDataBindings (xml) {
 			catch (e) {
 				console.error(
 					`${APP_NAME}: applyDataBindings: failed to apply the data "${re[2]}"` +
-					`\n(${e.message})`);
+					`\n${e.stack}`);
 			}
 		}
 		else if ((re = /^xpath-class(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
@@ -1032,7 +1040,7 @@ function applyDataBindings (xml) {
 			catch (e) {
 				console.error(
 					`${APP_NAME}: applyDataBindings: failed to apply the data "${re[2]}" to class` +
-					`\n(${e.message})`);
+					`\n${e.stack}`);
 			}
 		}
 		else if ((re = /^template(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
@@ -1047,7 +1055,7 @@ function applyDataBindings (xml) {
 			catch (e) {
 				console.error(
 					`${APP_NAME}: applyDataBindings: failed to apply the template "${re[2]}"` +
-					`\n(${e.message})`);
+					`\n${e.stack}`);
 			}
 		}
 	}
@@ -1539,7 +1547,36 @@ function createXMLGenerator () {
 		linkTargets[i].offset = i > 0 ? linkTargets[i - 1].offset + linkTargets[i - 1].backrefLength : 1;
 		return a.pattern;
 	}).join('|'));
-	const emojiPattern = /([\u00a9\u00ae\u2002\u2003\u2005\u203c\u2049\u2122\u2139\u2194-\u2199\u21a9\u21aa\u231a\u231b\u23e9-\u23ec\u23f0\u23f3\u24c2\u25aa\u25ab\u25b6\u25c0\u25fb-\u25fe\u2600\u2601\u260e\u2611\u2614\u2615\u261d\u263a\u2648-\u2653\u2660\u2663\u2665\u2666\u2668\u267b\u267f\u2693\u26a0\u26a1\u26aa\u26ab\u26bd\u26be\u26c4\u26c5\u26ce\u26d4\u26ea\u26f2\u26f3\u26f5\u26fa\u26fd\u2702\u2705\u2708-\u270c\u270f\u2712\u2714\u2716\u2728\u2733\u2734\u2744\u2747\u274c\u274e\u2753-\u2755\u2757\u2764\u2795-\u2797\u27a1\u27b0\u2934\u2935\u2b05-\u2b07\u2b1b\u2b1c\u2b50\u2b55\u3030\u303d\u3297\u3299]|\ud83c[\udc04\udccf\udd70\udd71\udd7e\udd7f\udd8e\udd91-\udd9a\ude01\ude02\ude1a\ude2f\ude32-\ude3a\ude50\ude51\udf00-\udf0c\udf0f\udf11\udf13-\udf15\udf19\udf1b\udf1f\udf20\udf30\udf31\udf34\udf35\udf37-\udf4a\udf4c-\udf4f\udf51-\udf7b\udf80-\udf93\udfa0-\udfc4\udfc6\udfc8\udfca\udfe0-\udfe3\udfe5-\udff0]|\ud83d[\udc0c-\udc0e\udc11\udc12\udc14\udc17-\udc29\udc2b-\udc3e\udc40\udc42-\udc64\udc66-\udc6b\udc6e-\udcac\udcae-\udcb5\udcb8-\udceb\udcee\udcf0-\udcf4\udcf6\udcf7\udcf9-\udcfc\udd03\udd0a-\udd14\udd16-\udd2b\udd2e-\udd3d\udd50-\udd5b\uddfb-\uddff\ude01-\ude06\ude09-\ude0d\ude0f\ude12-\ude14\ude16\ude18\ude1a\ude1c-\ude1e\ude20-\ude25\ude28-\ude2b\ude2d\ude30-\ude33\ude35\ude37-\ude40\ude45-\ude4f\ude80\ude83-\ude85\ude87\ude89\ude8c\ude8f\ude91-\ude93\ude95\ude97\ude99\ude9a\udea2\udea4\udea5\udea7-\udead\udeb2\udeb6\udeb9-\udebe\udec0]|\u0023\u20e3|\u0030\u20e3|\u0031\u20e3|\u0032\u20e3|\u0033\u20e3|\u0034\u20e3|\u0035\u20e3|\u0036\u20e3|\u0037\u20e3|\u0038\u20e3|\u0039\u20e3|\ud83c\udde8\ud83c\uddf3|\ud83c\udde9\ud83c\uddea|\ud83c\uddea\ud83c\uddf8|\ud83c\uddeb\ud83c\uddf7|\ud83c\uddec\ud83c\udde7|\ud83c\uddee\ud83c\uddf9|\ud83c\uddef\ud83c\uddf5|\ud83c\uddf0\ud83c\uddf7|\ud83c\uddf7\ud83c\uddfa|\ud83c\uddfa\ud83c\uddf8)[\ufe0e\ufe0f]?/;
+
+	// ported from https://github.com/twitter/twemoji/blob/gh-pages/2/twemoji.js
+	const UFE0Fg = /\uFE0F/g
+	const U200D = String.fromCharCode(0x200D);
+	function grabTheRightIcon (rawText) {
+		// if variant is present as \uFE0F
+		return toCodePoint(rawText.indexOf(U200D) < 0 ?
+			rawText.replace(UFE0Fg, '') :
+			rawText
+		);
+	}
+	function toCodePoint (unicodeSurrogates, sep) {
+		let
+		r = [],
+			c = 0,
+			p = 0,
+			i = 0;
+		while (i < unicodeSurrogates.length) {
+			c = unicodeSurrogates.charCodeAt(i++);
+			if (p) {
+				r.push((0x10000 + ((p - 0xD800) << 10) + (c - 0xDC00)).toString(16));
+				p = 0;
+			} else if (0xD800 <= c && c <= 0xDBFF) {
+				p = c;
+			} else {
+				r.push(c.toString(16));
+			}
+		}
+		return r.join(sep || '-');
+	}
 
 	function linkify (node) {
 		let r = node.ownerDocument.createRange();
@@ -1572,7 +1609,7 @@ function createXMLGenerator () {
 				anchor.setAttribute('class', linkTargets[index].className);
 				anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
 			}
-			else if ((re = emojiPattern.exec(node.lastChild.nodeValue))) {
+			else if ((re = twemoji.regex.exec(node.lastChild.nodeValue))) {
 				let emoji = node.ownerDocument[CRE]('emoji');
 				emoji.setAttribute('alt', re[0]);
 
@@ -1580,10 +1617,7 @@ function createXMLGenerator () {
 				r.setEnd(node.lastChild, re.index + re[0].length);
 				r.surroundContents(emoji);
 
-				let cp = toUCS32(re[1]);
-				if (cp >= 0) {
-					emoji.setAttribute('codepoint', cp.toString(16));
-				}
+				emoji.setAttribute('codepoints', grabTheRightIcon(re[0]));
 			}
 			else {
 				node.lastChild.nodeValue = node.lastChild.nodeValue.replace(
@@ -2582,13 +2616,19 @@ function createPersistentStorage () {
 	}
 
 	function set (items) {
-		chrome.storage.onChanged.removeListener(handleChanged);
-		chrome.storage.sync.set(items, () => {
-			if (chrome.runtime.lastError) {
-				console.error(`${APP_NAME}: storage#set: ${chrome.runtime.lastError.message}`);
-			}
-			chrome.storage.onChanged.addListener(handleChanged);
-		});
+		try {
+			chrome.storage.onChanged.removeListener(handleChanged);
+			chrome.storage.sync.set(items, () => {
+				if (chrome.runtime.lastError) {
+					console.error(`${APP_NAME}: storage#set: ${chrome.runtime.lastError.message}`);
+				}
+				chrome.storage.onChanged.addListener(handleChanged);
+			});
+		}
+		catch (err) {
+			console.error(`${APP_NAME}: storage#set: ${err.stack}`);
+			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
+		}
 	}
 
 	function handleChanged (changes, areaName) {
@@ -2748,7 +2788,7 @@ function createClickDispatcher () {
 			result = keys[fragment](e, t);
 		}
 		catch (e) {
-			console.error(`${APP_NAME}: exception in clickDispatcher: ${e.toString()}\n${e.stack}`);
+			console.error(`${APP_NAME}: exception in clickDispatcher: ${e.stack}`);
 			result = undefined;
 		}
 
@@ -2805,7 +2845,7 @@ function createKeyManager () {
 		}
 		catch (ex) {
 			console.error(
-				`${APP_NAME}: exception in keyManager: ${ex.toString()}\n${e.stack}`);
+				`${APP_NAME}: exception in keyManager: ${e.stack}`);
 			result = undefined;
 		}
 		if (result === 'passthrough') {
@@ -3397,23 +3437,35 @@ function createQueryCompiler () {
 
 function createUrlStorage () {
 	function loadSlot (callback) {
-		chrome.storage.sync.get({openedThreads:[]}, result => {
-			if (chrome.runtime.lastError) {
-				console.error(`${APP_NAME}: ${chrome.runtime.lastError.message}`);
-				callback([]);
-				return;
-			}
+		try {
+			chrome.storage.sync.get({openedThreads:[]}, result => {
+				if (chrome.runtime.lastError) {
+					console.error(`${APP_NAME}: loadSlot: ${chrome.runtime.lastError.message}`);
+					callback([]);
+					return;
+				}
 
-			const now = Date.now();
-			result.openedThreads = result.openedThreads.filter(item => item.expire > now);
-			callback(result.openedThreads);
-		});
+				const now = Date.now();
+				result.openedThreads = result.openedThreads.filter(item => item.expire > now);
+				callback(result.openedThreads);
+			});
+		}
+		catch (err) {
+			console.error(`${APP_NAME}: loadSlot: ${err.stack}`);
+			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
+		}
 	}
 
 	function saveSlot (slot) {
-		storage.set({
-			openedThreads: slot
-		});
+		try {
+			storage.set({
+				openedThreads: slot
+			});
+		}
+		catch (err) {
+			console.error(`${APP_NAME}: saveSlot: ${err.stack}`);
+			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
+		}
 	}
 
 	function indexOf (slot, key) {
@@ -4747,7 +4799,7 @@ function setupWindowResizeEvent (frequencyMsecs, handler) {
 				handler.call(window, e);
 			}
 			catch (ex) {
-				console.error(`${APP_NAME}: exception in resize handler: ${ex.message}`);
+				console.error(`${APP_NAME}: exception in resize handler: ${ex.stack}`);
 			}
 		}, frequencyMsecs, e);
 	}
@@ -5335,7 +5387,7 @@ function lightbox (anchor, ignoreThumbnail) {
 		// register event handlers
 		receiver.addEventListener('mousedown', handleMousedown, false);
 		receiver.addEventListener('mouseup', handleMouseup, false);
-		receiver.addEventListener('mousewheel', handleMousewheel, false);
+		receiver.addEventListener('wheel', handleMousewheel, false);
 
 		clickDispatcher
 			.add('#lightbox-whole', handleZoomModeClick)
@@ -5550,8 +5602,8 @@ function lightbox (anchor, ignoreThumbnail) {
 		case 'fit-to-width':
 			if (image.offsetHeight > viewportRect.height) {
 				var sign;
-				if (e.wheelDelta) {
-					sign = e.wheelDelta > 0 ? 1 : -1;
+				if (e.deltaY) {
+					sign = e.deltaY > 0 ? -1 : 1;
 				}
 				else {
 					sign = e.shiftKey ? 1 : -1;
@@ -6542,7 +6594,7 @@ function modalDialog (opts) {
 					xsl = (new window.DOMParser()).parseFromString(xsl, "text/xml");
 				}
 				catch (e) {
-					console.error(`${APP_NAME}: xsl parsing failed: ${e.message}`);
+					console.error(`${APP_NAME}: xsl parsing failed: ${e.stack}`);
 					return;
 				}
 
@@ -6550,7 +6602,7 @@ function modalDialog (opts) {
 					p.importStylesheet(xsl);
 				}
 				catch (e) {
-					console.error(`${APP_NAME}: importStylesheet failed: ${e.message}`);
+					console.error(`${APP_NAME}: importStylesheet failed: ${e.stack}`);
 					return;
 				}
 
@@ -6558,7 +6610,7 @@ function modalDialog (opts) {
 					f = fixFragment(p.transformToFragment(xml, document));
 				}
 				catch (e) {
-					console.error(`${APP_NAME}: transformToFragment failed: ${e.message}`);
+					console.error(`${APP_NAME}: transformToFragment failed: ${e.stack}`);
 					return;
 				}
 
@@ -6714,11 +6766,20 @@ function sendToBackend () { /*returns promise*/
 
 	data.type = args[0];
 	if (callback) {
-		backend.postMessage(data, callback);
+		try {
+			backend.postMessage(data, callback);
+		}
+		catch (err) {
+			console.error(`${APP_NAME}: sendToBackend: ${err.stack}`);
+			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
+		}
 	}
 	else {
 		return new Promise(resolve => {
 			backend.postMessage(data, resolve);
+		}).catch(err => {
+			console.error(`${APP_NAME}: sendToBackend: ${err.stack}`);
+			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
 		});
 	}
 }
@@ -6861,7 +6922,7 @@ function getDOMFromString (s) {
 			, 'text/html');
 	}
 	catch (e) {
-		console.error(`${APP_NAME}: getDOMFromString failed: ${e.message}`);
+		console.error(`${APP_NAME}: getDOMFromString failed: ${e.stack}`);
 	}
 }
 
@@ -7385,7 +7446,7 @@ const 新字体の漢字を舊字體に変換 = (function () {
  */
 
 function populateTextFormItems (form, callback) {
-	var inputNodes = $qsa([
+	let inputNodes = $qsa([
 		'input[type="hidden"]',
 		'input[type="text"]',
 		'input[type="number"]',
@@ -7396,7 +7457,7 @@ function populateTextFormItems (form, callback) {
 		'select'
 	].join(','), form);
 
-	Array.prototype.forEach.call(inputNodes, function (node) {
+	Array.prototype.forEach.call(inputNodes, node => {
 		if (node.name == '') return;
 		if (node.disabled) return;
 		callback(node);
@@ -7404,11 +7465,11 @@ function populateTextFormItems (form, callback) {
 }
 
 function populateFileFormItems (form, callback) {
-	var inputNodes = $qsa([
+	let inputNodes = $qsa([
 		'input[type="file"]'
 	].join(','), form);
 
-	Array.prototype.forEach.call(inputNodes, function (node) {
+	Array.prototype.forEach.call(inputNodes, node => {
 		if (node.name == '') return;
 		if (node.disabled) return;
 		if (node.files.length == 0) return;
@@ -7416,11 +7477,11 @@ function populateFileFormItems (form, callback) {
 	});
 }
 
-function postBase (type, form, callback) {
+function postBase (type, form) { /*returns promise*/
 	function getIconvPayload (form) {
-		var payload = {};
+		let payload = {};
 
-		populateTextFormItems(form, function (node) {
+		populateTextFormItems(form, node => {
 			let content = node.value;
 
 			if (IDEOGRAPH_CONVERSION_POST) {
@@ -7441,10 +7502,10 @@ function postBase (type, form, callback) {
 	}
 
 	function getMultipartFormData (items, boundary) {
-		var data = [];
+		let data = [];
 
-		for (var i in items) {
-			var item = new Uint8Array(items[i]);
+		for (let i in items) {
+			let item = new Uint8Array(items[i]);
 			data.push(
 				`--${boundary}\r\n` +
 				`Content-Disposition: form-data; name="${i}"\r\n\r\n`,
@@ -7452,7 +7513,7 @@ function postBase (type, form, callback) {
 			);
 		};
 
-		populateFileFormItems(form, function (node) {
+		populateFileFormItems(form, node => {
 			data.push(
 				`--${boundary}\r\n` +
 				`Content-Disposition: form-data` +
@@ -7485,15 +7546,15 @@ function postBase (type, form, callback) {
 	}
 
 	function getUrlEncodedFormData (items) {
-		var data = [];
-		var delimiter = '';
+		let data = [];
+		let delimiter = '';
 
-		for (var i in items) {
+		for (let i in items) {
 			data.push(
 				delimiter, i, '=',
-				items[i].map(function (code) {
+				items[i].map(code => {
 					if (code == 32) return '+';
-					var ch = String.fromCharCode(code);
+					let ch = String.fromCharCode(code);
 					return /[a-z0-9-_.!~*'()]/i.test(ch) ?
 						ch : '%' + ('0' + code.toString(16).toUpperCase()).substr(-2);
 				}).join('')
@@ -7507,77 +7568,78 @@ function postBase (type, form, callback) {
 		return data.join('');
 	}
 
-	function handleIconv (response) {
-		if (!response) {
-			callback && callback('Failed to convert charset.');
-			return;
-		}
-
-		if (form.enctype == 'multipart/form-data') {
-			var boundary = getBoundary();
-			var data = getMultipartFormData(response, boundary);
-			multipartPost(data, boundary);
-		}
-		else {
-			var data = getUrlEncodedFormData(response);
-			urlEncodedPost(data);
-		}
-	}
-
 	function multipartPost (data, boundary) {
-		xhr.open('POST', form.action);
-		xhr.setRequestHeader('Content-Type', `multipart/form-data;boundary=${boundary}`);
-		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
+		return new Promise(resolve => {
+			xhr.open('POST', form.action);
+			xhr.setRequestHeader('Content-Type', `multipart/form-data;boundary=${boundary}`);
+			xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 
-		xhr.onload = () => {
-			callback && callback(xhr.responseText);
-		};
+			xhr.onload = () => {
+				resolve(xhr.responseText);
+			};
 
-		xhr.onerror = () => {
-			callback && callback();
-		};
+			xhr.onerror = () => {
+				resolve();
+			};
 
-		xhr.onloadend = () => {
-			xhr = form = null;
-			transport.release(type);
-		};
+			xhr.onloadend = () => {
+				xhr = form = null;
+				transport.release(type);
+			};
 
-		xhr.send(data);
+			xhr.send(data);
+		});
 	}
 
 	function urlEncodedPost (data) {
-		xhr.open('POST', form.action);
-		xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
+		return new Promise(resolve => {
+			xhr.open('POST', form.action);
+			xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+			xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 
-		xhr.onload = () => {
-			callback && callback(xhr.responseText);
-		};
+			xhr.onload = () => {
+				resolve(xhr.responseText);
+			};
 
-		xhr.onerror = () => {
-			callback && callback();
-		};
+			xhr.onerror = () => {
+				resolve();
+			};
 
-		xhr.onloadend = () => {
-			xhr = form = null;
-			transport.release(type);
-		};
+			xhr.onloadend = () => {
+				xhr = form = null;
+				transport.release(type);
+			};
 
-		xhr.send(data);
+			xhr.send(data);
+		});
 	}
 
 	let xhr = transport.create(type);
-	sendToBackend('iconv', getIconvPayload(form), handleIconv);
+	return sendToBackend('iconv', getIconvPayload(form)).then(response => {
+		if (!response) {
+			throw new Error('Failed to convert charset.');
+		}
+
+		if (form.enctype == 'multipart/form-data') {
+			let boundary = getBoundary();
+			let data = getMultipartFormData(response, boundary);
+			return multipartPost(data, boundary);
+		}
+		else {
+			let data = getUrlEncodedFormData(response);
+			return urlEncodedPost(data);
+		}
+	});
 }
 
 function resetForm () {
-	var form = document[CRE]('form');
-	var elements = [];
+	let form = document[CRE]('form');
+	let elements = [];
 
-	for (var i = 0; i < arguments.length; i++) {
-		var org = $(arguments[i]);
+	for (let i = 0; i < arguments.length; i++) {
+		let org = $(arguments[i]);
 		if (!org) continue;
-		var clone = org.cloneNode(false);
+		let clone = org.cloneNode(false);
 		elements.push({org:org, clone:clone});
 		org.parentNode.replaceChild(clone, org);
 		form.appendChild(org);
@@ -7585,7 +7647,7 @@ function resetForm () {
 
 	if (elements.length) {
 		form.reset();
-		for (var i = 0; i < elements.length; i++) {
+		for (let i = 0; i < elements.length; i++) {
 			elements[i].clone.parentNode.replaceChild(elements[i].org, elements[i].clone);
 			elements[i] = null;
 		}
@@ -7593,7 +7655,7 @@ function resetForm () {
 }
 
 function parseModerateResponse (response) {
-	var re;
+	let re;
 
 	re = /<font[^>]*><b>(.*?)(?:<br\s*\/?>)+.*<a[^>]*>戻る<\/a>/i.exec(response);
 	if (re) {
@@ -7624,7 +7686,7 @@ function parseModerateResponse (response) {
 }
 
 function parsePostResponse (response) {
-	var re;
+	let re;
 
 	re = /<font[^>]*><b>(.*?)(?:<br\s*\/?>)+<a[^>]*>リロード<\/a>/i.exec(response);
 	if (re) {
@@ -7636,7 +7698,7 @@ function parsePostResponse (response) {
 		};
 	}
 
-	var refreshURL = '';
+	let refreshURL = '';
 	re = /<meta\s+([^>]+)>/i.exec(response);
 	if (re && /http-equiv="refresh"/i.test(re[1])) {
 		re = /content="\d+;url=([^"]+)"/i.exec(re[1]);
@@ -7660,7 +7722,7 @@ function parsePostResponse (response) {
 }
 
 function registerReleaseFormLock () {
-	setTimeout(function () {
+	setTimeout(() => {
 		$qs('fieldset', 'postform').disabled = false;
 	}, POSTFORM_LOCK_RELEASE_DELAY);
 }
@@ -8305,14 +8367,14 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 					timingLogger.endTag();
 				}
 				catch (e) {
-					console.error(`${APP_NAME}: processRemainingReplies: exception(1), ${e.message}`);
+					console.error(`${APP_NAME}: processRemainingReplies: exception(1), ${e.stack}`);
 				}
 
 				try {
 					worked && callback && callback();
 				}
 				catch (e) {
-					console.error(`${APP_NAME}: processRemainingReplies: exception(2), ${e.message}`);
+					console.error(`${APP_NAME}: processRemainingReplies: exception(2), ${e.stack}`);
 				}
 
 				timingLogger.endTag(`worked:${worked}`);
@@ -8346,7 +8408,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 					callback && callback(newStat);
 				}
 				catch (e) {
-					console.error(`${APP_NAME}: processRemainingReplies: exception(3), ${e.message}`);
+					console.error(`${APP_NAME}: processRemainingReplies: exception(3), ${e.stack}`);
 				}
 
 				timingLogger.forceEndTag();
@@ -8853,11 +8915,6 @@ const commands = {
 				fragment = fixFragment(xsltProcessor.transformToFragment(xml, document));
 				timingLogger.endTag();
 			}
-			catch (ex) {
-				throw new Error(
-					'内部 xml からの html への変形に失敗しました。' +
-					`\n(${ex.message})`);
-			}
 			finally {
 				timingLogger.endTag();
 			}
@@ -8904,7 +8961,7 @@ const commands = {
 			footer.classList.remove('hide');
 			indicator.classList.add('error');
 			$t(indicator, err.message);
-			console.error(`${APP_NAME}: reloadSummary failed: ${err.message}`);
+			console.error(`${APP_NAME}: reloadSummary failed: ${err.stack}`);
 		});
 	},
 	reloadReplies: function () {
@@ -8971,11 +9028,6 @@ const commands = {
 				updateTopicSodane(result.xml, document);
 				timingLogger.endTag();
 			}
-			catch (ex) {
-				throw new Error(
-					'内部 xml からの html への変形に失敗しました。' +
-					`\n(${ex.message})`);
-			}
 			finally {
 				timingLogger.endTag();
 			}
@@ -9014,7 +9066,7 @@ const commands = {
 			showFetchedRepliesStatus(err.message);
 			setBottomStatus(err.message);
 			timingLogger.forceEndTag();
-			console.error(`${APP_NAME}: reloadReplies failed: ${err.message}`);
+			console.error(`${APP_NAME}: reloadReplies failed: ${err.stack}`);
 		});
 	},
 	reloadCatalog: function () { /*returns promise*/
@@ -9323,80 +9375,83 @@ const commands = {
 		}).catch(err => {
 			wrap.classList.remove('run');
 			setBottomStatus('カタログの読み込みに失敗しました');
-			window.scrollTo(0, 0);
+			console.error(`${APP_NAME}: reloadCatalog failed: ${err.stack}`);
 		});
 	},
-	post: function () {
+	post: function () { /*returns promise*/
 		const TRANSPORT_TYPE = 'post';
 
 		if (transport.isRunning(TRANSPORT_TYPE)) {
 			transport.abort(TRANSPORT_TYPE);
 			setBottomStatus('中断しました');
 			registerReleaseFormLock();
-			return;
+			return Promise.resolve();
 		}
 
 		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
-			return;
+			return Promise.resolve();
 		}
 
 		setBottomStatus('投稿中...');
 		$qs('fieldset', 'postform').disabled = true;
 
-		postBase(
-			TRANSPORT_TYPE, $('postform'),
-			response => {
-				if (!response) {
-					setBottomStatus('サーバからの応答が変です');
-					registerReleaseFormLock();
-					return;
-				}
-
-				response = response.replace(/\r\n|\r|\n/g, '\t');
-				/warning/i.test(response) && console.info(response.replace(/.{1,72}/g, '$&\n'));
-
-				//log('got post result:\n' + response.replace(/.{1,72}/g, '$&\n'));
-
-				let result = parsePostResponse(response);
-				if (result.redirect) {
-					setTimeout(function () {
-						registerReleaseFormLock();
-						commands.deactivatePostForm();
-						setPostThumbnail();
-						resetForm('com', 'upfile', 'textonly', 'baseform');
-						overrideUpfile = undefined;
-						setBottomStatus('投稿完了');
-
-						let pageMode = pageModes[0];
-						if (pageMode == 'reply' && $('post-switch-thread').checked) {
-							pageMode = 'summary';
-						}
-
-						switch (pageMode) {
-						case 'summary':
-						case 'catalog':
-							if (result.redirect != '') {
-								sendToBackend('open', {
-									url: result.redirect,
-									selfUrl:window.location.href
-								});
-							}
-							if ($('post-switch-reply')) {
-								$('post-switch-reply').click();
-							}
-							break;
-						case 'reply':
-							commands.reload();
-							break;
-						}
-					}, WAIT_AFTER_POST);
-				}
-				else {
-					registerReleaseFormLock();
-					window.alert(result.error || 'なんかエラー');
-				}
+		return postBase(TRANSPORT_TYPE, $('postform')).then(response => {
+			if (!response) {
+				throw new Error('サーバからの応答が変です');
 			}
-		);
+
+			response = response.replace(/\r\n|\r|\n/g, '\t');
+			if (/warning/i.test(response)) {
+				console.info(
+					`${APP_NAME}: ` +
+					`warning in response: ${response.replace(/.{1,72}/g, '$&\n')}`);
+			}
+
+			let result = parsePostResponse(response);
+
+			if (result.error) {
+				throw new Error(`サーバからの応答が変です (${result.error})`);
+			}
+
+			if (result.redirect) {
+				return delay(WAIT_AFTER_POST).then(() => {
+					commands.deactivatePostForm();
+					setPostThumbnail();
+					resetForm('com', 'upfile', 'textonly', 'baseform');
+					overrideUpfile = undefined;
+					setBottomStatus('投稿完了');
+
+					let pageMode = pageModes[0];
+					if (pageMode == 'reply' && $('post-switch-thread').checked) {
+						pageMode = 'summary';
+					}
+
+					switch (pageMode) {
+					case 'summary':
+					case 'catalog':
+						if (result.redirect != '') {
+							sendToBackend('open', {
+								url: result.redirect,
+								selfUrl: window.location.href
+							});
+						}
+						if ($('post-switch-reply')) {
+							$('post-switch-reply').click();
+						}
+						break;
+					case 'reply':
+						commands.reload();
+						break;
+					}
+				});
+			}
+		}).catch(err => {
+			setBottomStatus('投稿が失敗しました');
+			console.error(`${APP_NAME}: post failed: ${err.stack}`);
+			window.alert(err.message);
+		}).finally(() => {
+			registerReleaseFormLock();
+		});
 	},
 	sodane: function (e, t) {
 		if (!t) return;
@@ -10321,7 +10376,7 @@ Promise.all([
 })
 .catch(err => {
 	timingLogger.forceEndTag();
-	console.error(err);
+	console.error(err.stack);
 	initialStyle(false);
 	document.body[IHTML] = `${APP_NAME}: ${err.message}`;
 	$t(document.body.appendChild(document[CRE]('pre')), err.stack);

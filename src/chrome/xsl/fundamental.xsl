@@ -336,6 +336,8 @@ a.js:hover kbd {
 	margin-left:4px;
 	margin-right:4px;
 	vertical-align:text-bottom;
+	max-height:1.5em;
+	filter: drop-shadow(0px 1px 1px rgb(0,0,0,.5));
 }
 
 .topic-wrap .mark,
@@ -2340,7 +2342,7 @@ div.catalog-popup span {
 </xsl:template>
 
 <xsl:template match="comment//emoji">
-<img class="emoji" alt="{@alt}" src="https://twemoji.maxcdn.com/36x36/{@codepoint}.png"/>
+<img class="emoji" draggable="false" alt="{@alt}" src="https://twemoji.maxcdn.com/2/72x72/{@codepoints}.png"/>
 </xsl:template>
 
 <xsl:template match="comment//mark">

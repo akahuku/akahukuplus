@@ -45,6 +45,7 @@
 			"js": [
 				"frontend/extension_wrapper.js",
 				"frontend/qeema.js",
+				"frontend/twitter_emoji_regexp.js",
 				"frontend/akahukuplus.js"
 			],
 			"run_at": "document_start",

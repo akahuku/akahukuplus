@@ -243,7 +243,10 @@
 					}
 				});
 			}
-			catch (e) {}
+			catch (e) {
+				console.error(`${extensionName}: chrome.runtime.sendMessage failed (${e.stack})`);
+				throw e;
+			}
 		};
 		this.doConnect = function () {
 			chrome.runtime.onMessage.addListener(handleMessage);
