@@ -27,6 +27,7 @@
 <xsl:when test="$render_mode='notices'"><xsl:apply-templates mode="notices"/></xsl:when>
 <xsl:when test="$render_mode='amazon'"><xsl:apply-templates mode="amazon"/></xsl:when>
 <xsl:when test="$render_mode='storage'"><xsl:apply-templates mode="storage"/></xsl:when>
+<xsl:when test="$render_mode='title'"><xsl:apply-templates mode="title"/></xsl:when>
 </xsl:choose>
 </xsl:template>
 
@@ -188,6 +189,14 @@ a.js:hover kbd {
 	vertical-align:text-bottom;
 }
 
+#header .emoji {
+	margin-left:4px;
+	margin-right:4px;
+	vertical-align:-0.1em;
+	max-height:1em;
+	filter: drop-shadow(0px 1px 1px rgb(0,0,0,.5));
+}
+
 /*
  * contents
  */
@@ -335,7 +344,7 @@ a.js:hover kbd {
 .reply-wrap .emoji {
 	margin-left:4px;
 	margin-right:4px;
-	vertical-align:text-bottom;
+	vertical-align:-0.1em;
 	max-height:1.5em;
 	filter: drop-shadow(0px 1px 1px rgb(0,0,0,.5));
 }
@@ -1856,7 +1865,7 @@ div.catalog-popup span {
 	<body>
 		<header id="header">
 			<div>
-				<h1><a href="{meta/board_top}" data-binding="xpath:/futaba/meta/title"></a></h1>
+				<h1><a href="{meta/board_top}" data-binding="template:title"></a></h1>
 			</div>
 			<div>
 				現在<span id="viewers" data-binding="xpath:/futaba/meta/viewers"></span>人くらいが見てます.
@@ -2215,6 +2224,13 @@ div.catalog-popup span {
 </html>
 </xsl:template>
 
+<!-- partial content: title -->
+<xsl:template match="futaba" mode="title">
+<html>
+	<body><xsl:apply-templates select="meta/title"/></body>
+</html>
+</xsl:template>
+
 <!-- a thread -->
 <xsl:template match="thread">
 <!--<xsl:if test="$page_mode='reply'">
@@ -2341,8 +2357,8 @@ div.catalog-popup span {
 </xsl:choose>
 </xsl:template>
 
-<xsl:template match="comment//emoji">
-<img class="emoji" draggable="false" alt="{@alt}" src="https://twemoji.maxcdn.com/2/72x72/{@codepoints}.png"/>
+<xsl:template match="emoji">
+<img class="emoji" draggable="false" alt="{.}" src="https://twemoji.maxcdn.com/2/72x72/{@codepoints}.png"/>
 </xsl:template>
 
 <xsl:template match="comment//mark">

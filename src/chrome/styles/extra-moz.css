@@ -1,0 +1,27 @@
+.dropbox-image {
+	background:url(moz-extension://__MSG_@@extension_id__/images/storage/dropbox.png) left top no-repeat;
+}
+
+.gdrive-image {
+	background:url(moz-extension://__MSG_@@extension_id__/images/storage/gdrive.png) left top no-repeat;
+}
+
+.onedrive-image {
+	background:url(moz-extension://__MSG_@@extension_id__/images/storage/onedrive.png) left top no-repeat;
+}
+
+.local-image {
+	background:url(moz-extension://__MSG_@@extension_id__/images/storage/local.png) left top no-repeat;
+}
+
+.lightbox-wrap .image-wrap img {
+	background:url(moz-extension://__MSG_@@extension_id__/images/transparent-bg.png) left top repeat fixed #888;
+}
+
+.dialog-wrap .close-button {
+	background:url(moz-extension://__MSG_@@extension_id__/images/dialog-button-close.png) center center no-repeat transparent;
+}
+
+.dialog-wrap .close-button:hover {
+	background:url(moz-extension://__MSG_@@extension_id__/images/dialog-button-close-hover.png) center center no-repeat transparent;
+}

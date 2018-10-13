@@ -1152,6 +1152,10 @@ function createResourceManager () {
 }
 
 function createXMLGenerator () {
+	/*
+	 * utility functions
+	 */
+
 	function stripTags (s) {
 		while (/<\w+[^>]*>/.test(s)) {
 			s = s.replace(/<(\w+)[^>]*>([^>]*)<\/\1>/g, '$2');
@@ -1578,11 +1582,12 @@ function createXMLGenerator () {
 		return r.join(sep || '-');
 	}
 
-	function linkify (node) {
+	function linkify (node, opts) {
+		opts = opts || {linkify: true, emojify: true};
 		let r = node.ownerDocument.createRange();
 		let re;
 		while (node.lastChild.nodeType == 3) {
-			if ((re = linkTargetRegex.exec(node.lastChild.nodeValue))) {
+			if (opts.linkify && (re = linkTargetRegex.exec(node.lastChild.nodeValue))) {
 				let index = -1;
 				linkTargets.some((a, i) => {
 					if (re[a.offset] != undefined && re[a.offset] != '') {
@@ -1609,9 +1614,8 @@ function createXMLGenerator () {
 				anchor.setAttribute('class', linkTargets[index].className);
 				anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
 			}
-			else if ((re = twemoji.regex.exec(node.lastChild.nodeValue))) {
+			else if (opts.emojify && (re = twemoji.regex.exec(node.lastChild.nodeValue))) {
 				let emoji = node.ownerDocument[CRE]('emoji');
-				emoji.setAttribute('alt', re[0]);
 
 				r.setStart(node.lastChild, re.index);
 				r.setEnd(node.lastChild, re.index + re[0].length);
@@ -1664,23 +1668,6 @@ function createXMLGenerator () {
 			result += '...(省略)';
 		}
 
-		return result;
-	}
-
-	function toUCS32 (s) {
-		var result = -1;
-		switch (s.length) {
-		case 1:
-			result = s.charCodeAt(0);
-			break;
-		case 2:
-			var hcp = s.charCodeAt(0);
-			var lcp = s.charCodeAt(1);
-			result = ((hcp & 0x03c0) + 0x0040) << 10
-					| (hcp & 0x003f) << 10
-					| (lcp & 0x03ff);
-			break;
-		}
 		return result;
 	}
 
@@ -1827,6 +1814,10 @@ function createXMLGenerator () {
 		return (number - 0) * unit * 1000;
 	}
 
+	/*
+	 * main functions
+	 */
+
 	function run (content, url, maxReplies) {
 		timingLogger.startTag('createXMLGenerator#run');
 
@@ -1889,14 +1880,16 @@ function createXMLGenerator () {
 
 		// page title
 		(function () {
-			var re = />([^<>]+)(＠ふたば)/.exec(content);
+			let re = />([^<>]+)(＠ふたば)/.exec(content);
 			if (!re) return;
-			var title = re[1].replace(/二次元裏$/, `虹裏${siteInfo.server}`)
+			let title = re[1].replace(/二次元裏$/, `虹裏${siteInfo.server}`)
 				+ re[2];
 			if (!isReplyMode && (re = /(\d+)\.htm$/.exec(window.location.pathname))) {
 				title += ` [ページ ${re[1]}]`;
 			}
-			element(metaNode, 'title').appendChild(text(title));
+			let titleNode = element(metaNode, 'title');
+			titleNode.appendChild(text(title));
+			linkify(titleNode, {linkify: false, emojify: true});
 		})();
 
 		// page notices
