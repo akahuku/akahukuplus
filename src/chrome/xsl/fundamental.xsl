@@ -78,9 +78,9 @@ hr {
 	padding:0;
 	height:1px;
 	border-style:solid none none none;
-	border-color:#e0d0c6;
+	border-color:#8003;
 	border-width:1px;
-	color:silver;
+	color:#8003;
 }
 
 kbd {
@@ -92,6 +92,8 @@ kbd {
 	white-space:nowrap;
 	font-family:monospace;
 	font-weight:bold;
+	text-shadow:none;
+	text-decoration:none;
 }
 
 kbd:first-child {
@@ -124,6 +126,16 @@ a.js:hover kbd {
 	opacity:.3;
 }
 
+input[type="checkbox"] {
+	vertical-align:middle;
+}
+
+@keyframes blink {
+	50% {
+		opacity:0;
+	}
+}
+
 /*
  * header
  */
@@ -138,11 +150,9 @@ a.js:hover kbd {
 	margin:0;
 	padding:0;
 	box-sizing:border-box;
-	border-style:none none solid none;
-	border-width:1px;
-	border-color:#e0d0c6;
-	background-color:#faf5e6;
-	box-shadow:0 0 2px 2px rgba(224,208,198,.5);
+	border-style:none;
+	background-color:#faf4e6;/*ffffee + f0e0d6 * 0.33*/
+	box-shadow:0 1px 2px 2px #8002;
 	z-index:100;
 }
 
@@ -194,7 +204,7 @@ a.js:hover kbd {
 	margin-right:4px;
 	vertical-align:-0.1em;
 	max-height:1em;
-	filter: drop-shadow(0px 1px 1px rgb(0,0,0,.5));
+	filter: drop-shadow(0px 1px 1px #0008);
 }
 
 /*
@@ -206,8 +216,8 @@ a.js:hover kbd {
 	left:8px;
 	top:64pt;
 	padding:4px;
-	color:#792;
-	border:2px solid #792;
+	color:#682;
+	border:2px solid #682;
 	border-radius:8px;
 	font-size:large;
 	font-weight:bold;
@@ -346,7 +356,7 @@ a.js:hover kbd {
 	margin-right:4px;
 	vertical-align:-0.1em;
 	max-height:1.5em;
-	filter: drop-shadow(0px 1px 1px rgb(0,0,0,.5));
+	filter: drop-shadow(0px 1px 1px #0008);
 }
 
 .topic-wrap .mark,
@@ -373,6 +383,11 @@ a.js:hover kbd {
 .topic-wrap a .link-completion-notice,
 .reply-wrap a .link-completion-notice {
 	font-size:75%;
+}
+
+.topic-wrap.hilight,
+.reply-wrap > .hilight {
+	background-color:#ea8 !important;
 }
 
 /* links */
@@ -531,7 +546,7 @@ article.summary .replies {
 	border-radius:4px;
 	word-wrap:break-word;
 	overflow-wrap:break-word;
-	box-shadow:0 1px #d9bfb7;
+	box-shadow:0 1px #8004;
 }
 
 .reply-wrap > div:last-child.deleted {
@@ -605,8 +620,10 @@ article.summary .replies {
 	font-weight:bold;
 }
 
-.topic-wrap.hilight, .reply-wrap > .hilight {
-	background-color:#ea8 !important;
+.thread-footer #replies-total,
+.thread-footer #replies-mark,
+.thread-footer #replies-id {
+	font-weight:bold;
 }
 
 /*
@@ -718,12 +735,6 @@ article.summary .replies {
 	box-sizing:border-box;
 }
 
-#postform-wrap .postform fieldset {
-	margin:0;
-	padding:0;
-	border:0;
-}
-
 #postform-wrap.hover .postform {
 	max-height:1200px;
 }
@@ -737,14 +748,25 @@ article.summary .replies {
 	line-height:1;
 }
 
-#postform-wrap .postform table {
+#postform {
+	display:block;
+	position:relative;
+}
+
+#postform fieldset {
+	margin:0;
+	padding:0;
+	border:0;
+}
+
+#postform table {
 	margin:0;
 	padding:0;
 	width:100%;
 	border-collapse:separate;
 }
 
-#postform-wrap .postform th {
+#postform th {
 	padding:4px;
 	background-color:#ea8;
 	width:3%;
@@ -753,24 +775,24 @@ article.summary .replies {
 	text-align:left;
 }
 
-#postform-wrap .postform td {
+#postform td {
 	padding:1px;
 }
 
-#postform-wrap .postform td.thin {
-	width:3%;
-	white-space:nowrap;
+#postform td > div.flex {
+	display:flex;
 }
 
-#name, #email, #sub, #com, #upfile {
-	display:block;
-	box-sizing:border-box;
-	width:100%;
+#postform td > div.flex > :not(:last-child) {
+	margin:0 4px 0 0;
 }
 
-#postform {
-	display:block;
-	position:relative;
+#postform td > div.flex > :first-child {
+	flex-grow:1;
+}
+
+#postform td > div.flex > .bracket {
+	align-self:center;
 }
 
 #postform .drop-indicator {
@@ -786,23 +808,25 @@ article.summary .replies {
 	font-size:medium;
 }
 
-#name {
+#postform #name {
 	color:#117743;
 	font-weight:bold;
 }
 
-#email {
+#postform #email {
 	color:#00f;
 }
 
-#sub {
+#postform #sub {
 	color:#cc1105;
 	font-weight:bold;
 }
 
-#com {
+#postform #com {
+	display:block;
 	margin:0;
 	padding:0;
+	width:100%;
 	border:none;
 	outline:none;
 	background-color:#ffe;
@@ -811,7 +835,7 @@ article.summary .replies {
 	line-height:1.2;
 }
 
-#postform-wrap .comment-wrap {
+#postform .comment-wrap {
 	box-sizing:border-box;
 	width:100%;
 	margin:0;
@@ -819,23 +843,42 @@ article.summary .replies {
 	border:1px solid #ea8;
 }
 
-#postform-wrap .comment-info {
+#postform .comment-info {
 	padding:4px 0 0 0;
 	font-size:small;
 	line-height:1;
+}
+
+#postform #comment-info-summary {
+	color:#d00;
+	font-weight:bold;
+	visibility:hidden;
+}
+
+#postform #comment-info-summary.blink {
+	visibility:visible;
+	animation:blink 1s step-end infinite;
+}
+
+#postform #comment-info-details {
 	text-align:right;
 }
 
-#postform-wrap .comment-info span {
+#postform #comment-info-details span {
 	padding:0 0 0 8px;
 }
 
-#postform-wrap .comment-info span.warn {
+#postform #comment-info-details span.warn {
 	color:#d00;
 	font-weight:bold;
 }
 
-#comment-backend {
+#postform #pwd {
+	margin:0 4px 0 0;
+	width:8em;
+}
+
+#postform-wrap #comment-backend {
 	visibility:hidden;
 	position:fixed;
 	left:0;
@@ -846,10 +889,6 @@ article.summary .replies {
 	line-height:1.2;
 	font-size:small;
 	white-space:pre-wrap;
-}
-
-#pwd {
-	width:8em;
 }
 
 #postform-wrap .nav {
@@ -891,11 +930,7 @@ article.summary .replies {
 	text-align:right;
 }
 
-#replies-total, #replies-mark, #replies-id {
-	font-weight:bold;
-}
-
-.post-image-thumbnail-wrap {
+#postform-wrap .post-image-thumbnail-wrap {
 	position:fixed;
 	width:25%;
 	left:0;
@@ -908,22 +943,22 @@ article.summary .replies {
 	transition-delay:0s;
 }
 
-.post-image-thumbnail-wrap.run {
+#postform-wrap .post-image-thumbnail-wrap.run {
 	opacity:1;
 }
 
-.post-image-thumbnail-outer {
+#postform-wrap .post-image-thumbnail-outer {
 	display:inline-block;
 	margin:0 8px 24px 0;
 	border:8px solid #ffe;
 	border-radius:4px;
 	box-shadow:0 0 8px 2px rgba(0,0,0,.5);
-	background-color:#ffffee;
+	background-color:#ffe;
 	font-size:small;
 	text-align:center;
 }
 
-.post-image-thumbnail-info {
+#postform-wrap .post-image-thumbnail-info {
 	white-space:nowrap;
 }
 
@@ -981,7 +1016,7 @@ article.summary .replies {
 	top:40pt;
 	right:-28%;
 	bottom:8pt;
-	background-color:rgba(255,255,238,.6);
+	background-color:#ffe9;
 	border-radius:4px 0 0 4px;
 	box-shadow:0 0 8px 2px rgba(0,0,0,.3);
 	transition-property:right;
@@ -1226,17 +1261,30 @@ article.summary .replies {
 	background-color:rgba(0,0,0,.75);
 }
 
-.lightbox-wrap .image-wrap img {
+.lightbox-wrap .image-wrap {
 	position:fixed;
-	border:none;
-	transition-property:left,top,width,height;
-	transition-duration:.5s;
-	transition-timing-function:ease-out;
-	transition-delay:0s;
-
+	display:flex;
+	justify-content:center;
+	align-items:center;
 }
 
-.lightbox-wrap .image-wrap img.dragging {
+.lightbox-wrap .image-wrap:not(.hide) {
+	transition-property:left,top,width,height;
+	transition-duration:.3s;
+	transition-timing-function:ease;
+	transition-delay:0s;
+}
+
+.lightbox-wrap .image-wrap:not(.hide) > img {
+
+	opacity:.1;
+	transition-property:width,height,transform,opacity;
+	transition-duration:.3s;
+	transition-timing-function:ease;
+	transition-delay:0s;
+}
+
+.lightbox-wrap .image-wrap.dragging {
 	transition:none;
 }
 
@@ -1270,11 +1318,20 @@ article.summary .replies {
 }
 
 .lightbox-wrap .info a {
-	color:#8ac;
+	color:#8f8;
+	text-decoration:none;
 }
 
+.lightbox-wrap .info a:hover {
+	color:#d44;
+}
+
+.lightbox-wrap .info a + a {
+	margin-left:4px;
+	margin-right:4px;
+}
 .lightbox-wrap a.selected {
-	background-color:#ea8;
+	background-color:#f0e0d6;
 	color:#800;
 	padding-left:4px;
 	padding-right:4px;
@@ -1588,8 +1645,9 @@ article.summary .replies {
 	font-size:small;
 }
 
-.wheel-status img {
-	border:none;
+.wheel-status .blink-cursor {
+	font-size:75%;
+	animation:blink .5s step-end infinite;
 }
 
 /*
@@ -1637,7 +1695,7 @@ article.summary .replies {
 	align-content:flex-start;
 	margin:0 auto 0 auto;
 	transition-property:opacity;
-	transition-duration:.4s;
+	transition-duration:.3s;
 	transition-timing-function:ease;
 	transition-delay:0s;
 	opacity:1;
@@ -1868,7 +1926,7 @@ div.catalog-popup span {
 				<h1><a href="{meta/board_top}" data-binding="template:title"></a></h1>
 			</div>
 			<div>
-				現在<span id="viewers" data-binding="xpath:/futaba/meta/viewers"></span>人くらいが見てます.
+				現在<span id="viewers" data-binding="xpath:/futaba/meta/viewers">?</span>人くらいが見てます.
 				&#160; <a class="js" href="#toggle-catalog"><kbd>c</kbd><span>カタログ</span></a>
 				&#160; <a class="js" href="#delete-post">記事削除</a>
 				<xsl:if test="$page_mode='reply'"> &#160; <a class="js" href="#track">自動追尾</a></xsl:if>
@@ -1935,7 +1993,7 @@ div.catalog-popup span {
 				/ This page is under control of <a href="https://akahuku.github.io/akahukuplus/" target="_blank"><xsl:value-of select="$app_name"/>/<xsl:value-of select="meta/version"/></a>
 			—</div>
 		</footer>
-		<div class="wheel-status hide" id="wheel-status"><span>wow</span><img width="10" height="2" src="{$platform}-extension://{meta/extension_id}/images/cursor.gif"/></div>
+		<div class="wheel-status hide" id="wheel-status"><span class="wheel-status-text"></span><span class="blink-cursor">&#x2582;</span></div>
 		<div id="ad-aside-wrap">
 			<xsl:if test="meta/configurations/param[@name='banner_enabled']/@value='1'">
 				<xsl:for-each select="meta/ads/banners/ad">
@@ -2019,20 +2077,38 @@ div.catalog-popup span {
 							<xsl:apply-templates select="meta/postform/input[@name='email']" mode="composite"/>
 						</xsl:if>
 						<xsl:apply-templates select="meta/postform/input[@name='sub']"/>
-						<tr><th>コメント</th><td colspan="2"><div class="comment-wrap"><textarea name="com" id="com" resize="false" rows="4" placeholder="Shift+Enterで送信"/></div><div id="comment-info" class="comment-info">#</div></td></tr>
+						<tr>
+							<th>コメント</th>
+							<td>
+								<div class="comment-wrap"><textarea name="com" id="com" resize="false" rows="4" placeholder="Shift+Enterで送信"/></div>
+								<div class="comment-info flex">
+									<div id="comment-info-summary">そんな決め方でいいのか！？</div>
+									<div id="comment-info-details"></div>
+								</div>
+							</td>
+						</tr>
 						<xsl:choose>
 							<xsl:when test="meta/postform/input[@name='upfile']">
 								<tr>
 									<th>添付File</th>
-									<td><input type="file" id="upfile" name="upfile"/></td>
-									<td class="thin"><span class="draw-button-wrap hide">[<a href="#draw">手書き</a>]</span> <label>[<input type="checkbox" id="textonly" name="textonly" value="on" data-href="#clear-upfile"/>画像なし]</label></td>
+									<td>
+										<div class="flex">
+											<input type="file" id="upfile" name="upfile"/>
+											<div class="draw-button-wrap bracket hide">[<a href="#draw">手書き</a>]</div>
+											<div><label>[<input type="checkbox" id="textonly" name="textonly" value="on" data-href="#clear-upfile"/>画像なし]</label></div>
+										</div>
+									</td>
 								</tr>
 							</xsl:when>
 							<xsl:otherwise>
 								<tr>
 									<th>添付File</th>
-									<td><input type="file" id="upfile" name="upfile" disabled="disabled" data-origin="js"/></td>
-									<td class="thin"><label>[<input type="checkbox" id="textonly" name="textonly" value="on" disabled="disabled" data-href="#clear-upfile"/>画像なし]</label></td>
+									<td>
+										<div class="flex">
+											<input type="file" id="upfile" name="upfile" disabled="disabled" data-origin="js"/>
+											<div class="bracket"><label>[<input type="checkbox" id="textonly" name="textonly" value="on" disabled="disabled" data-href="#clear-upfile"/>画像なし]</label></div>
+										</div>
+									</td>
 								</tr>
 							</xsl:otherwise>
 						</xsl:choose>
@@ -2133,21 +2209,27 @@ div.catalog-popup span {
 		</div>
 		<div id="lightbox-wrap" class="lightbox-wrap hide">
 			<div class="dimmer"></div>
-			<div class="image-wrap"></div>
-			<div class="loader-wrap">
-				<div><img src="{$platform}-extension://{meta/extension_id}/images/icon128.png"/><p>読み込み中...</p></div>
+			<div class="image-wrap hide"></div>
+			<div class="loader-wrap hide">
+				<div><img src="{$platform}-extension://{meta/extension_id}/images/icon128.png"/><p></p></div>
 			</div>
 			<div class="receiver">
 				<div class="info hide">
 					<a id="lightbox-link" href="#" target="_blank"></a>
 					(<span id="lightbox-ratio"></span>)
-					<span id="lightbox-zoom-modes">
-						- <a class="js" href="#lightbox-whole">全体(o)</a>
-						- <a class="js" href="#lightbox-actual-size">実寸(a)</a>
-						- <a class="js" href="#lightbox-fit-to-width">幅を最大(w)</a>
-						- <a class="js" href="#lightbox-fit-to-height">高さを最大(h)</a>
-						- <a class="js" href="#lightbox-search">この画像を検索(s)</a>
+					- <span id="lightbox-zoom-modes">
+						<a class="js" href="#lightbox-whole"><kbd>O</kbd>全体</a>
+						<a class="js" href="#lightbox-actual-size"><kbd>A</kbd>実寸</a>
+						<a class="js" href="#lightbox-fit-to-width"><kbd>W</kbd>幅を最大</a>
+						<a class="js" href="#lightbox-fit-to-height"><kbd>H</kbd>高さを最大</a>
 					</span>
+					- <span id="lightbox-rotate-modes">
+						<a class="js" href="#lightbox-normal"><kbd>n</kbd>回転しない</a>
+						<a class="js" href="#lightbox-left"><kbd>l</kbd>左</a>
+						<a class="js" href="#lightbox-right"><kbd>r</kbd>右</a>
+						<a class="js" href="#lightbox-180"><kbd>v</kbd>180度</a>
+					</span>
+					- <a class="js" href="#lightbox-search"><kbd>s</kbd>この画像を検索</a>
 				</div>
 			</div>
 		</div>
@@ -2325,28 +2407,61 @@ div.catalog-popup span {
 
 <!-- post form -->
 <xsl:template match="input[@name='name']">
-<tr><th>おなまえ</th><td colspan="2"><input type="{@type}" id="{@name}" name="{@name}" value="{@value}"/></td></tr>
+<tr>
+	<th>おなまえ</th>
+	<td>
+		<div class="flex">
+			<input type="{@type}" id="{@name}" name="{@name}" value="{@value}"/>
+		</div>
+	</td>
+</tr>
 </xsl:template>
 
 <xsl:template match="input[@name='email']" mode="simple">
-<tr><th>E-mail</th><td colspan="2"><input type="{@type}" id="{@name}" name="{@name}" value="{@value}"/>[<a class="js" href="#sage">sage</a>]</td></tr>
+<tr>
+	<th>E-mail</th>
+	<td>
+		<div class="flex">
+			<input type="{@type}" id="{@name}" name="{@name}" value="{@value}"/>
+			<div class="bracket">[<a class="js" href="#sage">sage</a>]</div>
+		</div>
+	</td>
+</tr>
 </xsl:template>
 
 <xsl:template match="input[@name='email']" mode="composite">
 <tr>
 	<th>E-mail</th>
-	<td><input type="{@type}" id="{@name}" name="{@name}" value="{@value}"/></td>
-	<td class="thin"><input type="submit" value="送信"/> [<a class="js" href="#sage">sage</a>]
+	<td>
+		<div class="flex">
+			<input type="{@type}" id="{@name}" name="{@name}" value="{@value}"/>
+			<input type="submit" value="送信"/>
+			<div class="bracket">[<a class="js" href="#sage">sage</a>]</div>
+		</div>
 	</td>
 </tr>
 </xsl:template>
 
 <xsl:template match="input[@name='sub']">
-<tr><th>題　　名</th><td><input type="{@type}" id="{@name}" name="{@name}" value="{@value}"/></td><td><input type="submit" value="送信"/></td></tr>
+<tr>
+	<th>題　　名</th>
+	<td>
+		<div class="flex">
+			<input type="{@type}" id="{@name}" name="{@name}" value="{@value}"/>
+			<input type="submit" value="送信"/>
+		</div>
+	</td>
+</tr>
 </xsl:template>
 
 <xsl:template match="input[@name='pwd']">
-<tr><th>削除キー</th><td><input type="{@type}" id="{@name}" name="{@name}" value="{@value}" maxlength="8"/> <small>(削除用.英数字で8字以内)</small></td></tr>
+<tr>
+	<th>削除キー</th>
+	<td>
+		<input type="{@type}" id="{@name}" name="{@name}" value="{@value}" maxlength="8"/>
+		<small>(削除用.英数字で8字以内)</small>
+	</td>
+</tr>
 </xsl:template>
 
 <!-- comment parts -->

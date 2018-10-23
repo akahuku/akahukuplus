@@ -1090,8 +1090,45 @@ function createResourceManager () {
 				fr.readAsDataURL(xhr.response);
 			}
 			else {
-				setSlot(path, expires, xhr.response);
-				callback(xhr.response);
+				let result = xhr.response;
+				if (false) {
+					const map = {
+						ffe: '4d3d33',
+						800: 'e5cdcc',
+						ea8: 'a05734',
+						f0e0d6: '614a3d',
+						faf4e6: '5a4539'
+					};
+					result = result.replace(/<style[^>]*>[\s\S]*?<\/style[^>]*>/gi, s1 => {
+						return s1.replace(/#((?:ffe|800|ea8)[0-9a-f]?|(?:f0e0d6|faf4e6)(?:[0-9a-f]{2})?)\b/gi, (s2, s3) => {
+							// 4 digits
+							if (s3.length == 4) {
+								let alpha = s3.substr(-1);
+								s3 = s3.substring(0, s3.length - 1);
+								let result = map[s3.toLowerCase()];
+								if (result.length == 3) {
+									return `#${result}${alpha}`;
+								}
+								else {
+									return `#${result}${alpha}${alpha}`;
+								}
+							}
+
+							// 8 digits
+							else if (s3.length == 8) {
+								let alpha = s3.substr(-2);
+								s3 = s3.substring(0, s3.length - 2);
+								let result = map[s3.toLowerCase()];
+								return `#${result}${alpha}`;
+							}
+
+							// others
+							return `#${map[s3.toLowerCase()]}`;
+						});
+					});
+				}
+				setSlot(path, expires, result);
+				callback(result);
 			}
 		};
 		xhr.onerror = () => { callback(null); };
@@ -1387,12 +1424,12 @@ function createXMLGenerator () {
 	LinkTarget.prototype.getHref = function (re, anchor) {
 		return this.completeScheme(this.handler(
 			re.slice(this.offset, this.offset + this.backrefLength)
-				.map(function (a) {return a == undefined ? '' : a}),
+			  .map(a => a == undefined ? '' : a),
 			anchor
 		));
 	};
 	LinkTarget.prototype.completeScheme = function (url) {
-		var scheme = /^[^:]+/.exec(url)[0];
+		let scheme = /^[^:]+/.exec(url)[0];
 		if (/^h?t?t?p?s$/.test(scheme)) {
 			scheme = 'https';
 		}
@@ -1584,6 +1621,7 @@ function createXMLGenerator () {
 
 	function linkify (node, opts) {
 		opts = opts || {linkify: true, emojify: true};
+		let emojiRegex = Akahuku.twemoji.regex;
 		let r = node.ownerDocument.createRange();
 		let re;
 		while (node.lastChild.nodeType == 3) {
@@ -1614,7 +1652,7 @@ function createXMLGenerator () {
 				anchor.setAttribute('class', linkTargets[index].className);
 				anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
 			}
-			else if (opts.emojify && (re = twemoji.regex.exec(node.lastChild.nodeValue))) {
+			else if (opts.emojify && (re = emojiRegex.exec(node.lastChild.nodeValue))) {
 				let emoji = node.ownerDocument[CRE]('emoji');
 
 				r.setStart(node.lastChild, re.index);
@@ -4056,23 +4094,24 @@ function createQuotePopup () {
 		div.appendChild(quoteOrigin.element.cloneNode(true));
 
 		// some tweaks for contents
-		let noElm = $qs('.no', div);
-		if (noElm) {
-			let a = document[CRE]('a');
-			noElm.parentNode.replaceChild(a, noElm);
-			a.className = 'jumpto-quote-anchor';
-			a.href = '#jumpto-quote-origin';
-			a.textContent = noElm.textContent;
-			a.setAttribute(ORIGIN_ID_ATTR, quoteOrigin.element.id);
+		{
+			let noElm = $qs('.no', div);
+			if (noElm) {
+				let a = document[CRE]('a');
+				noElm.parentNode.replaceChild(a, noElm);
+				a.className = 'jumpto-quote-anchor';
+				a.href = '#jumpto-quote-origin';
+				a.textContent = noElm.textContent;
+				a.setAttribute(ORIGIN_ID_ATTR, quoteOrigin.element.id);
+			}
 		}
-		let checkElm = $qs('input[type="checkbox"]', div);
-		if (checkElm) {
-			checkElm.parentNode.removeChild(checkElm);
-		}
-		let iframe;
-		while ((iframe = $qs('iframe', div))) {
-			iframe.parentNode.removeChild(iframe);
-		}
+
+		Array.prototype.forEach.call(
+			$qsa('input[type="checkbox"], iframe, video, audio', div),
+			node => {
+				node.parentNode.removeChild(node);
+			}
+		);
 
 		// positioning
 		div.style.visibility = 'hidden';
@@ -4805,17 +4844,21 @@ function setupPostFormItemEvent (items) {
 	let initialComHeight;
 	let timer;
 
-	function updateInfoCore (item) {
+	function updateInfoCore (result, item) {
 		let el = $(item.id);
-		if (!el) return;
+		if (!el) return result;
 
+		let span = $('comment-info-details').appendChild(document[CRE]('span'));
 		let lines = el.value.replace(/[\r\n\s]+$/, '').split(/\r?\n/);
 		let bytes = lines.join('\r\n').replace(/[^\u0001-\u007f\uff61-\uff9f]/g, '__').length;
 		let linesOvered = item.lines ? lines.length > item.lines : false;
-		let bytesOvered = item.bytes ? bytes > item.byltes : false;
+		let bytesOvered = item.bytes ? bytes > item.bytes : false;
 
-		let span = $('comment-info').appendChild(document[CRE]('span'));
-		linesOvered || bytesOvered && span.classList.add('warn');
+		if (linesOvered || bytesOvered) {
+			span.classList.add('warn');
+			result = true;
+		}
+
 		$t(span, [
 			item.head  ? `${item.head}:` : '',
 			item.lines ? `${lines.length}/${item.lines}行` : '',
@@ -4823,6 +4866,8 @@ function setupPostFormItemEvent (items) {
 			item.bytes ? `${bytes}/${item.bytes}` : '',
 			item.lines ? ')' : ''
 		].join(''));
+
+		return result;
 	}
 
 	function fixTextAreaHeight (e) {
@@ -4838,8 +4883,15 @@ function setupPostFormItemEvent (items) {
 	}
 
 	function updateInfo (e) {
-		$('comment-info')[IHTML] = '';
-		items.forEach(updateInfoCore);
+		empty('comment-info-details');
+
+		const summary = $('comment-info-summary');
+		if (items.reduce(updateInfoCore, false)) {
+			summary.classList.add('blink');
+		}
+		else {
+			summary.classList.remove('blink');
+		}
 	}
 
 	function register (fn) {
@@ -4948,11 +5000,11 @@ function setupPostFormItemEvent (items) {
 
 		e.preventDefault();
 		$('postform-drop-indicator').classList.add('hide');
-		handlePaste(e);
+		handleTextAreaPaste(e);
 		$('com').focus();
 	}
 
-	function handlePaste (e) {
+	function handleTextAreaPaste (e) {
 		const upfile = $('upfile');
 		if (!isFileElementReady()) return;
 
@@ -5008,24 +5060,30 @@ function setupPostFormItemEvent (items) {
 		});
 	}
 
+	items.forEach(item => {
+		let el = $(item.id);
+		if (!el) return;
+
+		if (el.nodeName == 'TEXTAREA') {
+			el.addEventListener('input', fixTextAreaHeight);
+			el.addEventListener('paste', handleTextAreaPaste);
+		}
+		else {
+			el.addEventListener('paste', updateInfo);
+		}
+
+		el.addEventListener('input', updateInfo);
+	});
+
+	document.addEventListener('dragover', handleDragOver);
+	document.addEventListener('dragenter', handleDragEnter, true);
+	document.addEventListener('dragleave', handleDragLeave, true);
+	document.addEventListener('drop', handleDrop);
+
 	let com = $('com');
 	if (com) {
 		initialComHeight = com.offsetHeight;
-		items.forEach(item => {
-			let el = $(item.id);
-			if (!el) return;
-
-			if (el.nodeName == 'TEXTAREA') {
-				el.addEventListener('input', fixTextAreaHeight);
-			}
-			el.addEventListener('input', updateInfo);
-		});
 		updateInfo.call(com);
-		com.addEventListener('paste', handlePaste);
-		document.addEventListener('dragover', handleDragOver);
-		document.addEventListener('dragenter', handleDragEnter, true);
-		document.addEventListener('dragleave', handleDragLeave, true);
-		document.addEventListener('drop', handleDrop);
 	}
 }
 
@@ -5100,7 +5158,7 @@ function setupCustomEventHandler () {
 		}
 		else {
 			ws.classList.remove('hide');
-			$t(ws.getElementsByTagName('span')[0], s);
+			$t($qs('.wheel-status-text', ws), s);
 			if (statusHideTimer) {
 				clearTimeout(statusHideTimer);
 				statusHideTimer = null;
@@ -5166,421 +5224,449 @@ function setupSearchResultPopup () {
  * <<<1 lightbox functions
  */
 
-function lightbox (anchor, ignoreThumbnail) {
+function lightbox (anchor) {
+	const RUNNING_EXCLUSION_KEY = 'data-lightbox-status';
 	const MARGIN = 32;
 	const CLICK_THRESHOLD_DISTANCE = 4;
 	const CLICK_THRESHOLD_TIME = 500;
-	const WHEEL_SCROLL_UNIT_FACTOR = 0.4;
-	const ZOOMMODE_KEY = `${APP_NAME}.lightbox.zoomMode`;
+	const WHEEL_SCROLL_UNIT_FACTOR = 0.33;
+	const DIMMER_TRANSITION_DURATION_MSECS = 400;
+	const IMAGE_TRANSITION_DURATION_MSECS = 300;
 
-	var lightboxWrap;
-	var dimmer;
-	var imageWrap;
-	var loaderWrap;
-	var image;
-	var receiver;
-	var linkedImage;
-	var zoomMode = 'whole';
-	var isInTransition = true;
-	var dragState = {x:0, y:0, region:0};
+	let lightboxWrap;
+	let dimmer;
+	let imageWrap;
+	let loaderWrap;
+	let receiver;
+	let image;
+	let zoomMode;
+	let rotation;
+	let isInTransition;
+	let dragState = {
+		x: 0,
+		y: 0,
+		region: -2,
+		imageRect: null
+	};
+
+	/*
+	 * private functions
+	 */
+
+	function isScrollableHorizontally () {
+		return image && imageWrap.offsetWidth > viewportRect.width;
+	}
+
+	function isScrollableVertically () {
+		return image && imageWrap.offsetHeight > viewportRect.height;
+	}
+
+	function isScrollable () {
+		return isScrollableHorizontally() || isScrollableVertically();
+	}
+
+	function isRotated () {
+		return rotation == 'left' || rotation == 'right';
+	}
+
+	function appendPxSuffix (obj, suffix) {
+		let result = {};
+		suffix || (suffix = 'px');
+		for (let i in obj) {
+			if (typeof obj[i] == 'number') {
+				result[i] = obj[i] + 'px';
+			}
+		}
+		return result;
+	}
 
 	function getRegionId (e) {
-		var lightbox = $qs('#lightbox-wrap');
-		var imageRect = image ? image.getBoundingClientRect() : null;
-		var imageWrapRect = $qs('.image-wrap', lightbox).getBoundingClientRect();
+		const imageRect = dragState.imageRect;
+		const imageWrapRect = image.getBoundingClientRect();
+
+		let result;
+
 		if (imageRect
 		&&  e.clientX >= imageRect.left && e.clientX < imageRect.right
 		&&  e.clientY >= imageRect.top  && e.clientY < imageRect.bottom) {
-			return 0;
+			result = 0;
 		}
-		else if (e.clientX >= imageWrapRect.left && e.clientX < imageWrapRect.right
+		/*else if (e.clientX >= imageWrapRect.left && e.clientX < imageWrapRect.right
 		     &&  e.clientY >= imageWrapRect.top  && e.clientY < imageWrapRect.bottom) {
-			return -1;
-		}
+			result = -1;
+		}*/
 		else {
-			return -2;
+			result = -1;
 		}
+		return result;
+	}
+
+	function getDistance (e) {
+		return Math.sqrt(
+			Math.pow(dragState.x - e.clientX, 2) +
+			Math.pow(dragState.y - e.clientY, 2));
 	}
 
 	function getImageRect () {
-		var vw = viewportRect.width - MARGIN * 2;
-		var vh = viewportRect.height - MARGIN * 2;
-		var tw = image.getAttribute('data-thumb-width') - 0;
-		var th = image.getAttribute('data-thumb-height') - 0;
-		var width = 0, height = 0, ratio = 0;
+		let vleft, vtop, vwidth, vheight;
+		let width = 0, height = 0;
+		let zm = zoomMode;
 
-		switch (zoomMode) {
+		if (arguments.length >= 1 && typeof arguments[0] == 'object') {
+			vleft = arguments[0].left;
+			vtop = arguments[0].top;
+			vwidth = arguments[0].width;
+			vheight = arguments[0].height;
+			zm = 'whole';
+		}
+		else {
+			vleft = MARGIN;
+			vtop = MARGIN;
+			vwidth = viewportRect.width - MARGIN * 2;
+			vheight = viewportRect.height - MARGIN * 2;
+		}
+
+		const nwidth = isRotated() ? image.naturalHeight : image.naturalWidth;
+		const nheight = isRotated() ? image.naturalWidth : image.naturalHeight;
+
+		switch (zm) {
 		case 'whole':
-			// portrait image
-			if (tw < th) {
-				ratio = tw / th;
-				width = Math.floor(vh * ratio);
-				height = vh;
-				if (width > vw) {
-					ratio = th / tw;
-					width = vw;
-					height = Math.floor(vw * ratio);
-				}
+			if (nwidth <= vwidth && nheight <= vheight) {
+				width = nwidth;
+				height = nheight;
 			}
-			// landscape image
 			else {
-				ratio = th / tw;
-				width = vw;
-				height = Math.floor(vw * ratio);
-				if (height > vh) {
-					ratio = tw / th;
-					width = Math.floor(vh * ratio);
-					height = vh;
+				// portrait image
+				if (nwidth < nheight) {
+					let ratio = nwidth / nheight;
+					width = Math.floor(vheight * ratio);
+					height = vheight;
+					if (width > vwidth) {
+						ratio = nheight / nwidth;
+						width = vwidth;
+						height = Math.floor(vwidth * ratio);
+					}
+				}
+				// landscape image
+				else {
+					let ratio = nheight / nwidth;
+					width = vwidth;
+					height = Math.floor(vwidth * ratio);
+					if (height > vheight) {
+						ratio = nwidth / nheight;
+						width = Math.floor(vheight * ratio);
+						height = vheight;
+					}
 				}
 			}
 			break;
 
 		case 'actual-size':
-			width = image.naturalWidth;
-			height = image.naturalHeight;
+			width = nwidth;
+			height = nheight;
 			break;
 
 		case 'fit-to-width':
-			width = vw;
-			height = Math.floor(width * (th / tw));
+			width = vwidth;
+			height = Math.floor(width * (nheight / nwidth));
 			break;
 
 		case 'fit-to-height':
-			height = vh;
-			width = Math.floor(height * (tw / th));
+			height = vheight;
+			width = Math.floor(height * (nwidth / nheight));
 			break;
 		}
 
-		return {
-			left:Math.floor(viewportRect.width / 2 - width / 2),
-			top:Math.floor(viewportRect.height / 2 - height / 2),
-			width:width,
-			height:height
+		const result = {
+			left: vleft + vwidth / 2 - width / 2,
+			top: vtop + vheight / 2 - height / 2,
+			width: width,
+			height: height
 		};
+		return result;
 	}
 
-	function applyGeometory (rect, dropEndEvent) {
-		var currentRect = image.getBoundingClientRect();
+	function applyGeometory (rect) {
+		let result;
+		let updated = false;
+
+		// positioning
+		const currentRect = imageWrap.getBoundingClientRect();
 		if (rect.left != currentRect.left
 		||  rect.top != currentRect.top
 		||  rect.width != currentRect.width
 		||  rect.height != currentRect.height) {
+			// styling image wrapper
+			Object.assign(imageWrap.style, appendPxSuffix(rect));
 
-			['left', 'top', 'width', 'height']
-				.forEach(function (p) {image.style[p] = rect[p] + 'px'});
-
-			if (!dropEndEvent) {
-				transitionend(image, handleImageTransitionEnd);
-				isInTransition = true;
+			// styling image itself
+			if (isRotated()) {
+				image.style.width = rect.height + 'px';
+				image.style.height = rect.width + 'px';
 			}
+			else {
+				image.style.width = rect.width + 'px';
+				image.style.height = rect.height + 'px';
+			}
+			updated = true;
+		}
+
+		// rotation
+		const degrees = {
+			'normal': 0,
+			'left': -90,
+			'right': 90,
+			'180': 180
+		};
+		const currentTransform = /rotate\(([-0-9]+)deg\)/.exec(image.style.transform) || ['', 0];
+		const currentDegree = parseInt(currentTransform[1], 10);
+		let newDegree = degrees[rotation];
+		if (newDegree == 180) {
+			newDegree *= currentDegree >= 0 ? 1 : -1;
+		}
+		if (newDegree != currentDegree) {
+			image.style.transform = `rotate(${newDegree}deg)`;
+			updated = true;
+		}
+
+		//
+		if (updated) {
+			image.style.opacity = 1.0;
+			result = transitionendp(image, IMAGE_TRANSITION_DURATION_MSECS);
 		}
 		else {
-			handleImageTransitionEnd();
+			result = Promise.resolve(true);
 		}
+
+		isInTransition = true;
+		return result.then(() => {
+			// show info panel
+			$qs('.info', lightboxWrap).classList.remove('hide');
+
+			// update mode links
+			updateModeLinks();
+
+			// update geometory info
+			updateGeometoryInfo();
+
+			isInTransition = false;
+		});
 	}
 
-	function updateZoomModeLinks () {
-		Array.prototype.forEach.call(
-			$qsa('#lightbox-zoom-modes a'),
-			function (node) {
-				node.classList.remove('selected');
-				node.getAttribute('href') == '#lightbox-' + zoomMode && node.classList.add('selected');
-			}
-		);
-	}
-
-	function updateGeometoryInfo () {
-		if (image.naturalWidth && image.naturalHeight) {
-			$t('lightbox-ratio',
-				`${image.naturalWidth}x${image.naturalHeight}, ` +
-				(image.offsetWidth / image.naturalWidth * 100).toFixed(2) + '%');
-		}
-	}
-
-	function setZoomMode (zm, force) {
+	function setZoomMode (zm, opts) {
+		opts || (opts = {});
+		if (!image) return;
 		if (zm != 'whole'
 		&& zm != 'actual-size'
 		&& zm != 'fit-to-width'
 		&& zm != 'fit-to-height') return;
-		if (zm == zoomMode && !force) return;
 
 		zoomMode = zm;
 		storage.runtime.lightbox.zoomMode = zm;
 		storage.saveRuntime();
 
-		/*
-		 * TODO: THIS STATEMENT IS TRANSIENT.
-		 * WHEN AKAHUKUPLUS THAT USES chrome.storage HAS FULLY DISTRIBUTED,
-		 * WE SHOULD DELETE THIS CODE.
-		 */
-		window.localStorage.removeItem(ZOOMMODE_KEY);
+		let rect;
+		if (zoomMode == 'actual-size'
+		&& opts.event && getRegionId(opts.event) == 0
+		&& (image.naturalWidth > viewportRect.width - MARGIN * 2 || image.naturalHeight > viewportRect.height - MARGIN * 2)) {
+			const ratio = image.offsetWidth / image.naturalWidth;
+			const imageRect = image.getBoundingClientRect();
+			const offsetX = (opts.event.clientX - imageRect.left) / ratio;
+			const offsetY = (opts.event.clientY - imageRect.top) / ratio;
 
-		applyGeometory(getImageRect());
-	}
-
-	function initZoomMode () {
-		var zm = storage.config.lightbox_zoom_mode.value;
-		if (zm == 'last') {
-			zm = storage.runtime.lightbox.zoomMode;
-		}
-		setZoomMode(zm);
-	}
-
-	function init () {
-		var thumbImage = ignoreThumbnail ? null : $qs('img', anchor);
-		lightboxWrap = $('lightbox-wrap');
-		dimmer = $qs('.dimmer', lightboxWrap);
-		imageWrap = $qs('.image-wrap', lightboxWrap);
-		loaderWrap = $qs('.loader-wrap', lightboxWrap);
-		receiver = $qs('.receiver', lightboxWrap);
-
-		if (!lightboxWrap || !dimmer || !imageWrap || !loaderWrap || !receiver
-		|| imageWrap.childNodes.length) {
-			anchor = image = lightboxWrap = dimmer = imageWrap = loaderWrap = receiver = null;
-			return;
-		}
-
-		appStates.unshift('lightbox');
-
-		// thumbnail image
-		if (thumbImage) {
-			image = imageWrap.appendChild(thumbImage.cloneNode(false));
-			['className', 'width', 'height'].forEach(function (p) {image.removeAttribute(p)});
-
-			var rect = thumbImage.getBoundingClientRect();
-			image.setAttribute('data-thumb-width', rect.width);
-			image.setAttribute('data-thumb-height', rect.height);
-			applyGeometory(rect, true);
-		}
-
-		if (thumbImage) {
-			loaderWrap.classList.add('hide');
-		}
-		else {
-			loaderWrap.classList.remove('hide');
-		}
-
-		// info
-		$t('lightbox-ratio', '読み込み中...');
-		var link = $('lightbox-link');
-		$t(link, anchor.href.match(/\/([^\/]+)$/)[1]);
-		link.href = anchor.href;
-
-		// linked image
-		linkedImage = new Image();
-		linkedImage.src = anchor.href;
-		if (linkedImage.naturalWidth && linkedImage.naturalHeight) {
-			handleLinkedImageLoad.call(linkedImage);
-		}
-		else {
-			linkedImage.addEventListener('load', handleLinkedImageLoad, false);
-			linkedImage.addEventListener('error', handleLinkedImageError, false);
-		}
-
-		// register event handlers
-		receiver.addEventListener('mousedown', handleMousedown, false);
-		receiver.addEventListener('mouseup', handleMouseup, false);
-		receiver.addEventListener('wheel', handleMousewheel, false);
-
-		clickDispatcher
-			.add('#lightbox-whole', handleZoomModeClick)
-			.add('#lightbox-actual-size', handleZoomModeClick)
-			.add('#lightbox-fit-to-width', handleZoomModeClick)
-			.add('#lightbox-fit-to-height', handleZoomModeClick)
-			.add('#lightbox-search', handleSearch);
-
-		keyManager
-			.addStroke('lightbox', ['o', 'a', 'w', 'h'], handleZoomModeKey)
-			.addStroke('lightbox', '\u001b', leave)
-			.addStroke('lightbox', 's', handleSearch)
-			.addStroke('lightbox', [' ', '<S-space>'], handleStroke, true)
-			.updateManifest();
-
-		// disable auto selection menu
-		selectionMenu.enabled = false;
-
-		// start
-		lightboxWrap.classList.remove('hide');
-		if (thumbImage) {
-			setTimeout(function () {
-				applyGeometory(getImageRect());
-				dimmer.classList.add('run');
-			}, 0);
-		}
-		else {
-			isInTransition = false;
-			setTimeout(function () {
-				dimmer.classList.add('run');
-			}, 0);
-		}
-	}
-
-	function handleImageTransitionEnd (e) {
-		// show info panel
-		$qs('.info', lightboxWrap).classList.remove('hide');
-
-		// update zoom mode links
-		updateZoomModeLinks();
-
-		// update geometory info
-		if (image.src == anchor.href) {
-			updateGeometoryInfo();
-		}
-
-		isInTransition = false;
-	}
-
-	function handleLinkedImageLoad () {
-		this.removeEventListener('load', handleLinkedImageLoad, false);
-		this.removeEventListener('error', handleLinkedImageError, false);
-
-		if (image) {
-			image.src = this.src;
-			updateGeometoryInfo();
-
-			setTimeout(function () {
-				initZoomMode();
-			}, 0);
-		}
-		else {
-			image = this;
-			imageWrap.appendChild(image);
-			image.setAttribute('data-thumb-width', image.naturalWidth);
-			image.setAttribute('data-thumb-height', image.naturalHeight);
-			loaderWrap.classList.add('hide');
-
-			var w = image.naturalWidth;
-			var h = image.naturalHeight;
-			while (w > viewportRect.width / 4 || h > viewportRect.height / 4) {
-				w /= 2;
-				h /= 2;
+			rect = getImageRect();
+			if (image.naturalWidth > viewportRect.width - MARGIN * 2) {
+				rect.left = opts.event.clientX - offsetX;
 			}
-
-			applyGeometory({
-				left:Math.floor(viewportRect.width / 2 - w / 2),
-				top:Math.floor(viewportRect.height / 2 - h / 2),
-				width:Math.floor(w),
-				height:Math.floor(h)
-			}, true);
-
-			setTimeout(function () {
-				applyGeometory(getImageRect());
-				initZoomMode();
-			}, 0);
+			if (image.naturalHeight > viewportRect.height - MARGIN * 2) {
+				rect.top = opts.event.clientY - offsetY;
+			}
 		}
 
-		linkedImage = null;
+		if (!rect) {
+			rect = getImageRect();
+		}
+
+		applyGeometory(rect);
 	}
 
-	function handleLinkedImageError () {
-		this.removeEventListener('load', handleLinkedImageLoad, false);
-		this.removeEventListener('error', handleLinkedImageError, false);
-		linkedImage = null;
+	function updateModeLinks () {
+		Array.prototype.forEach.call(
+			$qsa('#lightbox-zoom-modes a'),
+			function (node) {
+				if (node.getAttribute('href') == '#lightbox-' + zoomMode) {
+					node.classList.add('selected');
+				}
+				else {
+					node.classList.remove('selected');
+				}
+			}
+		);
+
+		Array.prototype.forEach.call(
+			$qsa('#lightbox-rotate-modes a'),
+			function (node) {
+				if (node.getAttribute('href') == '#lightbox-' + rotation) {
+					node.classList.add('selected');
+				}
+				else {
+					node.classList.remove('selected');
+				}
+			}
+		);
 	}
 
-	function handleMousedown (e) {
+	function updateGeometoryInfo () {
+		if (!image) return;
+		if (!image.naturalWidth || !image.naturalHeight) return;
+
+		$t('lightbox-ratio',
+			`${image.naturalWidth}x${image.naturalHeight}, ` +
+			(image.offsetWidth / image.naturalWidth * 100).toFixed(2) + '%');
+	}
+
+	/*
+	 * event handlers
+	 */
+
+	function handlePointerDown (e) {
 		if (isInTransition) return;
 
-		e.preventDefault();
-		e.stopPropagation();
+		receiver.setPointerCapture(e.pointerId);
+		document.body.style.userSelect = 'none';
 
-		if (e.target != e.currentTarget || e.button != 0) {
+		e.preventDefault();
+
+		if (e.target != e.currentTarget || e.buttons != 1) {
 			dragState.region = -9;
 			return;
 		}
 
+		dragState.time = Date.now();
 		dragState.x = e.clientX;
 		dragState.y = e.clientY;
-		dragState.region = getRegionId(e);
-		dragState.imageRect = image ? image.getBoundingClientRect() : null;
-		dragState.time = Date.now();
 
 		if (image) {
-			if (image.classList.contains('dragging')) {
+			dragState.imageRect = image.getBoundingClientRect();
+			dragState.region = getRegionId(e);
+
+			if (imageWrap.classList.contains('dragging')) {
 				dragState.x = dragState.y = -1;
 				dragState.region = -2;
 			}
 			else {
-				receiver.addEventListener(MMOVE_EVENT_NAME, handleMousemove, false);
-				image.classList.add('dragging');
+				receiver.addEventListener('pointermove', handlePointerMove);
+				imageWrap.classList.add('dragging');
 			}
+		}
+		else {
+			dragState.imageRect = null;
+			dragState.region = -2;
 		}
 	}
 
-	function handleMousemove (e) {
+	function handlePointerMove (e) {
 		if (isInTransition) return;
 		if (dragState.region != 0) return;
 
-		e.preventDefault();
-		e.stopPropagation();
-
-		if (!image) return;
-
-		var left, top;
+		let left, top;
 		switch (zoomMode) {
 		case 'actual-size':
-			if (image.offsetWidth > viewportRect.width) {
+			//if (isScrollableHorizontally()) {
 				left = dragState.imageRect.left + (e.clientX - dragState.x);
-			}
-			if (image.offsetHeight > viewportRect.height) {
+			//}
+			//if (isScrollableVertically()) {
 				top = dragState.imageRect.top + (e.clientY - dragState.y);
-			}
+			//}
 			break;
 
 		case 'fit-to-width':
-			if (image.offsetHeight > viewportRect.height) {
+			if (isScrollableVertically()) {
 				top = dragState.imageRect.top + (e.clientY - dragState.y);
 			}
 			break;
 
 		case 'fit-to-height':
-			if (image.offsetWidth > viewportRect.width) {
+			if (isScrollableHorizontally()) {
 				left = dragState.imageRect.left + (e.clientX - dragState.x);
 			}
 			break;
 		}
 
 		if (left != undefined) {
-			if (left > MARGIN) {
-				left = MARGIN;
-			}
-			if (left < viewportRect.width - image.offsetWidth - MARGIN) {
-				left = viewportRect.width - image.offsetWidth - MARGIN;
-			}
-			image.style.left = left + 'px';
+			imageWrap.style.left = left + 'px';
 		}
 
 		if (top != undefined) {
-			if (top > MARGIN) {
-				top = MARGIN;
-			}
-			if (top < viewportRect.height - image.offsetHeight - MARGIN) {
-				top = viewportRect.height - image.offsetHeight - MARGIN;
-			}
-			image.style.top = top + 'px';
+			imageWrap.style.top = top + 'px';
 		}
 	}
 
-	function handleMouseup (e) {
+	function handlePointerUp (e) {
 		if (isInTransition) return;
 
-		e.preventDefault();
-		e.stopPropagation();
+		document.body.style.userSelect = '';
+		image && imageWrap.classList.remove('dragging');
+		receiver.releasePointerCapture(e.pointerId);
+		receiver.removeEventListener('pointermove', handlePointerMove);
 
-		image && image.classList.remove('dragging');
-		receiver.removeEventListener(MMOVE_EVENT_NAME, handleMousemove, false);
-
-		var d = Math.sqrt(
-			Math.pow(dragState.x - e.clientX, 2) +
-			Math.pow(dragState.y - e.clientY, 2));
-
+		// clicked?
 		if (Date.now() - dragState.time < CLICK_THRESHOLD_TIME
-		&&  d < CLICK_THRESHOLD_DISTANCE) {
-			leave();
+		&&  getDistance(e) < CLICK_THRESHOLD_DISTANCE) {
+			switch (dragState.region) {
+			case 0: // inside image
+				setZoomMode(
+					zoomMode == 'whole' ? 'actual-size' : 'whole',
+					{event: e});
+				break;
+			default: // outside image
+				leave();
+				break;
+			}
+		}
+
+		// dragged?
+		else if (image) {
+			const rect = imageWrap.getBoundingClientRect();
+			let left = rect.left;
+			let top = rect.top;
+
+			if (isScrollableHorizontally()) {
+				if (left > MARGIN) {
+					left = MARGIN;
+				}
+				if (left < viewportRect.width - imageWrap.offsetWidth - MARGIN) {
+					left = viewportRect.width - imageWrap.offsetWidth - MARGIN;
+				}
+			}
+			else {
+				left = viewportRect.width / 2 - imageWrap.offsetWidth / 2;
+			}
+
+			if (isScrollableVertically()) {
+				if (top > MARGIN) {
+					top = MARGIN;
+				}
+				if (top < viewportRect.height - imageWrap.offsetHeight - MARGIN) {
+					top = viewportRect.height - imageWrap.offsetHeight - MARGIN;
+				}
+			}
+			else {
+				top = viewportRect.height / 2 - imageWrap.offsetHeight / 2;
+			}
+
+			if (left != rect.left || top != rect.top) {
+				isInTransition = true;
+				imageWrap.style.left = left + 'px';
+				imageWrap.style.top = top + 'px';
+				transitionendp(image, IMAGE_TRANSITION_DURATION_MSECS).then(() => {
+					isInTransition = false;
+				});
+			}
 		}
 	}
 
-	function handleMousewheel (e) {
+	function handlePointerWheel (e) {
 		if (isInTransition) return;
 
 		e.preventDefault();
@@ -5588,13 +5674,13 @@ function lightbox (anchor, ignoreThumbnail) {
 
 		if (!image) return;
 
-		var top;
-		var imageRect = image.getBoundingClientRect();
+		let top;
+		let imageRect = imageWrap.getBoundingClientRect();
 		switch (zoomMode) {
 		case 'actual-size':
 		case 'fit-to-width':
-			if (image.offsetHeight > viewportRect.height) {
-				var sign;
+			if (imageWrap.offsetHeight > viewportRect.height) {
+				let sign;
 				if (e.deltaY) {
 					sign = e.deltaY > 0 ? -1 : 1;
 				}
@@ -5611,29 +5697,51 @@ function lightbox (anchor, ignoreThumbnail) {
 			if (top > MARGIN) {
 				top = MARGIN;
 			}
-			if (top < viewportRect.height - image.offsetHeight - MARGIN) {
-				top = viewportRect.height - image.offsetHeight - MARGIN;
+			if (top < viewportRect.height - imageWrap.offsetHeight - MARGIN) {
+				top = viewportRect.height - imageWrap.offsetHeight - MARGIN;
 			}
-			image.style.top = top + 'px';
+			isInTransition = true;
+			imageWrap.style.top = top + 'px';
+			transitionendp(image, IMAGE_TRANSITION_DURATION_MSECS).then(() => {
+				isInTransition = false;
+			});
 		}
 	}
 
 	function handleZoomModeClick (e, t) {
 		if (isInTransition) return;
 		if (!image) return;
-		setZoomMode(
-			t.getAttribute('href').replace('#lightbox-', ''));
+		setZoomMode(t.getAttribute('href').replace('#lightbox-', ''));
+	}
+
+	function handleRotateModeClick (e, t) {
+		if (isInTransition) return;
+		if (!image) return;
+		rotation = t.getAttribute('href').replace('#lightbox-', '');
+		setZoomMode('whole');
 	}
 
 	function handleZoomModeKey (e) {
 		if (isInTransition) return;
 		if (!image) return;
 		setZoomMode({
-			'o': 'whole',
-			'a': 'actual-size',
-			'w': 'fit-to-width',
-			'h': 'fit-to-height'
+			'O': 'whole',
+			'A': 'actual-size',
+			'W': 'fit-to-width',
+			'H': 'fit-to-height'
 		}[e.key]);
+	}
+
+	function handleRotateModeKey (e) {
+		if (isInTransition) return;
+		if (!image) return;
+		rotation = {
+			'n': 'normal',
+			'l': 'left',
+			'r': 'right',
+			'v': '180'
+		}[e.key];
+		setZoomMode('whole');
 	}
 
 	function handleSearch (e) {
@@ -5642,14 +5750,19 @@ function lightbox (anchor, ignoreThumbnail) {
 		let lang = window.navigator.browserLanguage
 			|| window.navigator.language
 			|| window.navigator.userLanguage;
-		var url = 'http://www.google.com/searchbyimage'
+		let url = 'http://www.google.com/searchbyimage'
 			+ `?sbisrc=${APP_NAME}`
 			+ `&hl=${lang.toLowerCase()}`
 			+ `&image_url=${encodeURIComponent(image.src)}`;
-			sendToBackend('open', {url:url, selfUrl:window.location.href});
+		sendToBackend('open', {
+			url: url,
+			selfUrl: window.location.href
+		});
 	}
 
 	function handleStroke (e) {
+		if (isInTransition) return;
+		if (!image) return;
 		let view = window[USW] || window;
 		let ev = new WheelEvent('wheel', {
 			bubbles: true, cancelable: true, view: view,
@@ -5660,36 +5773,188 @@ function lightbox (anchor, ignoreThumbnail) {
 		receiver.dispatchEvent(ev);
 	}
 
+	/*
+	 * entry functions
+	 */
+
+	function init () {
+		if (document.body.getAttribute(RUNNING_EXCLUSION_KEY) != null) return;
+
+		// block recursive execution
+		document.body.setAttribute(RUNNING_EXCLUSION_KEY, 'loading');
+
+		// initialize variables
+		lightboxWrap = $('lightbox-wrap');
+		dimmer = $qs('.dimmer', lightboxWrap);
+		imageWrap = $qs('.image-wrap', lightboxWrap);
+		loaderWrap = $qs('.loader-wrap', lightboxWrap);
+		receiver = $qs('.receiver', lightboxWrap);
+		rotation = 'normal';
+
+		// initialize zoom mode
+		zoomMode = storage.config.lightbox_zoom_mode.value;
+		if (zoomMode == 'last') {
+			zoomMode = storage.runtime.lightbox.zoomMode;
+		}
+
+		// info
+		$t('lightbox-ratio', '読み込み中...');
+		let link = $('lightbox-link');
+		$t(link, anchor.href.match(/\/([^\/]+)$/)[1]);
+		link.href = anchor.href;
+
+		// start
+		lightboxWrap.classList.remove('hide');
+		Promise.all([
+			getImageFrom(anchor.href).then(loadedImage => {
+				loaderWrap.classList.add('hide');
+				image = loadedImage;
+				if (image) {
+					imageWrap.appendChild(image);
+
+					let thumb = $qs('img', anchor);
+					if (thumb) {
+						let rect1 = thumb.getBoundingClientRect();
+						let rect2 = getImageRect(rect1);
+						let rect3 = appendPxSuffix(rect2);
+						Object.assign(imageWrap.style, rect3);
+						image.style.width = rect3.width;
+						image.style.height = rect3.height;
+					}
+					else {
+						let rect1 = anchor.getBoundingClientRect();
+						let size = Math.max(rect1.width, rect1.height);
+						let rect2 = getImageRect({
+							left: rect1.left + rect1.width / 2 - size / 2,
+							top: rect1.top + rect1.height / 2 - size / 2,
+							width: size,
+							height: size
+						});
+						let rect3 = appendPxSuffix(rect2);
+						Object.assign(imageWrap.style, rect3);
+						image.style.width = rect3.width;
+						image.style.height = rect3.height;
+					}
+
+					imageWrap.classList.remove('hide');
+
+					return delay(100).then(() => applyGeometory(getImageRect()));
+				}
+				else {
+					loaderWrap.classList.remove('hide');
+					$t($qs('p', loaderWrap), '読み込みに失敗しました。');
+				}
+			}),
+			delay(0)
+				.then(() => dimmer.classList.add('run'))
+				.then(() => transitionendp(dimmer, DIMMER_TRANSITION_DURATION_MSECS))
+				.then(() => {
+					appStates.unshift('lightbox');
+
+					receiver.addEventListener('pointerdown', handlePointerDown);
+					receiver.addEventListener('pointermove', handlePointerMove);
+					receiver.addEventListener('pointerup', handlePointerUp);
+					receiver.addEventListener('wheel', handlePointerWheel);
+					//receiver.addEventListener('pointercancel', e => {console.log(e.type);});
+
+					// debug handler
+					if (false) {
+						let handler = e => {
+							e.preventDefault();
+							handleZoomModeClick(e, e.target);
+						};
+						Array.prototype.forEach.call(
+							$qsa('#lightbox-zoom-modes a'),
+							node => {
+								node.addEventListener('click', handler);
+							}
+						);
+					}
+					if (false) {
+						let handler = e => {
+							e.preventDefault();
+							handleRotateModeClick(e, e.target);
+						};
+						Array.prototype.forEach.call(
+							$qsa('#lightbox-rotate-modes a'),
+							node => {
+								node.addEventListener('click', handler);
+							}
+						);
+					}
+
+					clickDispatcher
+						.add('#lightbox-whole', handleZoomModeClick)
+						.add('#lightbox-actual-size', handleZoomModeClick)
+						.add('#lightbox-fit-to-width', handleZoomModeClick)
+						.add('#lightbox-fit-to-height', handleZoomModeClick)
+						.add('#lightbox-normal', handleRotateModeClick)
+						.add('#lightbox-left', handleRotateModeClick)
+						.add('#lightbox-right', handleRotateModeClick)
+						.add('#lightbox-180', handleRotateModeClick)
+						.add('#lightbox-search', handleSearch);
+
+					keyManager
+						.addStroke('lightbox', ['O', 'A', 'W', 'H'], handleZoomModeKey)
+						.addStroke('lightbox', ['n', 'l', 'r', 'v'], handleRotateModeKey)
+						.addStroke('lightbox', '\u001b', leave)
+						.addStroke('lightbox', 's', handleSearch)
+						.addStroke('lightbox', [' ', '<S-space>'], handleStroke, true)
+						.updateManifest();
+
+					selectionMenu.enabled = false;
+
+					document.body.setAttribute(RUNNING_EXCLUSION_KEY, 'running');
+				}),
+			delay(1000)
+				.then(() => {
+					if (!image) {
+						loaderWrap.classList.remove('hide');
+						$t($qs('p', loaderWrap), '読み込み中...');
+					}
+				})
+		]);
+	}
+
 	function leave () {
 		$qs('.info', lightboxWrap).classList.add('hide');
-		image && image.parentNode.removeChild(image);
+		image.style.opacity = '';
+		imageWrap.classList.add('hide');
+		loaderWrap.classList.add('hide');
+		empty(imageWrap);
 
-		receiver.removeEventListener('mousedown', handleMousedown, false);
-		receiver.removeEventListener(MMOVE_EVENT_NAME, handleMousemove, false);
-		receiver.removeEventListener('mouseup', handleMouseup, false);
+		receiver.removeEventListener('pointerdown', handlePointerDown);
+		receiver.removeEventListener('pointermove', handlePointerMove);
+		receiver.removeEventListener('pointerup', handlePointerUp);
+		receiver.removeEventListener('wheel', handlePointerWheel);
 
 		clickDispatcher
 			.remove('#lightbox-whole')
 			.remove('#lightbox-actual-size')
 			.remove('#lightbox-fit-to-width')
 			.remove('#lightbox-fit-to-height')
+			.remove('#lightbox-normal')
+			.remove('#lightbox-left')
+			.remove('#lightbox-right')
+			.remove('#lightbox-180')
 			.remove('#lightbox-search');
 
 		keyManager
 			.removeStroke('lightbox');
 
-		selectionMenu.enabled = true;
+		delay(0)
+			.then(() => dimmer.classList.remove('run'))
+			.then(() => transitionendp(dimmer, DIMMER_TRANSITION_DURATION_MSECS))
+			.then(() => {
+				lightboxWrap.classList.add('hide');
+				anchor = image = lightboxWrap =
+				dimmer = imageWrap = receiver = null;
 
-		transitionend(dimmer, function () {
-			lightboxWrap.classList.add('hide');
-			anchor = image = lightboxWrap = dimmer = imageWrap = receiver = null;
-			appStates.shift();
-			keyManager.updateManifest();
-		});
-
-		setTimeout(function () {
-			dimmer.classList.remove('run');
-		}, 0);
+				selectionMenu.enabled = true;
+				appStates.shift();
+				keyManager.updateManifest();
+				document.body.removeAttribute(RUNNING_EXCLUSION_KEY);
+			});
 	}
 
 	init();
@@ -5698,438 +5963,6 @@ function lightbox (anchor, ignoreThumbnail) {
 /*
  * <<<1 drawer functions
  */
-
-function startColorPicker (target, options) {
-	const IMAGE_SV = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAPAgMAAABGuH3ZAAAACVBMVEUAAAAAAAD///+D3c/SAAAAAXRSTlMAQObYZgAAADdJREFUCNdjYGB1YGBgiJrCwMC4NJOBgS1AzIFBkoFxAoRIYXVIYUhhAxIgFkICrA6kA6IXbAoAsj4LrV7uPHgAAAAASUVORK5CYII=';
-	const IMAGE_HUE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAC4AAAAJCAYAAABNEB65AAAAR0lEQVQ4y9XTIQ4AMAhD0V/uf2emJkZCZlsUIYgnWoAmb7rukoQGqHlIQE+4O/6x1e/BEb3BZQjXDy7jqGiDK6CcSinkmvkDtwYMCcTVwlUAAAAASUVORK5CYII=';
-	const IMAGE_UP = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAICAYAAAAm06XyAAAAQElEQVQY05XMwQ0AIAhD0ToC++9YRqgnL0YKNuFE/oMkVEdS7t+FcoANzyqgDR0wCitgHL6Ar/AGFklFBH6Xmdg1tm7Xheu+iwAAAABJRU5ErkJggg==';
-	const LRU_KEY = 'ColorPicker.LRUList';
-	const LRU_COLOR_ATTR = 'data-color';
-
-	var overlay, panel, colorPanel, LRUPanel, controlPanel,
-		svCanvas, hueCanvas, receiver, colorText, okButton,
-		svCursor, hueCursor, upArrow, currentColor;
-
-	// utility functions
-	function style (elm, s) {
-		for (var i in s) if (i in elm.style) elm.style[i] = '' + s[i];
-		return elm;
-	}
-
-	function cre (elm, name) {
-		return elm.appendChild(document[CRE](name));
-	}
-
-	function parsejson (fragment, defaultValue) {
-		try { return JSON.parse(fragment) }
-		catch (e) { return defaultValue }
-	}
-
-	function minmax (min, value, max) {
-		return Math.max(min, Math.min(value, max));
-	}
-
-	function emit () {
-		var args = Array.prototype.slice.call(arguments), name = args.shift();
-		if (!(name in options) || typeof options[name] != 'function') return;
-		try { return options[name].apply(null, args) }
-		catch (e) { }
-	}
-
-	// dom manipulators
-	function createOverlay () {
-		return style(overlay = cre(document.body, 'div'), {
-			position: 'fixed',
-			left: 0, top: 0, right: 0, bottom: 0,
-			backgroundColor: 'rgba(0,0,0,.01)',
-			zIndex: '1879048192'
-		})
-	}
-
-	function createPanel () {
-		style(panel = cre(document.body, 'div'), {
-			position: 'absolute',
-			backgroundColor: '#fff',
-			color: '#333',
-			padding: '16px',
-			border: '1px solid #eee',
-			borderRadius: '3px',
-			boxShadow: '0 10px 6px -6px rgba(0,0,0,.5)',
-			zIndex: '1879048193'
-		});
-
-		style(upArrow = cre(panel, 'img'), {
-			position: 'absolute',
-			left: '0', top: '-8px'
-		});
-		upArrow.src = IMAGE_UP;
-
-		// row 1, color panel
-		colorPanel = cre(panel, 'div');
-		style(svCanvas = cre(colorPanel, 'canvas'), {
-			margin: '0 14px 0 0',
-			width: '200px',
-			height: '200px',
-			outline: '1px solid silver'
-		});
-
-		style(hueCanvas = cre(colorPanel, 'canvas'), {
-			margin: '0',
-			width: '32px',
-			height: '200px',
-			outline: '1px solid silver'
-		});
-
-		style(svCursor = cre(colorPanel, 'img'), {
-			position: 'absolute',
-			left: '0',
-			top: '0'
-		});
-		svCursor.src = IMAGE_SV;
-
-		style(hueCursor = cre(colorPanel, 'img'), {
-			position: 'absolute',
-			left: '-5px',
-			top: '0'
-		});
-		hueCursor.src = IMAGE_HUE;
-
-		style(receiver = cre(colorPanel, 'div'), {
-			position: 'absolute',
-			width: '281px', height: '226px',
-			left: '0', top: '0',
-			backgroundColor: 'rgba(0,0,0,.01)'
-		});
-
-		// row 2, LRU panel
-		style(LRUPanel = cre(panel, 'div'), {
-			margin: '8px 0 8px 0',
-			padding: '0 0 0 3px',
-			width: '246px',
-			overflow: 'hidden',
-			whiteSpace: 'nowrap'
-		});
-		for (var i = 0; i < 9; i++) {
-			style(cre(LRUPanel, 'div'), {
-				display: 'inline-block',
-				width: '22px',
-				height: '22px',
-				backgroundColor: '#808080',
-				margin: '0 3px 0 0',
-				border: '1px solid silver',
-				cursor: 'pointer'
-			});
-		}
-
-		// row 3, control panel
-		style(controlPanel = cre(panel, 'div'), {
-			margin: '0',
-			textAlign: 'right'
-		});
-
-		style(colorText = cre(controlPanel, 'input'), {
-			margin: '0 4px 0 0',
-			pading: '3px',
-			border: '1px solid silver',
-			width: '8em',
-			fontFamily: 'monospace'
-		});
-		colorText.type = 'text';
-
-		style(okButton = cre(controlPanel, 'input'), {
-			width: '8em'
-		});
-		okButton.type = 'button';
-		okButton.value = 'OK';
-
-		return panel;
-	}
-
-	function paintSaturationValue (canvas, hueValue) {
-		var c = canvas.getContext('2d');
-		c.clearRect(0, 0, canvas.width, canvas.height);
-
-		var g = c.createLinearGradient(0, 0, canvas.width, 0);
-		g.addColorStop(0, `hsl(${hueValue},100%,100%)`);
-		g.addColorStop(1, `hsl(${hueValue},100%, 50%)`);
-		c.fillStyle = g;
-		c.fillRect(0, 0, canvas.width, canvas.height);
-
-		var g = c.createLinearGradient(0, 0, 0, canvas.height);
-		g.addColorStop(0, `hsla(${hueValue},100%,50%,0)`);
-		g.addColorStop(1, `hsla(${hueValue},100%, 0%,1)`);
-		c.fillStyle = g;
-		c.fillRect(0, 0, canvas.width, canvas.height);
-	}
-
-	function paintHue (canvas) {
-		var c = canvas.getContext('2d');
-		var g = c.createLinearGradient(0, 0, 0, canvas.height);
-		g.addColorStop(0,         'hsl(  0,100%,50%)');
-		g.addColorStop(1 / 6 * 1, 'hsl( 60,100%,50%)');
-		g.addColorStop(1 / 6 * 2, 'hsl(120,100%,50%)');
-		g.addColorStop(1 / 6 * 3, 'hsl(180,100%,50%)');
-		g.addColorStop(1 / 6 * 4, 'hsl(240,100%,50%)');
-		g.addColorStop(1 / 6 * 5, 'hsl(300,100%,50%)');
-		g.addColorStop(1,         'hsl(360,100%,50%)');
-		c.fillStyle = g;
-		c.fillRect(0, 0, canvas.width, canvas.height);
-	}
-
-	function paintHexText (color) {
-		colorText.value = color.text;
-	}
-
-	function paintHueCursor (color) {
-		style(hueCursor, {
-			left: (hueCanvas.offsetLeft - 7) + 'px',
-			top: (hueCanvas.offsetTop - 4 + (color.hue / 360) * hueCanvas.offsetHeight) + 'px'
-		});
-	}
-
-	function paintSvCursor (color) {
-		style(svCursor, {
-			left: (svCanvas.offsetLeft - 7 + color.saturation * (svCanvas.offsetWidth - 1)) + 'px',
-			top: (svCanvas.offsetTop - 7 + (1 - color.value) * (svCanvas.offsetHeight - 1)) + 'px'
-		});
-	}
-
-	function paintLRU () {
-		var list = parsejson(window.sessionStorage[LRU_KEY]);
-		if (!(list instanceof Array)) list = [];
-
-		function setColor (node, color) {
-			node.style.backgroundColor = color;
-			node.setAttribute(LRU_COLOR_ATTR, color);
-		}
-
-		list.forEach(function (color, i) {
-			if (LRUPanel.children[i]) {
-				setColor(LRUPanel.children[i], color);
-			}
-		});
-
-		// futaba specific
-		setColor(LRUPanel.children[LRUPanel.children.length - 2], '#800000');
-		setColor(LRUPanel.children[LRUPanel.children.length - 1], '#f0e0d6');
-	}
-
-	// event handlers
-	function handleOverlayClick (e) {
-		e.preventDefault();
-		emit('cancel');
-		leave();
-	}
-
-	function handleColorTextBlur (e) {
-		currentColor = parseHexColor(e.target.value);
-		updateHSV(currentColor);
-		paintSaturationValue(svCanvas, currentColor.hue);
-		paintHueCursor(currentColor);
-		paintSvCursor(currentColor);
-		paintHexText(currentColor);
-		emit('change', currentColor);
-	}
-
-	function handleLRUPanelClick (e) {
-		if (!e.target.hasAttribute(LRU_COLOR_ATTR)) return;
-		colorText.value = e.target.getAttribute(LRU_COLOR_ATTR);
-		handleColorTextBlur({target: colorText});
-	}
-
-	function handleOkButtonClick (e) {
-		emit('ok', currentColor);
-		pushLRU(currentColor.text);
-		leave();
-	}
-
-	function handleReceiverMousedown (e) {
-		var x = e.offsetX, y = e.offsetY;
-		if (x >= svCanvas.offsetLeft && x < svCanvas.offsetLeft + svCanvas.offsetWidth
-		&&  y >= svCanvas.offsetTop  && y < svCanvas.offsetTop  + svCanvas.offsetHeight) {
-			e.target.addEventListener(MMOVE_EVENT_NAME, handleReceiverMousemove1, false);
-			e.target.addEventListener('mouseup', handleReceiverMouseup, false);
-			e.preventDefault();
-			handleReceiverMousemove1(e);
-		}
-		else if (x >= hueCanvas.offsetLeft && x < hueCanvas.offsetLeft + hueCanvas.offsetWidth
-		&&       y >= hueCanvas.offsetTop  && y < hueCanvas.offsetTop  + hueCanvas.offsetHeight) {
-			e.target.addEventListener(MMOVE_EVENT_NAME, handleReceiverMousemove2, false);
-			e.target.addEventListener('mouseup', handleReceiverMouseup, false);
-			e.preventDefault();
-			handleReceiverMousemove2(e);
-		}
-	}
-
-	function handleReceiverMousemove1 (e) {
-		if ('buttons' in e && !e.buttons) return handleReceiverMouseup(e);
-		var x = e.offsetX - svCanvas.offsetLeft;
-		var y = e.offsetY - svCanvas.offsetTop;
-		currentColor.saturation = minmax(0, x / (svCanvas.offsetWidth - 1), 1.0);
-		currentColor.value = 1.0 - minmax(0, y / (svCanvas.offsetHeight - 1), 1.0);
-		updateRGB(currentColor);
-		paintSvCursor(currentColor);
-		paintHexText(currentColor);
-		emit('change', currentColor);
-	}
-
-	function handleReceiverMousemove2 (e) {
-		if ('buttons' in e && !e.buttons) return handleReceiverMouseup(e);
-		var x = e.offsetX - hueCanvas.offsetLeft;
-		var y = e.offsetY - hueCanvas.offsetTop;
-		currentColor.hue = minmax(0, y / hueCanvas.offsetHeight * 360, 359);
-		paintSaturationValue(svCanvas, currentColor.hue);
-		updateRGB(currentColor);
-		paintHueCursor(currentColor);
-		paintHexText(currentColor);
-		emit('change', currentColor);
-	}
-
-	function handleReceiverMouseup (e) {
-		e.target.removeEventListener(MMOVE_EVENT_NAME, handleReceiverMousemove1, false);
-		e.target.removeEventListener(MMOVE_EVENT_NAME, handleReceiverMousemove2, false);
-		e.target.removeEventListener('mouseup', handleReceiverMouseup, false);
-	}
-
-	// core functions
-	function parseHexColor (color) {
-		var r = 255, g = 255, b = 255, re;
-		re = /^\s*#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})\s*$/i.exec(color);
-		if (re) {
-			r = parseInt(re[1], 16);
-			g = parseInt(re[2], 16);
-			b = parseInt(re[3], 16);
-		}
-		else {
-			re = /^\s*#?([0-9a-f])([0-9a-f])([0-9a-f])\s*$/i.exec(color)
-			if (re) {
-				r = parseInt(re[1], 16) * 17;
-				g = parseInt(re[2], 16) * 17;
-				b = parseInt(re[3], 16) * 17;
-			}
-		}
-		var result = {
-			hue: 0, saturation: 0, value: 0,
-			r: r, g: g, b: b,
-			text: ''
-		};
-		updateHSV(result);
-		return result;
-	}
-
-	function updateRGB (color) {
-		// @see https://en.wikipedia.org/wiki/HSL_and_HSV#From_HSV
-		var C = color.value * color.saturation,
-			Hd = color.hue / 60,
-			X = C * (1 - Math.abs(Hd % 2 - 1)),
-			m = color.value - C,
-			R1, G1, B1;
-
-		if      (0 <= Hd && Hd < 1) { R1 = C; G1 = X; B1 = 0; }
-		else if (1 <= Hd && Hd < 2) { R1 = X; G1 = C; B1 = 0; }
-		else if (2 <= Hd && Hd < 3) { R1 = 0; G1 = C; B1 = X; }
-		else if (3 <= Hd && Hd < 4) { R1 = 0; G1 = X; B1 = C; }
-		else if (4 <= Hd && Hd < 5) { R1 = X; G1 = 0; B1 = C; }
-		else if (5 <= Hd && Hd < 6) { R1 = C; G1 = 0; B1 = X; }
-
-		color.r = (minmax(0.0, R1 + m, 1.0) * 255).toFixed(0) - 0;
-		color.g = (minmax(0.0, G1 + m, 1.0) * 255).toFixed(0) - 0;
-		color.b = (minmax(0.0, B1 + m, 1.0) * 255).toFixed(0) - 0;
-		updateHexText(color);
-	}
-
-	function updateHSV (color) {
-		// @see https://en.wikipedia.org/wiki/HSL_and_HSV#Hue_and_chroma
-		// @see https://en.wikipedia.org/wiki/HSL_and_HSV#Lightness
-		// @see https://en.wikipedia.org/wiki/HSL_and_HSV#Saturation
-		var r = color.r / 255, g = color.g / 255, b = color.b / 255,
-			M = Math.max(r, g, b), m = Math.min(r, g, b), C = M - m, Hd;
-
-		if      (C == 0) Hd = 0;
-		else if (M == r) Hd = ((g - b) / C) % 6;
-		else if (M == g) Hd = ((b - r) / C) + 2;
-		else if (M == b) Hd = ((r - g) / C) + 4;
-
-		color.hue = (60 * Hd + 360) % 360;
-		color.value = M;
-		color.saturation = minmax(0.0, C == 0 ? 0 : C / color.value, 1.0);
-		updateHexText(color);
-	}
-
-	function updateHexText (color) {
-		color.text = '#' +
-			('00' + color.r.toString(16)).substr(-2) +
-			('00' + color.g.toString(16)).substr(-2) +
-			('00' + color.b.toString(16)).substr(-2);
-	}
-
-	function pushLRU (color) {
-		var list = window.sessionStorage[LRU_KEY];
-		try {
-			list = parsejson(list);
-			if (!(list instanceof Array)) list = [];
-
-			for (var i = 0; i < list.length; i++) {
-				if (list[i] == color) {
-					list.splice(i, 1);
-					list.unshift(color);
-					break;
-				}
-			}
-
-			if (i >= list.length) {
-				list.length >= LRUPanel.children.length && list.pop();
-				list.unshift(color);
-			}
-		}
-		finally {
-			window.sessionStorage[LRU_KEY] = JSON.stringify(list);
-		}
-	}
-
-	function init () {
-		options || (options = {});
-		overlay = createOverlay();
-		panel = createPanel();
-
-		currentColor = parseHexColor(options.initialColor || '#fff');
-		paintHue(hueCanvas);
-		paintSaturationValue(svCanvas, currentColor.hue);
-		paintSvCursor(currentColor);
-		paintHueCursor(currentColor);
-		paintHexText(currentColor);
-		paintLRU();
-
-		var targetPos = target.getBoundingClientRect();
-		style(panel, {
-			left: (docScrollLeft() + targetPos.left) + 'px',
-			top: (docScrollTop() + targetPos.top + target.offsetHeight + 3) + 'px'
-		});
-		style(upArrow, {
-			left: (Math.min(panel.offsetWidth, target.offsetWidth) / 2 - 7) + 'px'
-		});
-
-		overlay.addEventListener('click', handleOverlayClick, false);
-		LRUPanel.addEventListener('click', handleLRUPanelClick, false);
-		colorText.addEventListener('blur', handleColorTextBlur, false);
-		okButton.addEventListener('click', handleOkButtonClick, false);
-		receiver.addEventListener('mousedown', handleReceiverMousedown, false);
-	}
-
-	function leave () {
-		overlay.removeEventListener('click', handleOverlayClick, false);
-		LRUPanel.removeEventListener('click', handleLRUPanelClick, false);
-		colorText.removeEventListener('blur', handleColorTextBlur, false);
-		okButton.removeEventListener('click', handleOkButtonClick, false);
-		receiver.removeEventListener('mousedown', handleReceiverMousedown, false);
-
-		panel.parentNode.removeChild(panel);
-		overlay.parentNode.removeChild(overlay);
-		target.focus();
-	}
-
-	init();
-}
 
 function startDrawing (callback) {
 	const PERSIST_KEY = 'data-persists';
@@ -6384,7 +6217,7 @@ function startDrawing (callback) {
 
 	function handleColorIndicatorClick (e) {
 		e.target.setAttribute('data-color-saved', e.target.getAttribute('data-color'));
-		startColorPicker(e.target, {
+		Akahuku.startColorPicker(e.target, {
 			initialColor: e.target.getAttribute('data-color'),
 			change: function (color) {
 				e.target.style.backgroundColor = color.text;
@@ -8890,7 +8723,7 @@ const commands = {
 			}
 
 			if (!doc) {
-				throw new Err(`内容が変だよ (${status})`);
+				throw new Error(`内容が変だよ (${status})`);
 			}
 
 			timingLogger.startTag('generate internal xml');
@@ -9002,7 +8835,7 @@ const commands = {
 			}
 
 			if (!doc) {
-				throw new Err(`内容が変だよ (${status})`);
+				throw new Error(`内容が変だよ (${status})`);
 			}
 
 			timingLogger.startTag('generate internal xml');
@@ -9066,20 +8899,6 @@ const commands = {
 		const TRANSPORT_MAIN_TYPE = 'reload-catalog-main';
 		const TRANSPORT_SUB_TYPE = 'reload-catalog-sub';
 
-		if (transport.isRunning(TRANSPORT_MAIN_TYPE)) {
-			transport.abort(TRANSPORT_MAIN_TYPE);
-			transport.abort(TRANSPORT_SUB_TYPE);
-			return Promise.resolve();
-		}
-
-		if (transport.isRapidAccess(TRANSPORT_MAIN_TYPE)) {
-			return Promise.resolve();
-		}
-
-		if (pageModes[0] != 'catalog') {
-			return Promise.resolve();
-		}
-
 		const sortMap = {
 			'#catalog-order-default': {n:0, key:'default'},
 			'#catalog-order-new': {n:1, key:'new'},
@@ -9092,6 +8911,23 @@ const commands = {
 		let p = $qs('#catalog .catalog-options a.active');
 		let sortType = sortMap[p ? p.getAttribute('href') : '#catalog-order-default'];
 		let wrap = $(`catalog-threads-wrap-${sortType.key}`);
+
+		if (transport.isRunning(TRANSPORT_MAIN_TYPE)
+		||  transport.isRunning(TRANSPORT_SUB_TYPE)) {
+			transport.abort(TRANSPORT_MAIN_TYPE);
+			transport.abort(TRANSPORT_SUB_TYPE);
+			wrap.classList.remove('run');
+			setBottomStatus('中断しました');
+			return Promise.resolve();
+		}
+
+		if (transport.isRapidAccess(TRANSPORT_MAIN_TYPE)) {
+			return Promise.resolve();
+		}
+
+		if (pageModes[0] != 'catalog') {
+			return Promise.resolve();
+		}
 
 		// update catalog settings
 		if (!wrap.firstChild) {
@@ -9112,7 +8948,7 @@ const commands = {
 		wrap.classList.add('run');
 
 		return Promise.all([
-			transitionendp(wrap, 400),
+			transitionendp(wrap, 300),
 			reloadCatalogBase(TRANSPORT_MAIN_TYPE, sortType ? `&sort=${sortType.n}` : ''),
 			reloadBase(TRANSPORT_SUB_TYPE),
 			urlStorage.getAll()
@@ -9159,7 +8995,14 @@ const commands = {
 
 			let insertee = wrap.firstChild;
 
-			wrap.style.maxWidth = ((anchorWidth + CATALOG_ANCHOR_MARGIN) * horzActual) + 'px';
+			if (horzActual == 0) {
+				// invalid width of catalog: it may be that futaba server has stopped
+				// and the CDN(CloudFlare) has returnd an error page.
+				console.error(`${APP_NAME}: failed to retrieve catalog content: ${doc.title}`);
+			}
+			else {
+				wrap.style.maxWidth = ((anchorWidth + CATALOG_ANCHOR_MARGIN) * horzActual) + 'px';
+			}
 
 			/*
 			 * traverse all anchors in new catalog
@@ -9559,41 +9402,37 @@ const commands = {
 
 				form.action = `/${siteInfo.board}/futaba.php`;
 				$t(status, '削除をリクエストしています...');
-				postBase(TRANSPORT_TYPE, form,
-					response => {
-						response = response.replace(/\r\n|\r|\n/g, '\t');
-						let result = parsePostResponse(response);
-
-						if (!result.redirect) {
-							$t(status, result.error || 'なんかエラー？');
-							dialog.isPending = false;
-							form = status = dialog = null;
-							return;
-						}
-
-						$t(status, 'リクエストに成功しました');
-
-						Array.prototype.forEach.call(
-							$qsa('article input[type="checkbox"]:checked'),
-							node => {
-								node.checked = false;
-							}
-						);
-
-						setTimeout(() => {
-							dialog.isPending = false;
-							dialog.close();
-							form = status = dialog = null;
-						}, WAIT_AFTER_POST);
-					},
-					() => {
-						$t(status, 'ネットワークエラーです');
-						dialog.isPending = false;
-						form = status = dialog = null;
-					}
-				);
-
 				dialog.isPending = true;
+				postBase(TRANSPORT_TYPE, form).then(response => {
+					response = response.replace(/\r\n|\r|\n/g, '\t');
+					let result = parsePostResponse(response);
+
+					if (!result.redirect) {
+						throw new Error(result.error || 'なんかエラー？');
+					}
+
+					$t(status, 'リクエストに成功しました');
+
+					Array.prototype.forEach.call(
+						$qsa('article input[type="checkbox"]:checked'),
+						node => {
+							node.checked = false;
+						}
+					);
+
+					return delay(WAIT_AFTER_POST).then(() => {
+						dialog.isPending = false;
+						dialog.close();
+					});
+				})
+				.catch(err => {
+					console.error(`${APP_NAME}: delete failed: ${err.stack}`);
+					$t(status, err.message);
+				})
+				.finally(() => {
+					dialog.isPending = false;
+					form = status = dialog = null;
+				});
 			}
 		});
 	},
@@ -9756,43 +9595,39 @@ const commands = {
 					if (!form || !status) return;
 
 					$t(status, '申請を登録しています...');
-					postBase('moderate', form,
-						response => {
-							response = response.replace(/\r\n|\r|\n/g, '\t');
-							let result = parseModerateResponse(response);
-
-							if (!result.registered) {
-								$t(status, result.error || 'なんかエラー？');
-								dialog.isPending = false;
-								form = status = dialog = null;
-								return;
-							}
-
-							$t(status, '登録されました');
-
-							Array.prototype.forEach.call(
-								$qsa('input[type="radio"]:checked', form),
-								node => {
-									storage.runtime.del.lastReason = node.value;
-									storage.saveRuntime();
-									node.checked = false;
-								}
-							);
-
-							setTimeout(() => {
-								dialog.isPending = false;
-								dialog.close();
-								form = status = dialog = null;
-							}, WAIT_AFTER_POST);
-						},
-						() => {
-							$t(status, 'ネットワークエラーです');
-							dialog.isPending = false;
-							form = status = dialog = null;
-						}
-					);
-
 					dialog.isPending = true;
+					postBase('moderate', form).then(response => {
+						response = response.replace(/\r\n|\r|\n/g, '\t');
+						let result = parseModerateResponse(response);
+
+						if (!result.registered) {
+							throw new Error(result.error || 'なんかエラー？');
+						}
+
+						$t(status, '登録されました');
+
+						Array.prototype.forEach.call(
+							$qsa('input[type="radio"]:checked', form),
+							node => {
+								storage.runtime.del.lastReason = node.value;
+								storage.saveRuntime();
+								node.checked = false;
+							}
+						);
+
+						return delay(WAIT_AFTER_POST).then(() => {
+							dialog.isPending = false;
+							dialog.close();
+						});
+					})
+					.catch(err => {
+						console.error(`${APP_NAME}: modelate failed: ${err.stack}`);
+						$t(status, err.message);
+					})
+					.finally(() => {
+						dialog.isPending = false;
+						form = status = dialog = null;
+					});
 				}
 			});
 		};

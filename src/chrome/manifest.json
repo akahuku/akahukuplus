@@ -22,9 +22,11 @@
 		"webRequest", "webRequestBlocking",
 		"storage",
 		"*://*.2chan.net/*",
-		"*://*.nijibox2.com/*",
-		"*://*.nijibox5.com/*",
-		"*://*.nijibox6.com/*"
+		"*://*.nijibox2.com/*", "*://*.nijibox5.com/*", "*://*.nijibox6.com/*",
+		"https://*.twitter.com/*",
+		"https://*.dropboxapi.com/*",
+		"https://*.google.com/*", "https://*.googleapis.com/*", "https://*.googleusercontent.com/*",
+		"https://apis.live.net/*"
 	],
 	"background": {
 		"page": "backend/main.html"
@@ -43,9 +45,11 @@
 				"*://*.2chan.net/bin/*"
 			],
 			"js": [
+				"frontend/global.js",
 				"frontend/extension_wrapper.js",
 				"frontend/qeema.js",
 				"frontend/twitter_emoji_regexp.js",
+				"frontend/color_picker.js",
 				"frontend/akahukuplus.js"
 			],
 			"run_at": "document_start",

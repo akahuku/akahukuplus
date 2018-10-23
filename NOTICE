@@ -1,11 +1,15 @@
 akahukuplus
 ===========
 
-copyright 2014 akahuku, akahuku@gmail.com
+copyright 2018 akahuku, akahuku@gmail.com
 
 
 
-This product includes the following libraries:
+This product includes the following libraries and materials:
+
+* kosian - Library for abstracting browser extension
+
+  <https://github.com/akahuku/kosian>
 
 * blowfish - Javascript Blowfish Library
 
@@ -14,3 +18,11 @@ This product includes the following libraries:
 * sha1.js
 
   <http://labs.cybozu.co.jp/blog/mitsunari/sha1/>
+
+* twemoji
+
+  <https://github.com/twitter/twemoji>
+
+* が！お！る！
+
+  <https://www.pixiv.net/member_illust.php?mode=medium&illust_id=5323687>
