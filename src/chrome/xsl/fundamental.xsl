@@ -1589,12 +1589,6 @@ article.summary .replies {
 	line-height:1;
 	text-align:center;
 	text-decoration:none;
-	/*
-	transition-property:background-color;
-	transition-duration:.2s;
-	transition-timing-function:ease-in;
-	transition-delay:0s;
-	*/
 }
 
 .dialog-wrap .dialog-content-footer > a + a {
@@ -1604,6 +1598,10 @@ article.summary .replies {
 .dialog-wrap .dialog-content-footer > a:hover {
 	background-color:#789922;
 	color:#fff;
+}
+
+.dialog-wrap .dialog-content-footer > a.disabled {
+	opacity:.5;
 }
 
 .dialog-wrap .close-button {

@@ -973,6 +973,23 @@ function install (mode) {
 	setupCustomEventHandler();
 
 	/*
+	 * uucount/uuacount, based on base4.js
+	 */
+
+	{
+		// uuacount: unique user in short time period?
+		const p = [getImageFrom(`/bin/uuacount.php?${Math.floor(Math.random() * 1000)}`)];
+		const uuc = getCookie('uuc');
+		if (uuc != '1') {
+			// uucount: unique user per hour?
+			p.push(getImageFrom(`//dec.2chan.net/bin/uucount.php?${Math.random()}`));
+			document.cookie = 'uuc=1; max-age=3600; path=/;';
+		}
+
+		Promise.all(p);
+	}
+
+	/*
 	 * switch according to mode of pseudo-query
 	 */
 
@@ -3582,7 +3599,8 @@ function createCatalogPopup (container) {
 
 	function mover (e) {
 		if (!storage.config.catalog_popup_enabled.value) return;
-		if (transport.isRunning('catalog')) return;
+		if (transport.isRunning('reload-catalog-main')) return;
+		if (transport.isRunning('reload-catalog-sub')) return;
 		if (!cursorPos.moved) return;
 		_log('mover: ' + (e.target.outerHTML || '<#document>').match(/<[^>]*>/)[0]);
 
@@ -4535,7 +4553,7 @@ function createTransport () {
 	 * - reloadBase (reload)
 	 * - reloadCatalogBase (reload)
 	 */
-	const transport = {};
+	const transports = {};
 	const lastUsedTime = {};
 
 	function createXMLHttpRequest () {
@@ -4552,23 +4570,23 @@ function createTransport () {
 		let result = createXMLHttpRequest();
 
 		if (tag) {
-			transport[tag] = result;
+			transports[tag] = result;
 		}
 
 		return result;
 	}
 
 	function release (tag) {
-		if (tag in transport) {
-			delete transport[tag];
+		if (tag in transports) {
+			delete transports[tag];
 			lastUsedTime[tag] = Date.now();
 		}
 	}
 
 	function abort (tag) {
-		if (tag in transport) {
+		if (tag in transports) {
 			try {
-				transport[tag].abort();
+				transports[tag].abort();
 			}
 			catch (e) {
 			}
@@ -4580,7 +4598,7 @@ function createTransport () {
 	function isRapidAccess (tag) {
 		let result = false;
 
-		if (tag in transport
+		if (tag in lastUsedTime
 		&& Date.now() - lastUsedTime[tag] <= NETWORK_ACCESS_MIN_INTERVAL) {
 			setBottomStatus('ちょっと待ってね。');
 			result = true;
@@ -4591,16 +4609,16 @@ function createTransport () {
 
 	function isRunning (tag) {
 		if (tag) {
-			return !!transport[tag];
+			return !!transports[tag];
 		}
 		else {
-			return Object.keys(transport).length > 0;
+			return Object.keys(transports).length > 0;
 		}
 	}
 
 	function getTransport (tag) {
-		if (tag in transport) {
-			return transport[tag];
+		if (tag in transports) {
+			return transports[tag];
 		}
 
 		return undefined;
@@ -6339,6 +6357,8 @@ function modalDialog (opts) {
 			set isPending (v) {isPending = !!v},
 			initTitle: initTitle,
 			initButtons: initButtons,
+			enableButtons: enableButtons,
+			disableButtonsWithout: disableButtonsWithout,
 			initFromXML: initFromXML,
 			close: leave
 		};
@@ -6484,24 +6504,82 @@ function modalDialog (opts) {
 		}, 0);
 	}
 
-	function handleApply () {
+	function enableButtons () {
+		Array.prototype.forEach.call(
+			$qsa('.dialog-content-footer a', dialogWrap),
+			node => {
+				node.classList.remove('disabled');
+			}
+		);
+	}
+
+	function disableButtonsWithout (exceptId) {
+		Array.prototype.forEach.call(
+			$qsa('.dialog-content-footer a', dialogWrap),
+			node => {
+				if (exceptId && node.href.indexOf(`#${exceptId}-dialog`) < 0) {
+					node.classList.add('disabled');
+				}
+			}
+		);
+	}
+
+	function isDisabled (node) {
+		let result = false;
+		for (; node; node = node.parentNode) {
+			if (node.nodeName == 'A') {
+				break;
+			}
+		}
+		if (node) {
+			result = node.classList.contains('disabled');
+		}
+		return result;
+	}
+
+	function handleApply (e) {
 		if (state != 'running') return;
-		if (isPending) return;
+		if (isDisabled(e.target)) return;
+		disableButtonsWithout('apply');
 		opts.onapply && opts.onapply(getRemoteController());
 	}
 
-	function handleOk () {
+	function handleOk (e) {
 		if (state != 'running') return;
-		if (isPending) return;
-		opts.onok && opts.onok(getRemoteController());
-		leave();
+		if (isDisabled(e.target)) return;
+		disableButtonsWithout('ok');
+
+		let canLeave = true;
+		if (opts.onok) {
+			if (opts.onok(getRemoteController()) === false) {
+				canLeave = false;
+			}
+		}
+		if (canLeave) {
+			leave();
+		}
+		else {
+			enableButtons();
+		}
 	}
 
-	function handleCancel () {
+	function handleCancel (e) {
 		if (state != 'running') return;
-		if (isPending) return;
-		opts.oncancel && opts.oncancel(getRemoteController());
-		leave();
+		if (isDisabled(e.target)) return;
+		disableButtonsWithout('cancel');
+
+		let canLeave = true;
+		if (opts.oncancel) {
+			if (opts.oncancel(getRemoteController()) === false) {
+				canLeave = false;
+			}
+		}
+		if (canLeave) {
+			leave();
+		}
+		else {
+			enableButtons();
+		}
 	}
 
 	function handleMouseCancel (e) {
@@ -7410,7 +7488,6 @@ function postBase (type, form) { /*returns promise*/
 
 			xhr.onloadend = () => {
 				xhr = form = null;
-				transport.release(type);
 			};
 
 			xhr.send(data);
@@ -7433,7 +7510,6 @@ function postBase (type, form) { /*returns promise*/
 
 			xhr.onloadend = () => {
 				xhr = form = null;
-				transport.release(type);
 			};
 
 			xhr.send(data);
@@ -7657,7 +7733,6 @@ function reloadBase (type) { /*returns promise*/
 
 		xhr.onloadend = function () {
 			xhr = null;
-			transport.release(type);
 		};
 
 		xhr.send();
@@ -7714,7 +7789,6 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 
 		xhr.onloadend = function () {
 			xhr = null;
-			transport.release(type);
 		};
 
 		xhr.send();
@@ -8783,11 +8857,15 @@ const commands = {
 
 				timingLogger.forceEndTag();
 			});
-		}).catch(err => {
+		})
+		.catch(err => {
 			footer.classList.remove('hide');
 			indicator.classList.add('error');
 			$t(indicator, err.message);
 			console.error(`${APP_NAME}: reloadSummary failed: ${err.stack}`);
+		})
+		.finally(() => {
+			transport.release(TRANSPORT_TYPE);
 		});
 	},
 	reloadReplies: function () {
@@ -8893,6 +8971,9 @@ const commands = {
 			setBottomStatus(err.message);
 			timingLogger.forceEndTag();
 			console.error(`${APP_NAME}: reloadReplies failed: ${err.stack}`);
+		})
+		.finally(() => {
+			transport.release(TRANSPORT_TYPE);
 		});
 	},
 	reloadCatalog: function () { /*returns promise*/
@@ -9208,10 +9289,15 @@ const commands = {
 			wrap.classList.remove('run');
 			setBottomStatus('完了');
 			window.scrollTo(0, 0);
-		}).catch(err => {
+		})
+		.catch(err => {
 			wrap.classList.remove('run');
 			setBottomStatus('カタログの読み込みに失敗しました');
 			console.error(`${APP_NAME}: reloadCatalog failed: ${err.stack}`);
+		})
+		.finally(() => {
+			transport.release(TRANSPORT_MAIN_TYPE);
+			transport.release(TRANSPORT_SUB_TYPE);
 		});
 	},
 	post: function () { /*returns promise*/
@@ -9281,12 +9367,15 @@ const commands = {
 					}
 				});
 			}
-		}).catch(err => {
+		})
+		.catch(err => {
 			setBottomStatus('投稿が失敗しました');
 			console.error(`${APP_NAME}: post failed: ${err.stack}`);
 			window.alert(err.message);
-		}).finally(() => {
+		})
+		.finally(() => {
 			registerReleaseFormLock();
+			transport.release(TRANSPORT_TYPE);
 		});
 	},
 	sodane: function (e, t) {
@@ -9358,17 +9447,6 @@ const commands = {
 	 */
 
 	openDeleteDialog: () => {
-		const TRANSPORT_TYPE = 'delete';
-
-		if (transport.isRunning(TRANSPORT_TYPE)) {
-			transport.abort(TRANSPORT_TYPE);
-			return;
-		}
-
-		if (transport.isRapidAccess(TRANSPORT_TYPE)) {
-			return;
-		}
-
 		modalDialog({
 			title: '記事削除',
 			buttons: 'ok, cancel',
@@ -9396,9 +9474,24 @@ const commands = {
 				}
 			},
 			onok: dialog => {
+				const TRANSPORT_TYPE = 'delete';
+
 				let form = $qs('form', dialog.content);
 				let status = $qs('.delete-status', dialog.content);
 				if (!form || !status) return;
+
+				if (transport.isRunning(TRANSPORT_TYPE)) {
+					transport.abort(TRANSPORT_TYPE);
+					$t(status, '中断しました。');
+					dialog.isPending = false;
+					return false;
+				}
+
+				if (transport.isRapidAccess(TRANSPORT_TYPE)) {
+					$t(status, 'ちょっと待ってね。');
+					dialog.isPending = false;
+					return false;
+				}
 
 				form.action = `/${siteInfo.board}/futaba.php`;
 				$t(status, '削除をリクエストしています...');
@@ -9428,10 +9521,12 @@ const commands = {
 				.catch(err => {
 					console.error(`${APP_NAME}: delete failed: ${err.stack}`);
 					$t(status, err.message);
+					dialog.enableButtons();
 				})
 				.finally(() => {
 					dialog.isPending = false;
 					form = status = dialog = null;
+					transport.release(TRANSPORT_TYPE);
 				});
 			}
 		});
@@ -9590,13 +9685,28 @@ const commands = {
 					}
 				},
 				onok: dialog => {
+					const TRANSPORT_TYPE = 'moderate';
+
 					let form = $qs('form', dialog.content);
 					let status = $qs('.moderate-status', dialog.content);
 					if (!form || !status) return;
 
+					if (transport.isRunning(TRANSPORT_TYPE)) {
+						transport.abort(TRANSPORT_TYPE);
+						$t(status, '中断しました。');
+						dialog.isPending = false;
+						return false;
+					}
+
+					if (transport.isRapidAccess(TRANSPORT_TYPE)) {
+						$t(status, 'ちょっと待ってね。');
+						dialog.isPending = false;
+						return false;
+					}
+
 					$t(status, '申請を登録しています...');
 					dialog.isPending = true;
-					postBase('moderate', form).then(response => {
+					postBase(TRANSPORT_TYPE, form).then(response => {
 						response = response.replace(/\r\n|\r|\n/g, '\t');
 						let result = parseModerateResponse(response);
 
@@ -9621,12 +9731,14 @@ const commands = {
 						});
 					})
 					.catch(err => {
-						console.error(`${APP_NAME}: modelate failed: ${err.stack}`);
+						console.error(`${APP_NAME}: moderate failed: ${err.stack}`);
 						$t(status, err.message);
+						dialog.enableButtons();
 					})
 					.finally(() => {
 						dialog.isPending = false;
 						form = status = dialog = null;
+						transport.release(TRANSPORT_TYPE);
 					});
 				}
 			});
