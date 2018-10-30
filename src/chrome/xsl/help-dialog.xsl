@@ -94,10 +94,14 @@
 				<tr><td><kbd>ctrl</kbd>+<kbd>f</kbd></td>			<td>次の文字</td></tr>
 
 				<tr><td colspan="2"><h3>lightbox</h3></td></tr>
-				<tr><td><kbd>1</kbd></td>				<td>画像全体を表示</td></tr>
-				<tr><td><kbd>2</kbd></td>				<td>原寸で表示</td></tr>
-				<tr><td><kbd>w</kbd></td>				<td>幅に合わせる</td></tr>
-				<tr><td><kbd>h</kbd></td>				<td>高さに合わせる</td></tr>
+				<tr><td><kbd>O</kbd></td>				<td>画像全体を表示</td></tr>
+				<tr><td><kbd>A</kbd></td>				<td>原寸で表示</td></tr>
+				<tr><td><kbd>W</kbd></td>				<td>幅に合わせる</td></tr>
+				<tr><td><kbd>H</kbd></td>				<td>高さに合わせる</td></tr>
+				<tr><td><kbd>n</kbd></td>				<td>回転しない</td></tr>
+				<tr><td><kbd>l</kbd></td>				<td>左に回転</td></tr>
+				<tr><td><kbd>r</kbd></td>				<td>右に回転</td></tr>
+				<tr><td><kbd>v</kbd></td>				<td>180度回転</td></tr>
 				<tr><td><kbd>s</kbd></td>				<td>画像検索</td></tr>
 			</table>
 		</div>

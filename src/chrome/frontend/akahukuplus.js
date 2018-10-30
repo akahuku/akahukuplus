@@ -354,7 +354,7 @@ function transformWholeDocument (xsl) {
 	if (DEBUG_DUMP_INTERNAL_XML) {
 		let node = document.body.appendChild(document[CRE]('pre'));
 		node.appendChild(document.createTextNode(serializeXML(generateResult.xml)));
-		node.style.fontFamily = 'Consolas';
+		node.style.fontFamily = 'Consolas,monospace';
 		node.style.whiteSpace = 'pre-wrap';
 	}
 
@@ -1319,7 +1319,7 @@ function createXMLGenerator () {
 					.replace('x', ' × ')
 					.replace('+', '＋')
 				));
-				sodaneNode.setAttribute('className', re[1] == '+' ? 'sodane-null' : 'sodane');
+				sodaneNode.setAttribute('class', re[1] == '+' ? 'sodane-null' : 'sodane');
 			}
 
 			// skip, if we can
@@ -1573,7 +1573,7 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-futaba lightbox',
-			'\\b((?:h?t?t?p?://)?[^.]+\\.2chan\\.net/[^/]+/[^/]+/src/\\d+\\.(?:jpg|gif|png|webm|mp4)\\S*)',
+			'\\b((?:h?t?t?p?s?://)?[^.]+\\.2chan\\.net/[^/]+/src/\\d+\\.(?:jpg|gif|png|webm|mp4)\\S*)',
 			function (re, anchor) {
 				anchor.setAttribute(
 					'thumbnail',
@@ -2106,7 +2106,6 @@ function createXMLGenerator () {
 
 				i = i.replace(/\bsrc=/, 'src="about:blank" data-src=');
 
-				adNode.appendChild(text(i));
 				adNode.setAttribute('class', `size-${className}`);
 				adNode.setAttribute('width', width);
 				adNode.setAttribute('height', height);
@@ -2281,7 +2280,7 @@ function createXMLGenerator () {
 					.replace('x', ' × ')
 					.replace('+', '＋')
 				));
-				sodaneNode.setAttribute('className', re[1] == '+' ? 'sodane-null' : 'sodane');
+				sodaneNode.setAttribute('class', re[1] == '+' ? 'sodane-null' : 'sodane');
 			}
 
 			// ID
@@ -2663,6 +2662,14 @@ function createPersistentStorage () {
 		return result;
 	}
 
+	function getAllConfigDefault () {
+		let result = {};
+		for (let i in data) {
+			result[i] = data[i].defaultValue;
+		}
+		return result;
+	}
+
 	function set (items) {
 		try {
 			chrome.storage.onChanged.removeListener(handleChanged);
@@ -2701,6 +2708,7 @@ function createPersistentStorage () {
 		assignRuntime: assignRuntime,
 		resetConfig: resetConfig,
 		getAllConfig: getAllConfig,
+		getAllConfigDefault: getAllConfigDefault,
 		set: set,
 		get config () {return data},
 		get runtime () {return runtime},
@@ -4214,48 +4222,48 @@ function createQuotePopup () {
 }
 
 function createSelectionMenu () {
-	var enabled = true;
-	var text;
+	let enabled = true;
+	let text;
 
 	function init () {
-		window.addEventListener('mouseup', function (e) {
+		window.addEventListener('mouseup', e => {
 			setTimeout(mup, 0, e);
-		}, false);
+		});
 
-		clickDispatcher.add('.selmenu', function (e, t) {
-			window.getSelection().collapseToStart();
-			dispatch(t.href.match(/#ss-(.+)/)[1], text);
-			text = undefined;
+		clickDispatcher.add('.selmenu', (e, t) => {
+			try {
+				dispatch(t.href.match(/#ss-(.+)/)[1], text);
+			}
+			finally {
+				window.getSelection().collapseToStart();
+				text = undefined;
+			}
 		});
 	}
 
 	function mup (e) {
 		if (!enabled) return;
 
-		var menu = $('selection-menu');
+		const menu = $('selection-menu');
 		if (!menu) return;
 
-		if (isVisible(menu)) {
-			hide(menu);
-			return;
-		}
+		let s = '';
 
-		var s = '';
-		var sel = window.getSelection();
+		const sel = window.getSelection();
 		if (sel.rangeCount) {
 			s = rangeToString(sel.getRangeAt(0))
 				.replace(/(?:\r\n|\r|\n)/g, '\n')
 				.replace(/\n{2,}/g, '\n')
 				.replace(/\n+$/, '') || '';
 		}
+
 		if (s != '') {
 			text = s;
 			show(menu);
 		}
-	}
-
-	function isVisible (menu) {
-		return !menu.classList.contains('hide');
+		else {
+			hide(menu);
+		}
 	}
 
 	function show (menu) {
@@ -4263,16 +4271,16 @@ function createSelectionMenu () {
 		menu.style.visibility = 'hidden';
 		menu.style.left = menu.style.top = '0';
 
-		var w = menu.offsetWidth;
-		var h = menu.offsetHeight;
-		var sl = docScrollLeft();
-		var st = docScrollTop();
-		var cw = viewportRect.width;
-		var ch = viewportRect.height;
-		var l = Math.max(0, Math.min(cursorPos.pagex, sl + cw - w));
-		var t = Math.max(0, Math.min(cursorPos.pagey, st + ch - h));
-		menu.style.left = l + 'px';
-		menu.style.top = t + 'px';
+		const w = menu.offsetWidth;
+		const h = menu.offsetHeight;
+		const sl = docScrollLeft();
+		const st = docScrollTop();
+		const cw = viewportRect.width;
+		const ch = viewportRect.height;
+		const l = Math.max(0, Math.min(cursorPos.pagex, sl + cw - w));
+		const t = Math.max(0, Math.min(cursorPos.pagey, st + ch - h));
+		menu.style.left = `${l}px`;
+		menu.style.top = `${t}px`;
 		menu.style.visibility = '';
 	}
 
@@ -4285,11 +4293,52 @@ function createSelectionMenu () {
 		case 'quote':
 		case 'pull':
 			{
-				let com = $('com');
+				const com = $('com');
 				if (com) {
 					quote(com, text, /^quote\b/.test(key));
 					commands.activatePostForm();
 					com.setSelectionRange(com.value.length, com.value.length);
+					com.dispatchEvent(new InputEvent('input'));
+				}
+			}
+			break;
+		case 'join':
+			{
+				const com = $('com');
+				const sel = window.getSelection();
+				if (com && sel && sel.rangeCount) {
+					const r1 = sel.getRangeAt(0);
+
+					let start = r1.startContainer;
+					for (; start; start = start.parentNode) {
+						if (start.nodeType == 1) break;
+					}
+
+					let end = r1.endContainer;
+					for (; end; end = end.parentNode) {
+						if (end.nodeType == 1) break;
+					}
+
+					if (start && end) {
+						const r2 = document.createRange();
+						r2.setStartBefore(start);
+						r2.setEndAfter(end);
+
+						const result = Array.from($qsa('.comment', r2.cloneContents()))
+							.map(node => Array.from(node.childNodes)
+								.filter(cnode => cnode.nodeType == 3)
+								.map(cnode => cnode.nodeValue.replace(/\n+$/, ''))
+								.join(''))
+							.join('');
+
+						quote(com, result, false);
+						commands.activatePostForm();
+						com.setSelectionRange(com.value.length, com.value.length);
+						com.dispatchEvent(new InputEvent('input'));
+					}
+					else {
+						setBottomStatus('選択範囲が変です。');
+					}
 				}
 			}
 			break;
@@ -4297,7 +4346,7 @@ function createSelectionMenu () {
 		case 'copy':
 		case 'copy-with-quote':
 			{
-				let quoted = key == 'copy' ? text : getQuoted(text);
+				const quoted = key == 'copy' ? text : getQuoted(text);
 
 				if ('clipboard' in navigator) {
 					navigator.clipboard.writeText(quoted);
@@ -4312,43 +4361,27 @@ function createSelectionMenu () {
 			break;
 
 		case 'google':
-			sendToBackend('open',
-				{
-					url:'https://www.google.com/search?hl=ja&q=' +
-						encodeURIComponent(text).replace(/%20/g, '+'),
-					selfUrl:window.location.href
-				});
+			open('https://www.google.com/search?hl=ja&q=$TEXT$');
 			break;
 		case 'amazon':
-			sendToBackend('open',
-				{
-					url:'http://www.amazon.co.jp/' +
-						'exec/obidos/external-search' +
-						'?mode=blended&field-keywords=' +
-						encodeURIComponent(text).replace(/%20/g, '+'),
-					selfUrl:window.location.href
-				});
+			open('https://www.amazon.co.jp/exec/obidos/external-search?mode=blended&field-keywords=$TEXT$');
 			break;
 		case 'wikipedia':
-			sendToBackend('open',
-				{
-					url:'http://ja.wikipedia.org/wiki/' +
-						'%E7%89%B9%E5%88%A5:Search?search=' +
-						encodeURIComponent(text).replace(/%20/g, '+') +
-						'&go=%E8%A1%A8%E7%A4%BA',
-					selfUrl:window.location.href
-				});
+			open('https://ja.wikipedia.org/wiki/%E7%89%B9%E5%88%A5:Search?search=$TEXT$&go=%E8%A1%A8%E7%A4%BA');
 			break;
 		case 'youtube':
-			sendToBackend('open',
-				{
-					url:'http://www.youtube.com/results?search_query=' +
-						encodeURIComponent(text).replace(/%20/g, '+') +
-						'&search=Search',
-					selfUrl:window.location.href
-				});
+			open('https://www.youtube.com/results?search_query=$TEXT$&search=Search');
 			break;
 		}
+	}
+
+	function open (url) {
+		url = url.replace('$TEXT$', encodeURIComponent(text).replace(/%20/g, '+'));
+		sendToBackend('open',
+			{
+				url: url,
+				selfUrl: window.location.href
+			});
 	}
 
 	function getQuoted (s) {
@@ -4361,7 +4394,7 @@ function createSelectionMenu () {
 		target = $(target);
 		if (!target) return;
 
-		var s = text;
+		let s = text;
 		if (addPrefix) {
 			s = getQuoted(s);
 		}
@@ -4379,22 +4412,23 @@ function createSelectionMenu () {
 	}
 
 	function setClipboardGecko (text) {
-		let textarea = document.body.appendChild(document[CRE]('textarea'));
-		const styles = {
-			position: 'fixed',
-			width: '300px',
-			height: '300px',
-			left: '-400px',
-			top: '0px'
-		};
-		for (let i in styles) {
-			textarea.style[i] = styles[i];
+		const textarea = document.body.appendChild(document[CRE]('textarea'));
+		try {
+			Object.assign(textarea.style, {
+				position: 'fixed',
+				width: '300px',
+				height: '300px',
+				left: '-400px',
+				top: '0px'
+			});
+			textarea.value = text;
+			textarea.focus();
+			textarea.select();
+			document.execCommand('copy');
 		}
-		textarea.value = text;
-		textarea.focus();
-		textarea.select();
-		document.execCommand('copy');
-		textarea.parentNode.removeChild(textarea);
+		finally {
+			textarea.parentNode.removeChild(textarea);
+		}
 	}
 
 	init();
@@ -5511,7 +5545,7 @@ function lightbox (anchor) {
 	function updateModeLinks () {
 		Array.prototype.forEach.call(
 			$qsa('#lightbox-zoom-modes a'),
-			function (node) {
+			node => {
 				if (node.getAttribute('href') == '#lightbox-' + zoomMode) {
 					node.classList.add('selected');
 				}
@@ -5523,7 +5557,7 @@ function lightbox (anchor) {
 
 		Array.prototype.forEach.call(
 			$qsa('#lightbox-rotate-modes a'),
-			function (node) {
+			node => {
 				if (node.getAttribute('href') == '#lightbox-' + rotation) {
 					node.classList.add('selected');
 				}
@@ -5910,7 +5944,8 @@ function lightbox (anchor) {
 						.add('#lightbox-left', handleRotateModeClick)
 						.add('#lightbox-right', handleRotateModeClick)
 						.add('#lightbox-180', handleRotateModeClick)
-						.add('#lightbox-search', handleSearch);
+						.add('#lightbox-search', handleSearch)
+						.add('#lightbox-close', leave);
 
 					keyManager
 						.addStroke('lightbox', ['O', 'A', 'W', 'H'], handleZoomModeKey)
@@ -5955,7 +5990,8 @@ function lightbox (anchor) {
 			.remove('#lightbox-left')
 			.remove('#lightbox-right')
 			.remove('#lightbox-180')
-			.remove('#lightbox-search');
+			.remove('#lightbox-search')
+			.remove('#lightbox-close');
 
 		keyManager
 			.removeStroke('lightbox');
@@ -6399,6 +6435,7 @@ function modalDialog (opts) {
 		while (footer.childNodes.length) {
 			if (footer.firstChild.nodeName == 'A') {
 				buttons.push(footer.firstChild);
+				footer.firstChild.classList.remove('disabled');
 			}
 			footer.removeChild(footer.firstChild);
 		}
@@ -7349,13 +7386,13 @@ const 新字体の漢字を舊字體に変換 = (function () {
  * <<<1 functions for posting
  */
 
-function populateTextFormItems (form, callback) {
-	let inputNodes = $qsa([
+function populateTextFormItems (form, callback, populateAll) {
+	const inputNodes = $qsa([
 		'input[type="hidden"]',
 		'input[type="text"]',
 		'input[type="number"]',
 		'input[type="password"]',
-		'input[type="checkbox"]:checked',
+		`input[type="checkbox"]${populateAll ? '' : ':checked'}`,
 		'input[type="radio"]:checked',
 		'textarea',
 		'select'
@@ -9581,8 +9618,19 @@ const commands = {
 			onok: dialog => {
 				let storageData = {};
 				populateTextFormItems(dialog.content, item => {
-					storageData[item.name.replace(/^config-item\./, '')] = item.value;
-				});
+					let name = item.name.replace(/^config-item\./, '');
+					let value = item.value;
+
+					if (item.nodeName == 'INPUT') {
+						switch (item.type) {
+						case 'checkbox':
+							value = item.checked;
+							break;
+						}
+					}
+
+					storageData[name] = value;
+				}, true);
 				storage.assignConfig(storageData);
 				storage.saveConfig();
 				applyDataBindings(xmlGenerator.run('').xml);
@@ -10150,7 +10198,10 @@ timingLogger.startTag(`booting ${APP_NAME}`);
 storage = createPersistentStorage();
 storage.onChanged = (changes, areaName) => {
 	if ('config' in changes) {
-		storage.assignConfig(changes.config.newValue);
+		const data = Object.assign(
+			storage.getAllConfigDefault(),
+			changes.config.newValue);
+		storage.assignConfig(data);
 		applyDataBindings(xmlGenerator.run('').xml);
 	}
 	else if ('runtime' in changes) {
@@ -10183,7 +10234,7 @@ Promise.all([
 			{
 				version: '0.0.1',
 				migrated: false,
-				config: storage.getAllConfig(),
+				config: storage.getAllConfigDefault(),
 				runtime: storage.runtime
 			},
 			result => {

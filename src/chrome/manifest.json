@@ -71,6 +71,7 @@
 		"images/*",
 		"sounds/*",
 		"styles/*",
+		"fonts/*",
 		"xsl/*"
 	],
 	"homepage_url": "http://akahuku.github.io/akahukuplus/",

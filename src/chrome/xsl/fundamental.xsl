@@ -85,15 +85,16 @@ hr {
 
 kbd {
 	margin:0 .15em 0 .6em;
-	padding:1px 4px 1px 4px;
+	padding:0 4px 0 4px;
 	background-color:#855;
 	color:#ffe;
 	border-radius:3px;
 	white-space:nowrap;
-	font-family:monospace;
+	font-family:"PT Mono",monospace;
 	font-weight:bold;
 	text-shadow:none;
 	text-decoration:none;
+	line-height:1;
 }
 
 kbd:first-child {
@@ -1249,6 +1250,7 @@ article.summary .replies {
 	z-index:200;
 }
 
+/* dimmver */
 .lightbox-wrap .dimmer {
 	background-color:rgba(0,0,0,0);
 	transition-property:background-color;
@@ -1258,9 +1260,10 @@ article.summary .replies {
 }
 
 .lightbox-wrap .dimmer.run {
-	background-color:rgba(0,0,0,.75);
+	background-color:rgba(0,0,0,.85);
 }
 
+/* image wrapper */
 .lightbox-wrap .image-wrap {
 	position:fixed;
 	display:flex;
@@ -1276,7 +1279,7 @@ article.summary .replies {
 }
 
 .lightbox-wrap .image-wrap:not(.hide) > img {
-
+	background:url(transparent-bg.png) left top repeat fixed #888;
 	opacity:.1;
 	transition-property:width,height,transform,opacity;
 	transition-duration:.3s;
@@ -1304,39 +1307,81 @@ article.summary .replies {
 	line-height:1;
 }
 
+/* infomation indicator */
 .lightbox-wrap .info {
-	display:table;
+	display:flex;
+	flex-direction:row;
+	flex-wrap:nowrap;
+	justify-content:center;
+	align-items:stretch;
 	margin:0 auto 0 auto;
-	padding:8px;
-	background-color:rgba(0,0,0,.5);
-	color:#aaa;
 	border-radius:0 0 4px 4px;
+}
+
+.lightbox-wrap .info > div {
+	display:flex;
+	flex-direction:row;
+	flex-wrap:nowrap;
+	justify-content:center;
+	align-items:stretch;
+	margin:0 1px 0 0;
+	color:#aaa;
 	font-size:small;
 	text-align:center;
-	text-shadow:0 1px #000;
+	text-shadow:0px 1px 1px #000;
 	line-height:1;
 }
 
-.lightbox-wrap .info a {
-	color:#8f8;
-	text-decoration:none;
+.lightbox-wrap .info > div:first-child {
+	border-radius:0 0 0 6px;
 }
 
-.lightbox-wrap .info a:hover {
+.lightbox-wrap .info > div:last-child,
+.lightbox-wrap .info > div:last-child a {
+	border-radius:0 0 6px 0;
+}
+
+.lightbox-wrap .info > div.single {
+	padding:8px;
+	background-color:#000c;
+	color:#ccc;
+}
+
+.lightbox-wrap .info > div.single a {
+	color:#8f8;
+}
+
+.lightbox-wrap .info > div.single a:hover {
 	color:#d44;
 }
 
-.lightbox-wrap .info a + a {
-	margin-left:4px;
-	margin-right:4px;
+.lightbox-wrap .info .flex a {
+	margin:0;
+	padding:8px 5px 8px 5px;
+	background-color:#000c;
+	color:#ccc;
+	text-decoration:none;
 }
-.lightbox-wrap a.selected {
-	background-color:#f0e0d6;
-	color:#800;
-	padding-left:4px;
-	padding-right:4px;
-	border-radius:4px;
+
+.lightbox-wrap .info .flex a kbd {
 	text-shadow:none;
+}
+
+.lightbox-wrap .info .flex a.selected {
+	color:#f44;
+}
+
+.lightbox-wrap .info .flex a.selected kbd {
+	background:#d44;
+}
+
+.lightbox-wrap .info .flex a:hover {
+	color:#fff;
+	background-color:#555;
+}
+
+.lightbox-wrap .info .flex a:not(.selected):hover kbd {
+	background:#682;
 }
 
 /*
@@ -1550,7 +1595,7 @@ article.summary .replies {
 	font-size:large;
 	line-height:1;
 	text-align:right;
-	box-shadow:0 1px 4px rgba(0,0,0,.75);
+	box-shadow:0 1px 2px 2px #8002;
 }
 
 .dialog-wrap .dialog-content-title-ex a {
@@ -2154,6 +2199,7 @@ div.catalog-popup span {
 		<div id="selection-menu" class="hide">
 			<a class="selmenu l" href="#ss-quote">引用</a>
 			<a class="selmenu l" href="#ss-pull">コメントへ</a>
+			<a class="selmenu l" href="#ss-join">大！空！寺！</a>
 			<div/>
 			<a class="selmenu l" href="#ss-copy">コピー</a>
 			<a class="selmenu l" href="#ss-copy-with-quote">引用符付きコピー</a>
@@ -2213,21 +2259,28 @@ div.catalog-popup span {
 			</div>
 			<div class="receiver">
 				<div class="info hide">
-					<a id="lightbox-link" href="#" target="_blank"></a>
-					(<span id="lightbox-ratio"></span>)
-					- <span id="lightbox-zoom-modes">
+					<div class="single">
+						<a id="lightbox-link" href="#" target="_blank"></a>
+						(<span id="lightbox-ratio"></span>)
+					</div>
+					<div id="lightbox-zoom-modes" class="flex">
 						<a class="js" href="#lightbox-whole"><kbd>O</kbd>全体</a>
 						<a class="js" href="#lightbox-actual-size"><kbd>A</kbd>実寸</a>
-						<a class="js" href="#lightbox-fit-to-width"><kbd>W</kbd>幅を最大</a>
-						<a class="js" href="#lightbox-fit-to-height"><kbd>H</kbd>高さを最大</a>
-					</span>
-					- <span id="lightbox-rotate-modes">
+						<a class="js" href="#lightbox-fit-to-width"><kbd>W</kbd>幅最大</a>
+						<a class="js" href="#lightbox-fit-to-height"><kbd>H</kbd>高さ最大</a>
+					</div>
+					<div id="lightbox-rotate-modes" class="flex">
 						<a class="js" href="#lightbox-normal"><kbd>n</kbd>回転しない</a>
 						<a class="js" href="#lightbox-left"><kbd>l</kbd>左</a>
 						<a class="js" href="#lightbox-right"><kbd>r</kbd>右</a>
 						<a class="js" href="#lightbox-180"><kbd>v</kbd>180度</a>
-					</span>
-					- <a class="js" href="#lightbox-search"><kbd>s</kbd>この画像を検索</a>
+					</div>
+					<div class="flex">
+						<a class="js" href="#lightbox-search"><kbd>s</kbd>検索</a>
+					</div>
+					<div class="flex">
+						<a class="js" href="#lightbox-close"><kbd>esc</kbd>閉じる</a>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -2333,7 +2386,7 @@ div.catalog-popup span {
 	<div class="text">
 		<div class="topic-wrap" data-number="{topic/number}">
 			<div>
-				<input type="checkbox"/>&#160;<xsl:if test="topic/sub"><span class="sub def_{topic/sub=$sub_default}"><xsl:value-of select="topic/sub"/></span> | </xsl:if> <xsl:if test="topic/name"><span class="name def_{topic/name=$name_default}"><xsl:value-of select="topic/name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="topic/post_date"/></span> | <xsl:if test="topic/user_id"><span class="user-id">ID:<xsl:value-of select="topic/user_id"/></span><span></span> | </xsl:if> <a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{topic/sodane/@className} js" href="#sodane"><xsl:value-of select="topic/sodane"/></a>&#160;<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
+				<input type="checkbox"/>&#160;<xsl:if test="topic/sub"><span class="sub def_{topic/sub=$sub_default}"><xsl:value-of select="topic/sub"/></span> | </xsl:if> <xsl:if test="topic/name"><span class="name def_{topic/name=$name_default}"><xsl:value-of select="topic/name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="topic/post_date"/></span> | <xsl:if test="topic/user_id"><span class="user-id">ID:<xsl:value-of select="topic/user_id"/></span><span></span> | </xsl:if> <a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{topic/sodane/@class} js" href="#sodane"><xsl:value-of select="topic/sodane"/></a>&#160;<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
 			</div>
 			<xsl:if test="topic/email"><div class="email">[<xsl:apply-templates select="topic/email"/>]</div></xsl:if>
 			<div class="comment"><xsl:apply-templates select="topic/comment"/></div>
@@ -2380,7 +2433,7 @@ div.catalog-popup span {
 	<div>…</div>
 	<div class="{substring('deleted',1,count(deleted)*7)}" data-number="{number}">
 		<div>
-			<span class="no"><xsl:value-of select="offset"/></span>&#160;<input type="checkbox"/> <xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span> | </xsl:if> <xsl:if test="name"><span class="name def_{name=$name_default}"><xsl:value-of select="name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="post_date"/></span> | <a class="postno" href="#quote">No.<xsl:apply-templates select="number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{sodane/@className} js" href="#sodane"><xsl:value-of select="sodane"/></a>
+			<span class="no"><xsl:value-of select="offset"/></span>&#160;<input type="checkbox"/> <xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span> | </xsl:if> <xsl:if test="name"><span class="name def_{name=$name_default}"><xsl:value-of select="name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="post_date"/></span> | <a class="postno" href="#quote">No.<xsl:apply-templates select="number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{sodane/@class} js" href="#sodane"><xsl:value-of select="sodane"/></a>
 		</div>
 		<xsl:if test="image">
 			<div class="reply-image">
