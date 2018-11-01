@@ -127,6 +127,22 @@ a.js:hover kbd {
 	opacity:.3;
 }
 
+.dropbox-image {
+	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/dropbox.png) left top no-repeat;
+}
+
+.gdrive-image {
+	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/gdrive.png) left top no-repeat;
+}
+
+.onedrive-image {
+	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/onedrive.png) left top no-repeat;
+}
+
+.local-image {
+	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/local.png) left top no-repeat;
+}
+
 input[type="checkbox"] {
 	vertical-align:middle;
 }
@@ -697,13 +713,16 @@ article.summary .replies {
 	text-align:center;
 }
 
-#footer .amazon {
-	margin:8px auto 16px auto;
+#footer .reload-image {
+	margin:16px auto 16px auto;
 }
 
-#footer .amazon > a img {
-	margin:0 8px 0 0;
-	/*border:1px solid silver;*/
+#footer .reload-image > a {
+	display:inline-block;
+	width:100%;
+	height:90px;
+	max-width:970px;
+	background:url(chrome-extension://__MSG_@@extension_id__/images/gaoru.png) center center no-repeat #ffe;
 }
 
 #footer .credit {
@@ -1279,7 +1298,7 @@ article.summary .replies {
 }
 
 .lightbox-wrap .image-wrap:not(.hide) > img {
-	background:url(transparent-bg.png) left top repeat fixed #888;
+	background:url(chrome-extension://__MSG_@@extension_id__/images/transparent-bg.png) left top repeat fixed #888;
 	opacity:.1;
 	transition-property:width,height,transform,opacity;
 	transition-duration:.3s;
@@ -1653,9 +1672,11 @@ article.summary .replies {
 	display:inline-block;
 	width:16px;
 	height:16px;
+	background:url(chrome-extension://__MSG_@@extension_id__/images/dialog-button-close.png) center center no-repeat transparent;
 }
 
 .dialog-wrap .close-button:hover {
+	background:url(chrome-extension://__MSG_@@extension_id__/images/dialog-button-close-hover.png) center center no-repeat transparent;
 }
 
 .dialog-wrap #wheel-indicator {
@@ -2027,9 +2048,7 @@ div.catalog-popup span {
 			<hr/>
 		</div>
 		<footer id="footer">
-			<div class="amazon">
-				<a href="#reload" title="リロード"><img src="{$platform}-extension://{meta/extension_id}/images/gaoru.png"/></a>
-			</div>
+			<div class="reload-image"><a href="#reload" title="リロード"></a></div>
 			<div class="credit">—
 				<a href="http://php.loglog.jp/bbs/bbs3.php" target="_blank">GazouBBS</a>
 				+ <a href="//www.2chan.net/" target="_top">futaba</a>
@@ -2204,14 +2223,15 @@ div.catalog-popup span {
 			<a class="selmenu l" href="#ss-copy">コピー</a>
 			<a class="selmenu l" href="#ss-copy-with-quote">引用符付きコピー</a>
 			<div/>
-			&#160;<a class="selmenu i" href="#ss-google"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-google.png"/></a>
-			<a class="selmenu i" href="#ss-amazon"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-amazon.png"/></a>
-			<a class="selmenu i" href="#ss-wikipedia"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-wikipedia.png"/></a>
-			<a class="selmenu i" href="#ss-youtube"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-youtube.png"/></a>
+			&#160;<a class="selmenu i" href="#ss-google" title="Google"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-google.png"/></a>
+			<a class="selmenu i" href="#ss-google-image" title="Google (Image)"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-google.png"/></a>
+			<a class="selmenu i" href="#ss-amazon" title="Amazon"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-amazon.png"/></a>
+			<a class="selmenu i" href="#ss-wikipedia" title="Wikipedia"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-wikipedia.png"/></a>
+			<a class="selmenu i" href="#ss-youtube" title="Youtube"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-youtube.png"/></a>
 			<div/>
-			<a class="selmenu l" href="#ss-cancel">やめて</a>
+			<a class="selmenu l" href="#ss-cancel" title="やめて">やめて</a>
 		</div>
-		<div id="draw-wrap" class="lightbox-wrap draw-wrap hide">
+		<div id="draw-wrap" class="draw-wrap hide">
 			<div class="dimmer"></div>
 			<div class="draw-box-outer hide">
 				<div class="draw-box-inner">

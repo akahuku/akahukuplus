@@ -31,31 +31,3 @@
 	src: local('PT Mono'), local('PTMono-Regular'), url(chrome-extension://__MSG_@@extension_id__/fonts/PT_Mono_latin.woff2) format('woff2');
 	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
-
-.dropbox-image {
-	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/dropbox.png) left top no-repeat;
-}
-
-.gdrive-image {
-	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/gdrive.png) left top no-repeat;
-}
-
-.onedrive-image {
-	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/onedrive.png) left top no-repeat;
-}
-
-.local-image {
-	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/local.png) left top no-repeat;
-}
-
-.lightbox-wrap .image-wrap img {
-	background:url(chrome-extension://__MSG_@@extension_id__/images/transparent-bg.png) left top repeat fixed #888;
-}
-
-.dialog-wrap .close-button {
-	background:url(chrome-extension://__MSG_@@extension_id__/images/dialog-button-close.png) center center no-repeat transparent;
-}
-
-.dialog-wrap .close-button:hover {
-	background:url(chrome-extension://__MSG_@@extension_id__/images/dialog-button-close-hover.png) center center no-repeat transparent;
-}

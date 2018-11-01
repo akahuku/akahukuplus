@@ -1083,6 +1083,62 @@ function applyDataBindings (xml) {
  */
 
 function createResourceManager () {
+	const ENABLE_NIGHT_MODE = false;
+
+	const transformers = [
+		function updateI18nMarks (s) {
+			s = s.replace(/__MSG_@@extension_id__/g, getExtensionId());
+			return s;
+		},
+		function chromeToMoz (s) {
+			if (WasaviExtensionWrapper.IS_GECKO) {
+				s = s.replace(/<style[^>]*>[\s\S]*?<\/style[^>]*>/gi, s1 => {
+					return s1.replace(/chrome-extension:/g, 'moz-extension:');
+				});
+			}
+			return s;
+		},
+		function toNightMode (s) {
+			if (ENABLE_NIGHT_MODE) {
+				const map = {
+					ffe: '4d3d33',
+					800: 'e5cdcc',
+					ea8: 'a05734',
+					f0e0d6: '614a3d',
+					faf4e6: '5a4539'
+				};
+				s = s.replace(/<style[^>]*>[\s\S]*?<\/style[^>]*>/gi, s1 => {
+					return s1.replace(/#((?:ffe|800|ea8)[0-9a-f]?|(?:f0e0d6|faf4e6)(?:[0-9a-f]{2})?)\b/gi, (s2, s3) => {
+						// 4 digits
+						if (s3.length == 4) {
+							let alpha = s3.substr(-1);
+							s3 = s3.substring(0, s3.length - 1);
+							let result = map[s3.toLowerCase()];
+							if (result.length == 3) {
+								return `#${result}${alpha}`;
+							}
+							else {
+								return `#${result}${alpha}${alpha}`;
+							}
+						}
+
+						// 8 digits
+						else if (s3.length == 8) {
+							let alpha = s3.substr(-2);
+							s3 = s3.substring(0, s3.length - 2);
+							let result = map[s3.toLowerCase()];
+							return `#${result}${alpha}`;
+						}
+
+						// others
+						return `#${map[s3.toLowerCase()]}`;
+					});
+				});
+			}
+			return s;
+		}
+	];
+
 	function setSlot (path, expires, data) {
 		let slot = {
 			expires: Date.now() + (expires === undefined ? 1000 * 60 * 60 : expires),
@@ -1108,41 +1164,8 @@ function createResourceManager () {
 			}
 			else {
 				let result = xhr.response;
-				if (false) {
-					const map = {
-						ffe: '4d3d33',
-						800: 'e5cdcc',
-						ea8: 'a05734',
-						f0e0d6: '614a3d',
-						faf4e6: '5a4539'
-					};
-					result = result.replace(/<style[^>]*>[\s\S]*?<\/style[^>]*>/gi, s1 => {
-						return s1.replace(/#((?:ffe|800|ea8)[0-9a-f]?|(?:f0e0d6|faf4e6)(?:[0-9a-f]{2})?)\b/gi, (s2, s3) => {
-							// 4 digits
-							if (s3.length == 4) {
-								let alpha = s3.substr(-1);
-								s3 = s3.substring(0, s3.length - 1);
-								let result = map[s3.toLowerCase()];
-								if (result.length == 3) {
-									return `#${result}${alpha}`;
-								}
-								else {
-									return `#${result}${alpha}${alpha}`;
-								}
-							}
-
-							// 8 digits
-							else if (s3.length == 8) {
-								let alpha = s3.substr(-2);
-								s3 = s3.substring(0, s3.length - 2);
-								let result = map[s3.toLowerCase()];
-								return `#${result}${alpha}`;
-							}
-
-							// others
-							return `#${map[s3.toLowerCase()]}`;
-						});
-					});
+				for (let t of transformers) {
+					result = t(result);
 				}
 				setSlot(path, expires, result);
 				callback(result);
@@ -2192,7 +2215,7 @@ function createXMLGenerator () {
 			let topicNode = element(threadNode, 'topic');
 
 			// expiration date
-			let expires = /<small>([^<]+?頃消えます)<\/small>/i.exec(topicInfo);
+			let expires = /<(?:small|span)[^>]*>([^<]+?頃消えます)<\/(?:small|span)>/i.exec(topicInfo);
 			let expireWarn = /<font[^>]+><b>このスレは古いので、/i.test(topicInfo);
 			if (expires || expireWarn) {
 				let expiresNode = element(topicNode, 'expires');
@@ -4363,6 +4386,9 @@ function createSelectionMenu () {
 		case 'google':
 			open('https://www.google.com/search?hl=ja&q=$TEXT$');
 			break;
+		case 'google-image':
+			open('https://www.google.com/search?tbm=isch&hl=ja&q=$TEXT$');
+			break;
 		case 'amazon':
 			open('https://www.amazon.co.jp/exec/obidos/external-search?mode=blended&field-keywords=$TEXT$');
 			break;
@@ -4545,13 +4571,32 @@ function createFavicon () {
 			let thumb = $qs('article:nth-of-type(1) img');
 			if (!thumb) break;
 
-			isLoading = true;
-			getImageFrom(restoreDistributedImageURL(thumb.src)).then(img => {
-				if (img) {
-					overwriteFavicon(img, createLinkNode());
+			// thumbnail exists in the same domain as the document?
+			let re = /^[^:]+:\/\/([^\/]+)/.exec(thumb.src);
+			if (re[1] == window.location.host) {
+				// yes: use thumbnail directly
+				if (thumb.naturalWidth && thumb.naturalHeight) {
+					overwriteFavicon(thumb, createLinkNode());
 				}
-				isLoading = false;
-			});
+				else {
+					isLoading = true;
+					thumb.onload = () => {
+						overwriteFavicon(thumb, createLinkNode());
+						isLoading = false;
+						thumb = thumb.onload = null;
+					};
+				}
+			}
+			else {
+				// no: transform thumbnail url
+				isLoading = true;
+				getImageFrom(restoreDistributedImageURL(thumb.src)).then(img => {
+					if (img) {
+						overwriteFavicon(img, createLinkNode());
+					}
+					isLoading = false;
+				});
+			}
 			break;
 		}
 	}
