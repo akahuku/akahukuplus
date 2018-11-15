@@ -37,12 +37,9 @@
 	const initializingTabIds = {};
 
 	/* <<<1 functions */
-	function delay (callback, msecs, ...args) {
+	function delay (msecs) {
 		return new Promise(resolve => {
-			args.unshift(() => {
-				resolve(callback());
-			}, msecs);
-			setTimeout.apply(null, args);
+			setTimeout(resolve, msecs);
 		});
 	}
 
@@ -132,23 +129,27 @@
 
 			function reloadTab (id) {
 				return new Promise(resolve => {
-					chrome.tabs.reload(id, () => resolve());
+					console.log(`reloading tab id ${id}...`);
+					function handleTabUpdated (tabId, changeInfo, tab) {
+						if (tabId != id) return;
+						if (changeInfo.status == 'complete') {
+							console.log(`...reloaded tab id ${id}...`);
+							chrome.tabs.onUpdated.removeListener(handleTabUpdated);
+							resolve();
+						}
+					}
+					chrome.tabs.onUpdated.addListener(handleTabUpdated);
+					chrome.tabs.reload(id);
 				});
 			}
 
-			function delayReload (id, msecs) {
-				return new Promise(resolve => {
-					return delay(() => {
-						return activateTab(id)
-						.then(() => reloadTab(id))
-						.then(() => resolve());
-					}, msecs);
-				});
+			function ensureReload (id) {
+				return activateTab(id).then(() => reloadTab(id));
 			}
 
-			function delayReloadTabs (tabs, msecs) {
+			function ensureReloadTabs (tabs) {
 				return tabs.reduce((seq, tab) => {
-					return seq.then(() => delayReload(tab.id, msecs));
+					return seq.then(() => ensureReload(tab.id));
 				}, Promise.resolve());
 			}
 
@@ -156,8 +157,7 @@
 			getCurrentTab()
 			.then(id => {currentTabId = id})
 			.then(() => getAllFutabaTabs())
-			.then(tabs => delayReloadTabs(tabs, 3000))
-			.then(() => delay(() => {}, 3000))
+			.then(tabs => ensureReloadTabs(tabs))
 			.then(() => activateTab(currentTabId));
 		}
 	}

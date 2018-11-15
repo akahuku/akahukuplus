@@ -30,3 +30,7 @@ This product includes the following libraries and materials:
 * PT Mono
 
   <https://fonts.google.com/specimen/PT+Mono>
+
+* jsdifflib - A Javascript visual diff tool & library
+
+  <https://github.com/cemerick/jsdifflib>

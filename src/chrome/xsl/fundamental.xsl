@@ -250,6 +250,7 @@ input[type="checkbox"] {
 	margin:0;
 	position:relative;
 	left:0;
+	top:0;
 	background-color:#ffe;
 }
 
@@ -988,13 +989,12 @@ article.summary .replies {
 
 #ad-aside-wrap {
 	position:fixed;
-	width:210px;/*468-258*/
+	width:336px;
 	top:40pt;
-	right:0;
-	overflow-x:hidden;
+	right:-100px;
 	opacity:.1;
 	text-align:right;
-	transition-property:width,opacity;
+	transition-property:right,opacity;
 	transition-duration:.4s;
 	transition-timing-function:ease;
 	transition-delay:0s;
@@ -1011,11 +1011,11 @@ article.summary .replies {
 
 #ad-aside-wrap:hover {
 	opacity:1;
-	width:468px;
-	overflow-x:visible;
+	right:0;
 }
 
 #ad-aside-wrap div.size-large {
+	/*728px*/
 	position:relative;
 	left:0;
 	transition-property:left;
@@ -1025,7 +1025,31 @@ article.summary .replies {
 }
 
 #ad-aside-wrap div.size-large:hover {
-	left:-260px;
+	left:-378px; /*-(728-350)px*/
+}
+
+#ad-aside-wrap div.size-mini {
+	/*300px*/
+	position:relative;
+	left:-36px;
+	transition-property:left;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0s;
+}
+
+#ad-aside-wrap div.size-skyscraper {
+	position:relative;
+	left:-100px;
+	transition-property:left;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0s;
+}
+
+#ad-aside-wrap:hover div.size-mini,
+#ad-aside-wrap:hover div.size-skyscraper {
+	left:0px;
 }
 
 #panel-aside-wrap {
@@ -1242,6 +1266,20 @@ article.summary .replies {
 }
 
 /*
+ * panel content: notice
+ */
+
+#panel-content-notice li.delete {
+	background-color:#e99;
+	text-decoration:line-through;
+}
+
+#panel-content-notice li.insert {
+	background-color:#9e9;
+	font-size:125%;
+}
+
+/*
  * viewport size caclulator
  */
 
@@ -1401,6 +1439,11 @@ article.summary .replies {
 
 .lightbox-wrap .info .flex a:not(.selected):hover kbd {
 	background:#682;
+}
+
+.lightbox-wrap #lightbox-ratio {
+	font-family:monospace;
+	white-space:pre-wrap;
 }
 
 /*
@@ -1934,7 +1977,15 @@ div.catalog-popup span {
 	box-shadow:0 1px 4px 2px rgba(0,0,0,.3);
 }
 
-#selection-menu > a {
+#selection-menu .menu-rule {
+	overflow:hidden;
+	height:0px;
+	margin:2px 0 2px 0;
+	border-top:1px solid silver;
+	border-bottom:1px solid #fff;
+}
+
+#selection-menu a {
 	margin:0;
 	padding:4px;
 	line-height:1;
@@ -1943,29 +1994,29 @@ div.catalog-popup span {
 	cursor:pointer;
 }
 
-#selection-menu > a:hover {
+#selection-menu a:hover {
 	background-color:highlight;
 	color:highlighttext;
 }
 
-#selection-menu > a.l {
+#selection-menu a.l {
 	display:block;
 }
 
-#selection-menu > a.i {
-	display:inline-block;
+#selection-menu .menu-icons {
+	display:flex;
+	flex-direction:row;
+	flex-wrap:nowrap;
+	justify-content:space-around;
 }
 
-#selection-menu > a.i img {
+#selection-menu a.i {
+	flex-grow:1;
+	text-align:center;
+}
+
+#selection-menu a.i img {
 	border:1px solid #eee;
-}
-
-#selection-menu > div {
-	overflow:hidden;
-	height:0px;
-	margin:2px 0 2px 0;
-	border-top:1px solid silver;
-	border-bottom:1px solid #fff;
 }
 
 /*
@@ -1993,9 +2044,12 @@ div.catalog-popup span {
 				現在<span id="viewers" data-binding="xpath:/futaba/meta/viewers">?</span>人くらいが見てます.
 				&#160; <a class="js" href="#toggle-catalog"><kbd>c</kbd><span>カタログ</span></a>
 				&#160; <a class="js" href="#delete-post">記事削除</a>
-				<xsl:if test="$page_mode='reply'"> &#160; <a class="js" href="#track">自動追尾</a></xsl:if>
+				<xsl:if test="$page_mode='reply'">
+					&#160; <a class="js" href="#track">自動追尾</a>
+				</xsl:if>
 				<xsl:if test="$dev_mode='1'">
 					&#160; <a class="js" href="#reload-ext">Reload Extension</a>
+					&#160; <a class="js" href="#notice-test">Notice Test</a>
 					&#160; <label><input type="checkbox" data-href="#toggle-logging"/>Timing log</label>
 				</xsl:if>
 			</div>
@@ -2219,16 +2273,21 @@ div.catalog-popup span {
 			<a class="selmenu l" href="#ss-quote">引用</a>
 			<a class="selmenu l" href="#ss-pull">コメントへ</a>
 			<a class="selmenu l" href="#ss-join">大！空！寺！</a>
-			<div/>
+			<div class="menu-rule"/>
 			<a class="selmenu l" href="#ss-copy">コピー</a>
 			<a class="selmenu l" href="#ss-copy-with-quote">引用符付きコピー</a>
-			<div/>
-			&#160;<a class="selmenu i" href="#ss-google" title="Google"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-google.png"/></a>
-			<a class="selmenu i" href="#ss-google-image" title="Google (Image)"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-google.png"/></a>
-			<a class="selmenu i" href="#ss-amazon" title="Amazon"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-amazon.png"/></a>
-			<a class="selmenu i" href="#ss-wikipedia" title="Wikipedia"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-wikipedia.png"/></a>
-			<a class="selmenu i" href="#ss-youtube" title="Youtube"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-youtube.png"/></a>
-			<div/>
+			<div class="menu-rule"/>
+			<div class="menu-icons">
+				<a class="selmenu i" href="#ss-google" title="Google"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-google.png"/></a>
+				<a class="selmenu i" href="#ss-google-image" title="Google (Image)"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-google.png"/></a>
+				<a class="selmenu i" href="#ss-twitter" title="Twitter"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-twitter.png"/></a>
+			</div>
+			<div class="menu-icons">
+				<a class="selmenu i" href="#ss-wikipedia" title="Wikipedia"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-wikipedia.png"/></a>
+				<a class="selmenu i" href="#ss-youtube" title="Youtube"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-youtube.png"/></a>
+				<a class="selmenu i" href="#ss-amazon" title="Amazon"><img src="{$platform}-extension://{meta/extension_id}/images/menu/m-amazon.png"/></a>
+			</div>
+			<div class="menu-rule"/>
 			<a class="selmenu l" href="#ss-cancel" title="やめて">やめて</a>
 		</div>
 		<div id="draw-wrap" class="draw-wrap hide">

@@ -50,6 +50,7 @@
 				"frontend/qeema.js",
 				"frontend/twitter_emoji_regexp.js",
 				"frontend/color_picker.js",
+				"frontend/difflib.js",
 				"frontend/akahukuplus.js"
 			],
 			"run_at": "document_start",

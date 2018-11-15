@@ -96,14 +96,15 @@ let quotePopup;
 
 // others
 const siteInfo = {
-	server: '', board: '', resno: 0,
+	server: '', board: '', resno: 0, summaryIndex: 0,
 	logSize: 10000,
 	maxAttachSize: 0,
 	minThreadLifeTime: 0,
 	lastModified: 0,
 	subHash: {},
 	nameHash: {},
-	latestNumber: 0
+	latestNumber: 0,
+	notice: ''
 };
 const cursorPos = {
 	x: 0,
@@ -253,7 +254,6 @@ function transformWholeDocument (xsl) {
 
 	let generateResult = xmlGenerator.run(
 		bootVars.bodyHTML + bootVars.iframeSources,
-		null,
 		pageModes[0] == 'reply' ? LEAD_REPLIES_COUNT : null);
 
 	try {
@@ -500,6 +500,25 @@ function install (mode) {
 			});
 			window.alert('はい。');
 		})
+		.add('#notice-test', (e, t) => {
+			// for debug
+			if (!devMode) return;
+
+			let lines = siteInfo.notice.split('\n');
+
+			// delete
+			lines.splice(2, 2);
+
+			// replace
+			lines = lines.map(t => t.replace(/(最大)(\d+)(レス)/g, ($0, $1, $2, $3) => $1 + (parseInt($2, 10) * 2) + $3));
+
+			// add
+			lines.push(`Appended line #1: ${Math.random()}`);
+			lines.push(`Appended line #2: ${Math.random()}`);
+
+			siteInfo.notice = lines.join('\n');
+			setBottomStatus('notice modified for debug');
+		})
 
 		.add('.del', (e, t) => {
 			commands.openModerateDialog(e, t);
@@ -559,7 +578,7 @@ function install (mode) {
 				}
 			}
 			else {
-				return 'passthrough';
+				return clickDispatcher.PASS_THROUGH;
 			}
 		})
 		.add('.catalog-order', (e, t) => {
@@ -639,15 +658,23 @@ function install (mode) {
 		.addStroke('command', 'i', commands.activatePostForm)
 		.addStroke('command', '\u001b', commands.deactivatePostForm)
 
-		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)
-		.addStroke('command.edit', '\u0013', commands.toggleSage)
-		.addStroke('command.edit', '<S-enter>', commands.post)
-		.addStroke('command.edit', '\u0001', commands.cursorTopOfLine)
-		.addStroke('command.edit', '\u0005', commands.cursorBottomOfLine)
-		//.addStroke('command.edit', 'C-p', commands.cursorPrev)
-		//.addStroke('command.edit', 'C-n', commands.cursorNext)
-		.addStroke('command.edit', '\u0002', commands.cursorBack)
-		.addStroke('command.edit', '\u0006', commands.cursorForward)
+		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)	// <esc>
+		.addStroke('command.edit', '\u0013', commands.toggleSage)			// ^S
+		.addStroke('command.edit', '<S-enter>', commands.post)				// <Shift+Enter>
+
+		// These shortcuts for text editing are basically emacs-like...
+		.addStroke('command.edit', '\u0001', commands.cursorBeginningOfLine)	// ^A
+		.addStroke('command.edit', '\u0005', commands.cursorEndOfLine)			// ^E
+		.addStroke('command.edit', '\u000a', commands.cursorNextLine)			// ^J: Because Chrome reserves ^N, so this is the plan B.
+		.addStroke('command.edit', '\u000b', commands.cursorPreviousLine)		// ^K: ^N can not be used, this is also defined like vi.
+		.addStroke('command.edit', '\u0006', commands.cursorForwardChar)		// ^F
+		.addStroke('command.edit', '\u0002', commands.cursorBackwardChar)		// ^B
+		.addStroke('command.edit', '<A-F>',  commands.cursorForwardWord)		// Alt+F
+		.addStroke('command.edit', '<A-B>',  commands.cursorBackwardWord)		// Alt+B
+		.addStroke('command.edit', '\u0008', commands.cursorDeleteBackwardChar)	// ^H
+		.addStroke('command.edit', '\u0017', commands.cursorDeleteBackwardWord)	// ^W
+		.addStroke('command.edit', '\u0015', commands.cursorDeleteBackwardBlock)// ^U
+
 		.updateManifest();
 
 	/*
@@ -660,60 +687,74 @@ function install (mode) {
 	 * window resize handler
 	 */
 
-	setupWindowResizeEvent(100, e => {
-		let vp = document.body.appendChild(document[CRE]('div'));
-		try {
-			vp.id = 'viewport-rect';
-			viewportRect = vp.getBoundingClientRect();
-		}
-		finally {
-			vp.parentNode.removeChild(vp);
-		}
-
-		let style = $('dynstyle-comment-maxwidth');
-		if (!style) return;
-		empty(style);
-
-		// max width of comments
-		let text = $qs('article div.text');
-		if (text) {
-			let isContentInvisible = $('content').classList.contains('hide');
-			$('content').classList.remove('hide');
+	(function () {
+		function updateViewportRectGeometry () {
+			let vp = document.body.appendChild(document[CRE]('div'));
 			try {
-				let rect = text.getBoundingClientRect();
-				style.appendChild(document.createTextNode([
-					'.reply-wrap > div:last-child {',
-					`  max-width:${Math.floor(rect.width * 0.9)}px;`,
-					'}'
-				].join('\n')));
+				vp.id = 'viewport-rect';
+				viewportRect = vp.getBoundingClientRect();
 			}
 			finally {
-				if (isContentInvisible) {
-					$('content').classList.add('hide');
+				vp.parentNode.removeChild(vp);
+			}
+		}
+
+		function updateMaxWidthOfComments (style) {
+			let text = $qs('article div.text');
+			if (text) {
+				let isContentInvisible = $('content').classList.contains('hide');
+				$('content').classList.remove('hide');
+				try {
+					let rect = text.getBoundingClientRect();
+					style.appendChild(document.createTextNode([
+						'.reply-wrap > div:last-child {',
+						`  max-width:${Math.floor(rect.width * 0.9)}px;`,
+						'}'
+					].join('\n')));
+				}
+				finally {
+					if (isContentInvisible) {
+						$('content').classList.add('hide');
+					}
 				}
 			}
 		}
 
-		// max size of dialogs
-		style.appendChild(document.createTextNode([
-			`.dialog-wrap .dialog-content {`,
-			`  max-width:${Math.floor(viewportRect.width * 0.8)}px;`,
-			`  max-height:${Math.floor(viewportRect.height * 0.8)}px;`,
-			`  min-width:${Math.floor(viewportRect.width * 0.25)}px;`,
-			'}'
-		].join('\n')));
+		function updateMaxSizeOfDialogs (style) {
+			style.appendChild(document.createTextNode([
+				`.dialog-wrap .dialog-content {`,
+				`  max-width:${Math.floor(viewportRect.width * 0.8)}px;`,
+				`  max-height:${Math.floor(viewportRect.height * 0.8)}px;`,
+				`  min-width:${Math.floor(viewportRect.width * 0.25)}px;`,
+				'}'
+			].join('\n')));
+		}
 
-		// header height adjustment
-		let headerHeight = $('header').offsetHeight + HEADER_MARGIN_BOTTOM;
-		$('content').style.marginTop =
-		$('ad-aside-wrap').style.top =
-		$('panel-aside-wrap').style.top = headerHeight + 'px';
-		style.appendChild(document.createTextNode([
-			`#content > article > .image > div {`,
-			`  top:${headerHeight}px`,
-			'}'
-		].join('\n')));
-	});
+		function updateHeaderHeight (style) {
+			let headerHeight = $('header').offsetHeight + HEADER_MARGIN_BOTTOM;
+			$('content').style.marginTop =
+			$('ad-aside-wrap').style.top =
+			$('panel-aside-wrap').style.top = headerHeight + 'px';
+			style.appendChild(document.createTextNode([
+				`#content > article > .image > div {`,
+				`  top:${headerHeight}px`,
+				'}'
+			].join('\n')));
+		}
+
+		function handler () {
+			let style = $('dynstyle-comment-maxwidth');
+			if (!style) return;
+			empty(style);
+
+			updateViewportRectGeometry(style);
+			updateMaxWidthOfComments(style);
+			updateMaxSizeOfDialogs(style);
+			updateHeaderHeight(style);
+		}
+
+		setupWindowResizeEvent(100, handler);
+	})();
 
 	/*
 	 * window scroll handler
@@ -745,7 +786,7 @@ function install (mode) {
 		}
 		else if (pageModes[0] == 'catalog' && pageModes[1] == 'summary') {
 			let re = /(\d+)\.htm$/.exec(window.location.pathname);
-			let summaryIndex = re ? re[1] : 0;
+			let summaryIndex = siteInfo.summaryIndex = re ? re[1] : 0;
 
 			// title sync
 			let titleElement = $qs('#header h1 a');
@@ -1234,10 +1275,36 @@ function createXMLGenerator () {
 	 */
 
 	function stripTags (s) {
-		while (/<\w+[^>]*>/.test(s)) {
-			s = s.replace(/<(\w+)[^>]*>([^>]*)<\/\1>/g, '$2');
+		const result = [];
+		const pattern = /<[^>]+>|[^<]+/g;
+		let re;
+		while ((re = pattern.exec(s))) {
+			if (re[0].charAt(0) != '<') {
+				result.push(re[0]);
+			}
 		}
-		return s;
+		return result.join('');
+	}
+
+	function stripTagsForNotice (s) {
+		const result = [];
+		const pattern = /<[^>]+>|[^<]+/g;
+		let re;
+		while ((re = pattern.exec(s))) {
+			if (re[0].charAt(0) == '<') {
+				let re2;
+				if ((re2 = /<a\b.*href="([^"]*)"/.exec(re[0]))) {
+					result.push(`<a href="${re2[1]}">`);
+				}
+				else if ((re2 = /<\/a\b/.exec(re[0]))) {
+					result.push(`</a>`);
+				}
+			}
+			else {
+				result.push(re[0]);
+			}
+		}
+		return result.join('');
 	}
 
 	function textFactory (xml) {
@@ -1272,362 +1339,6 @@ function createXMLGenerator () {
 				return nameHash[b] - nameHash[a];
 		})[0] || '').replace(/^\s+|\s+$/g, '')));
 	}
-
-	function fetchReplies (s, regex, count, maxReplies, lowBoundNumber, threadNode, subHash, nameHash, baseUrl) {
-		let text = textFactory(threadNode.ownerDocument);
-		let repliesNode = element(threadNode, 'replies');
-		let goal = count + maxReplies;
-		let offset = count + 1;
-		let reply;
-		let postTimeRegex = getPostTimeRegex();
-
-		for (;count < goal && (reply = regex.exec(s)); offset++, count++) {
-			let re = /^(.*)<blockquote[^>]*>(.*)<\/blockquote>/i.exec(reply[0]);
-			if (!re) continue;
-
-			let info = re[1];
-			let infoText = info.replace(/<\/?[\w\-:]+(\s+[\w\-:]+\s*=\s*"[^"]*")*[^>]*>/g, '');
-			let comment = re[2];
-			let replyNode = element(repliesNode, 'reply');
-			let number;
-
-			// number
-			re = /No\.(\d+)/i.exec(infoText);
-			if (re) {
-				number = re[1];
-				let numberNode = element(replyNode, 'number');
-				numberNode.appendChild(text(re[1]));
-				re = /^(\d*?)((\d)\3+)$/.exec(number);
-				if (re) {
-					numberNode.setAttribute('lead', re[1]);
-					numberNode.setAttribute('trail', re[2]);
-				}
-			}
-
-			// deletion flag
-			re = /<table[^>]*class="deleted"[^>]*>/i.exec(info);
-			if (re) {
-				element(replyNode, 'deleted');
-			}
-
-			// ID
-			re = /ID:([^ "]+)/.exec(infoText);
-			if (re) {
-				let idNode = element(replyNode, 'user_id');
-				idNode.appendChild(text(stripTags(re[1])));
-				markStatistics.notifyId(number, re[1]);
-			}
-
-			// mark
-			re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(comment);
-			if (re && (!re[1] || re[1].substr(-1) != '=')) {
-				if (!$qs('deleted', replyNode)) {
-					element(replyNode, 'deleted');
-				}
-
-				let markNode = element(replyNode, 'mark');
-				re[0].charAt(0) == '['
-					&& re[0].substr(-1) == ']'
-					&& markNode.setAttribute('bracket', 'true');
-				re[2] = stripTags(re[2]);
-				markNode.appendChild(text(re[2]));
-				markStatistics.notifyMark(number, re[2]);
-			}
-
-			// そうだね (that's right）
-			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(info);
-			if (re) {
-				let sodaneNode = element(replyNode, 'sodane');
-				sodaneNode.appendChild(text(re[1]
-					.replace('x', ' × ')
-					.replace('+', '＋')
-				));
-				sodaneNode.setAttribute('class', re[1] == '+' ? 'sodane-null' : 'sodane');
-			}
-
-			// skip, if we can
-			if (number <= lowBoundNumber) {
-				continue;
-			}
-
-			// offset
-			element(replyNode, 'offset').appendChild(text(offset));
-
-			// posted date
-			re = postTimeRegex.exec(info);
-			if (re) {
-				let postedDate = new Date(
-					2000 + (re[1] - 0),
-					re[2] - 1,
-					re[3] - 0,
-					re[4] - 0,
-					re[5] - 0,
-					re[6] - 0,
-					0
-				);
-				let postDateNode = element(replyNode, 'post_date');
-				postDateNode.appendChild(text(re[0]));
-				postDateNode.setAttribute('value', postedDate.getTime() / 1000);
-			}
-
-			// subject
-			re = /<input[^>]+type="checkbox"[^>]*>(?:<[^a][^>]*>)+([^<]+)/i.exec(info);
-			if (re) {
-				re[1] = re[1].replace(/^\s+|\s+$/g, '');
-				element(replyNode, 'sub').appendChild(text(re[1]));
-				subHash[re[1]] = (subHash[re[1]] || 0) + 1;
-			}
-
-			// name
-			re = /Name\s*<font[^>]*>(.+?)<\/font>/i.exec(info);
-			if (re) {
-				re[1] = re[1]
-					.replace(/<[^>]*>/g, '')
-					.replace(/^\s+|\s+$/g, '');
-				element(replyNode, 'name').appendChild(text(re[1]));
-				nameHash[re[1]] = (nameHash[re[1]] || 0) + 1;
-			}
-
-			// mail address
-			re = /<a href="mailto:([^"]*)"/i.exec(info);
-			if (re) {
-				let emailNode = element(replyNode, 'email');
-				emailNode.appendChild(text(stripTags(re[1])));
-				linkify(emailNode);
-			}
-
-			// src & thumbnail url
-			let imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
-			if (imagehref) {
-				let imageNode = element(replyNode, 'image');
-				let srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
-				imageNode.appendChild(text(srcUrl));
-				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
-
-				// animated
-				re = /<small[^>]*>アニメGIF.<\/small[^>]*>/i.exec(info);
-				if (re) {
-					imageNode.setAttribute('animated', 'true');
-				}
-
-				// bytes
-				re = /\balt="?(\d+)\s*B/i.exec(imagehref[2]);
-				if (re) {
-					imageNode.setAttribute('bytes', re[1]);
-					imageNode.setAttribute('size', getReadableSize(re[1]));
-				}
-
-				// thumbnail
-				let thumbUrl = '', thumbWidth = false, thumbHeight = false;
-				re = /\b(?:data-)?src=([^\s>]+)/i.exec(imagehref[2]);
-				if (re) {
-					thumbUrl = re[1].replace(/^["']|["']$/g, '');
-					thumbUrl = resolveRelativePath(thumbUrl, baseUrl);
-					thumbUrl = restoreDistributedImageURL(thumbUrl);
-				}
-				re = /\bwidth="?(\d+)"?/i.exec(imagehref[2]);
-				if (re) {
-					thumbWidth = re[1];
-				}
-				re = /\bheight="?(\d+)"?/i.exec(imagehref[2]);
-				if (re) {
-					thumbHeight = re[1];
-				}
-				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
-					let thumbNode = element(replyNode, 'thumb');
-					thumbNode.appendChild(text(thumbUrl));
-					thumbNode.setAttribute('width', thumbWidth);
-					thumbNode.setAttribute('height', thumbHeight);
-				}
-			}
-
-			// comment
-			//if (count == 0) {
-			//	comment += '';
-			//}
-			pushComment(element(replyNode, 'comment'), comment);
-		}
-
-		return {
-			lastReached: count < goal && !reply,
-			repliesNode: repliesNode,
-			repliesCount: count,
-			regex: regex
-		}
-	}
-
-	function LinkTarget (className, pattern, handler) {
-		this.className = className;
-		this.pattern = pattern;
-		this.handler = handler;
-	}
-	LinkTarget.prototype.getHref = function (re, anchor) {
-		return this.completeScheme(this.handler(
-			re.slice(this.offset, this.offset + this.backrefLength)
-			  .map(a => a == undefined ? '' : a),
-			anchor
-		));
-	};
-	LinkTarget.prototype.completeScheme = function (url) {
-		let scheme = /^[^:]+/.exec(url)[0];
-		if (/^h?t?t?p?s$/.test(scheme)) {
-			scheme = 'https';
-		}
-		else if (/^h?t?t?p?$/.test(scheme)) {
-			scheme = 'http';
-		}
-		url = url.replace(/^[^:]*:\/\//, `${scheme}://`);
-		return url;
-	};
-	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
-		if (re[2]) {
-			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(re[2])) {
-				anchor.setAttribute('class', `${this.className} incomplete-siokara-thumbnail lightbox`);
-				anchor.setAttribute('thumbnail', `${baseUrl}misc/${re[1]}.thumb.jpg`);
-			}
-			return `${baseUrl}src/${re[1]}${re[2]}`;
-		}
-		else {
-			anchor.setAttribute('basename', re[1]);
-			anchor.setAttribute('class', `${this.className} incomplete`);
-			return `${baseUrl}index.html`;
-		}
-	};
-	LinkTarget.prototype.upProc = function (re, anchor, baseUrl) {
-		if (re[2]) {
-			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(re[2])) {
-				anchor.setAttribute('class', `${this.className} lightbox`);
-			}
-			return `${baseUrl}src/${re[1]}${re[2]}`;
-		}
-		else {
-			anchor.setAttribute('basename', re[1]);
-			anchor.setAttribute('class', `${this.className} incomplete`);
-			return `${baseUrl}up.htm`;
-		}
-	};
-	const linkTargets = [
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox6\\.com/futabafiles/001/src/)?(sa\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 1ml');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox6.com/futabafiles/001/');
-			}
-		),
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox2\\.com/futabafiles/003/src/)?(sp\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 3ml');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox2.com/futabafiles/003/');
-			}
-		),
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox5\\.com/futabafiles/kobin/src/)?(ss\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 小瓶');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox5.com/futabafiles/kobin/');
-			}
-		),
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox5\\.com/futabafiles/tubu/src/)?(su\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 塩粒');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox5.com/futabafiles/tubu/');
-			}
-		),
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox6\\.com/futabafiles/mid/src/)?(sq\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 中瓶');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox6.com/futabafiles/mid/');
-			}
-		),
-		new LinkTarget(
-			'link-futalog',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox2\\.com/futalog/src/)?((?:dec|jun|nov|may|img|dat|cgi|nne|id|jik|nar|oth)\\d{4,})(\\.mht)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', 'ふたログ');
-				return 'http://www.nijibox2.com/futabalog/src/' +
-					   re[1].replace('oth', 'other') + '.mht';
-			}
-		),
-		new LinkTarget(
-			'link-up',
-			'\\b((?:h?t?t?p?://)?(?:dec\\.2chan\\.net/up/src/)?(f\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', 'あぷ');
-				return this.upProc(re, anchor, 'http://dec.2chan.net/up/');
-			}
-		),
-		new LinkTarget(
-			'link-up-small',
-			'\\b((?:h?t?t?p?://)?(?:dec\\.2chan\\.net/up/src/)?(fu\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', 'あぷ小');
-				return this.upProc(re, anchor, 'http://dec.2chan.net/up2/');
-			}
-		),
-		new LinkTarget(
-			'link-youtube',
-			'\\b((?:h?t?t?p?s?://)?(' + [
-				'www\\.youtube\\.com/watch\?(?:.*?v=([\\w\\-]+))',
-				'www\\.youtube\\.com/v/([\\w\\-]+)',
-				'youtu\\.be/([\\w\\-]+)'
-			].join('|') + ')\\S*)',
-			function (re, anchor) {
-				anchor.setAttribute('youtube-key', re[2] || re[3] || re[4]);
-				return `https://${re[1]}`;
-			}
-		),
-		new LinkTarget(
-			'link-nico2',
-			'\\b((?:h?t?t?p?:s?//)?([^.]+\\.nicovideo\\.jp/watch/(sm\\w+)\\S*))',
-			function (re, anchor) {
-				anchor.setAttribute('nico2-key', re[2]);
-				return `http://${re[1]}`;
-			}
-		),
-		new LinkTarget(
-			'link-futaba lightbox',
-			'\\b((?:h?t?t?p?s?://)?[^.]+\\.2chan\\.net/[^/]+/src/\\d+\\.(?:jpg|gif|png|webm|mp4)\\S*)',
-			function (re, anchor) {
-				anchor.setAttribute(
-					'thumbnail',
-					re[0]
-						.replace('/src/', '/thumb/')
-						.replace(/\.(?:jpg|gif|png|webm|mp4)/, 's.jpg'));
-				return re[0];
-			}
-		),
-		new LinkTarget(
-			'link-twitter link-external',
-			'\\b((?:h?t?t?p?s?://)?twitter\\.com/[^/]+/status/(\\d+)\\S*)',
-			function (re, anchor) {
-				anchor.setAttribute('tweet-id', re[1]);
-				return re[0];
-			}
-		),
-		new LinkTarget(
-			'link-external',
-			'\\b((\\w+)(://\\S+))',
-			function (re, anchor) {
-				return re[0];
-			}
-		)
-	];
-	const linkTargetRegex = new RegExp(linkTargets.map((a, i) => {
-		let re = (a.pattern.replace(/\(\?/g, '')).match(/\(/g);
-		linkTargets[i].backrefLength = re ? re.length : 0;
-		linkTargets[i].offset = i > 0 ? linkTargets[i - 1].offset + linkTargets[i - 1].backrefLength : 1;
-		return a.pattern;
-	}).join('|'));
 
 	// ported from https://github.com/twitter/twemoji/blob/gh-pages/2/twemoji.js
 	const UFE0Fg = /\uFE0F/g
@@ -1893,23 +1604,202 @@ function createXMLGenerator () {
 	}
 
 	/*
+	 * classes
+	 */
+
+	function LinkTarget (className, pattern, handler) {
+		this.className = className;
+		this.pattern = pattern;
+		this.handler = handler;
+	}
+	LinkTarget.prototype.getHref = function (re, anchor) {
+		return this.completeScheme(this.handler(
+			re.slice(this.offset, this.offset + this.backrefLength)
+			  .map(a => a == undefined ? '' : a),
+			anchor
+		));
+	};
+	LinkTarget.prototype.completeScheme = function (url) {
+		let scheme = /^[^:]+/.exec(url)[0];
+		if (/^h?t?t?p?s$/.test(scheme)) {
+			scheme = 'https';
+		}
+		else if (/^h?t?t?p?$/.test(scheme)) {
+			scheme = 'http';
+		}
+		url = url.replace(/^[^:]*:\/\//, `${scheme}://`);
+		return url;
+	};
+	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
+		if (re[2]) {
+			anchor.setAttribute('basename', re[1] + re[2]);
+			if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(re[2])) {
+				anchor.setAttribute('class', `${this.className} incomplete-siokara-thumbnail lightbox`);
+				anchor.setAttribute('thumbnail', `${baseUrl}misc/${re[1]}.thumb.jpg`);
+			}
+			return `${baseUrl}src/${re[1]}${re[2]}`;
+		}
+		else {
+			anchor.setAttribute('basename', re[1]);
+			anchor.setAttribute('class', `${this.className} incomplete`);
+			return `${baseUrl}index.html`;
+		}
+	};
+	LinkTarget.prototype.upProc = function (re, anchor, baseUrl) {
+		if (re[2]) {
+			anchor.setAttribute('basename', re[1] + re[2]);
+			if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(re[2])) {
+				anchor.setAttribute('class', `${this.className} lightbox`);
+			}
+			return `${baseUrl}src/${re[1]}${re[2]}`;
+		}
+		else {
+			anchor.setAttribute('basename', re[1]);
+			anchor.setAttribute('class', `${this.className} incomplete`);
+			return `${baseUrl}up.htm`;
+		}
+	};
+	const linkTargets = [
+		new LinkTarget(
+			'link-siokara',
+			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox6\\.com/futabafiles/001/src/)?(sa\\d{4,})(\\.\\w+)?)',
+			function (re, anchor) {
+				anchor.setAttribute('title', '塩辛瓶 1ml');
+				return this.siokaraProc(re, anchor, 'http://www.nijibox6.com/futabafiles/001/');
+			}
+		),
+		new LinkTarget(
+			'link-siokara',
+			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox2\\.com/futabafiles/003/src/)?(sp\\d{4,})(\\.\\w+)?)',
+			function (re, anchor) {
+				anchor.setAttribute('title', '塩辛瓶 3ml');
+				return this.siokaraProc(re, anchor, 'http://www.nijibox2.com/futabafiles/003/');
+			}
+		),
+		new LinkTarget(
+			'link-siokara',
+			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox5\\.com/futabafiles/kobin/src/)?(ss\\d{4,})(\\.\\w+)?)',
+			function (re, anchor) {
+				anchor.setAttribute('title', '塩辛瓶 小瓶');
+				return this.siokaraProc(re, anchor, 'http://www.nijibox5.com/futabafiles/kobin/');
+			}
+		),
+		new LinkTarget(
+			'link-siokara',
+			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox5\\.com/futabafiles/tubu/src/)?(su\\d{4,})(\\.\\w+)?)',
+			function (re, anchor) {
+				anchor.setAttribute('title', '塩辛瓶 塩粒');
+				return this.siokaraProc(re, anchor, 'http://www.nijibox5.com/futabafiles/tubu/');
+			}
+		),
+		new LinkTarget(
+			'link-siokara',
+			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox6\\.com/futabafiles/mid/src/)?(sq\\d{4,})(\\.\\w+)?)',
+			function (re, anchor) {
+				anchor.setAttribute('title', '塩辛瓶 中瓶');
+				return this.siokaraProc(re, anchor, 'http://www.nijibox6.com/futabafiles/mid/');
+			}
+		),
+		new LinkTarget(
+			'link-futalog',
+			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox2\\.com/futalog/src/)?((?:dec|jun|nov|may|img|dat|cgi|nne|id|jik|nar|oth)\\d{4,})(\\.mht)?)',
+			function (re, anchor) {
+				anchor.setAttribute('title', 'ふたログ');
+				return 'http://www.nijibox2.com/futabalog/src/' +
+					   re[1].replace('oth', 'other') + '.mht';
+			}
+		),
+		new LinkTarget(
+			'link-up',
+			'\\b((?:h?t?t?p?://)?(?:dec\\.2chan\\.net/up/src/)?(f\\d{4,})(\\.\\w+)?)',
+			function (re, anchor) {
+				anchor.setAttribute('title', 'あぷ');
+				return this.upProc(re, anchor, 'http://dec.2chan.net/up/');
+			}
+		),
+		new LinkTarget(
+			'link-up-small',
+			'\\b((?:h?t?t?p?://)?(?:dec\\.2chan\\.net/up/src/)?(fu\\d{4,})(\\.\\w+)?)',
+			function (re, anchor) {
+				anchor.setAttribute('title', 'あぷ小');
+				return this.upProc(re, anchor, 'http://dec.2chan.net/up2/');
+			}
+		),
+		new LinkTarget(
+			'link-youtube',
+			'\\b((?:h?t?t?p?s?://)?(' + [
+				'(?:www|m)\\.youtube\\.com/watch\?(?:.*?v=([\\w\\-]+))',
+				'www\\.youtube\\.com/(?:v|embed)/([\\w\\-]+)',
+				'youtu\\.be/([\\w\\-]+)'
+			].join('|') + ')\\S*)',
+			function (re, anchor) {
+				anchor.setAttribute('youtube-key', re[2] || re[3] || re[4]);
+				return `https://${re[1]}`;
+			}
+		),
+		new LinkTarget(
+			'link-nico2',
+			'\\b((?:h?t?t?p?:s?//)?([^.]+\\.nicovideo\\.jp/watch/(sm\\w+)\\S*))',
+			function (re, anchor) {
+				anchor.setAttribute('nico2-key', re[2]);
+				return `http://${re[1]}`;
+			}
+		),
+		new LinkTarget(
+			'link-futaba lightbox',
+			'\\b((?:h?t?t?p?s?://)?[^.]+\\.2chan\\.net/[^/]+/src/\\d+\\.(?:jpg|gif|png|webm|mp4)\\S*)',
+			function (re, anchor) {
+				anchor.setAttribute(
+					'thumbnail',
+					re[0]
+						.replace('/src/', '/thumb/')
+						.replace(/\.(?:jpg|gif|png|webm|mp4)/, 's.jpg'));
+				return re[0];
+			}
+		),
+		new LinkTarget(
+			'link-twitter link-external',
+			'\\b((?:h?t?t?p?s?://)?twitter\\.com/[^/]+/status/(\\d+)\\S*)',
+			function (re, anchor) {
+				anchor.setAttribute('tweet-id', re[1]);
+				return re[0];
+			}
+		),
+		new LinkTarget(
+			'link-external',
+			'\\b((\\w+)(://\\S+))',
+			function (re, anchor) {
+				return re[0];
+			}
+		)
+	];
+	const linkTargetRegex = new RegExp(linkTargets.map((a, i) => {
+		let re = (a.pattern.replace(/\(\?/g, '')).match(/\(/g);
+		linkTargets[i].backrefLength = re ? re.length : 0;
+		linkTargets[i].offset = i > 0 ? linkTargets[i - 1].offset + linkTargets[i - 1].backrefLength : 1;
+		return a.pattern;
+	}).join('|'));
+
+	/*
 	 * main functions
 	 */
 
-	function run (content, url, maxReplies) {
+	function run (content, maxReplies) {
 		timingLogger.startTag('createXMLGenerator#run');
 
-		url || (url = window.location.href);
-		typeof maxReplies == 'number' || (maxReplies = 0x7fffffff);
+		const url = window.location.href;
+		const xml = document.implementation.createDocument(null, 'futaba', null);
+		const text = textFactory(xml);
+		const isReplyMode = pageModes[0] == 'reply';
+		const baseUrl = url;
+		const remainingRepliesContext = [];
+		const enclosureNode = xml.documentElement;
+		const metaNode = element(enclosureNode, 'meta');
 
-		var xml = document.implementation.createDocument(null, 'futaba', null);
-		var text = textFactory(xml);
-		var isReplyMode = /\b(?:res\/\d+\.htm|\.php\?res=\d+)/.test(url);
-		var baseUrl = url;
-		var remainingRepliesContext = [];
-		var enclosureNode = xml.documentElement;
-		var metaNode = element(enclosureNode, 'meta');
-		var re;
+		let re;
+		if (typeof maxReplies != 'number') {
+			maxReplies = 0x7fffffff;
+		}
 
 		// create fundamental nodes
 		element(metaNode, 'mode')
@@ -1933,7 +1823,7 @@ function createXMLGenerator () {
 		// strip comments
 		content = content.replace(/<!--.*?-->/g, ' ');
 
-		// regalize all references
+		// legalize all references
 		content = content.replace(/&amp;/g, '&');
 
 		// experimental feature
@@ -1962,56 +1852,67 @@ function createXMLGenerator () {
 			if (!re) return;
 			let title = re[1].replace(/二次元裏$/, `虹裏${siteInfo.server}`)
 				+ re[2];
-			if (!isReplyMode && (re = /(\d+)\.htm$/.exec(window.location.pathname))) {
-				title += ` [ページ ${re[1]}]`;
+			if (!isReplyMode && siteInfo.summaryIndex) {
+				title += ` [ページ ${siteInfo.summaryIndex}]`;
 			}
 			let titleNode = element(metaNode, 'title');
 			titleNode.appendChild(text(title));
 			linkify(titleNode, {linkify: false, emojify: true});
 		})();
 
-		// page notices
+		// page notice
 		(function () {
-			var notices = /<table[^>]+class="ftbl"[^>]*>(.*?)<\/form>/i.exec(content);
+			let notices = /<table[^>]+class="ftbl"[^>]*>(.*?)<\/form>/i.exec(content);
 			if (!notices) return;
-			var noticesNode = element(metaNode, 'notices');
-			var noticeRegex = /<li[^>]*>(.*?)<\/li>/g;
-			var notice;
-			while ((notice = noticeRegex.exec(notices[1]))) {
+			notices = notices[1];
+
+			let noticeMarkups = [];
+			let noticesNode = element(metaNode, 'notices');
+			let noticeRegex = /<li[^>]*>(.*?)<\/li>/g;
+			let notice;
+			while ((notice = noticeRegex.exec(notices))) {
+				notice = notice[1];
+
 				// viewers
-				if (notice[1].match(/現在(\d+)/)) {
+				if (notice.match(/現在([^人]+)/)) {
 					element(metaNode, 'viewers').appendChild(text(RegExp.$1));
 				}
 
 				// log cycle
-				if (notice[1].match(/この板の保存数は(\d+)/)) {
+				if (notice.match(/この板の保存数は(\d+)/)) {
 					element(metaNode, 'logsize').appendChild(text(RegExp.$1));
 					siteInfo.logSize = RegExp.$1 - 0;
 				}
 
 				// max size of attachment file
-				if (notice[1].match(/(\d+)\s*(KB|MB)/)) {
+				if (notice.match(/(\d+)\s*(KB|MB)/)) {
 					siteInfo.maxAttachSize = parseMaxAttachSize(RegExp.$1, RegExp.$2);
 					element(metaNode, 'maxattachsize').appendChild(text(siteInfo.maxAttachSize));
 				}
 
 				// min life time of thread
-				if (notice[1].match(/最低(\d+)\s*(時間|分)保持/)) {
+				if (notice.match(/最低(\d+)\s*(時間|分)保持/)) {
 					siteInfo.minThreadLifeTime = parseMinThreadLifeTime(RegExp.$1, RegExp.$2);
 					element(metaNode, 'minthreadlifetime').appendChild(text(siteInfo.minThreadLifeTime));
 				}
 
-				element(noticesNode, 'notice').appendChild(text(notice[1]));
+				notice = stripTagsForNotice(notice);
+				element(noticesNode, 'notice').appendChild(text(notice));
+				noticeMarkups.push(notice);
 			}
+
+			siteInfo.noticeNew = noticeMarkups
+				.join('\n')
+				.replace(/現在[^人]+人/g, '現在__akahukuplus_viewers_count__人');
 		})();
 
 		// page navigator
 		(function () {
-			var navs = /<table[^>]+class="psen"[^>]*>(.*)<\/table>/i.exec(content);
+			let navs = /<table[^>]+class="psen"[^>]*>(.*)<\/table>/i.exec(content);
 			if (!navs) return;
-			var buffer = [];
+			let buffer = [];
 
-			var nav, navRegex = /<a[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
+			let nav, navRegex = /<a[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
 			while ((nav = navRegex.exec(navs[1]))) {
 				buffer.push([nav[2] - 0, resolveRelativePath(nav[1], baseUrl)]);
 			}
@@ -2023,10 +1924,10 @@ function createXMLGenerator () {
 				buffer.push([0, url, true]);
 			}
 
-			buffer.sort(function (a, b) {return a[0] - b[0];});
-			var navsNode = element(metaNode, 'navs');
-			for (var i = 0, goal = buffer.length; i < goal; i++) {
-				var navNode = element(navsNode, 'nav');
+			buffer.sort((a, b) => a[0] - b[0]);
+			let navsNode = element(metaNode, 'navs');
+			for (let i = 0, goal = buffer.length; i < goal; i++) {
+				let navNode = element(navsNode, 'nav');
 
 				navNode.appendChild(text(buffer[i][0]));
 				navNode.setAttribute('href', buffer[i][1]);
@@ -2034,12 +1935,14 @@ function createXMLGenerator () {
 				if (buffer[i][2]) {
 					navNode.setAttribute('current', 'true');
 
-					var linkNode = element(metaNode, 'link');
+					let linkNode;
+
+					linkNode = element(metaNode, 'link');
 					linkNode.setAttribute('rel', 'prev');
 					linkNode.appendChild(text(
 						buffer[(i - 1 + buffer.length) % buffer.length][1]));
 
-					var linkNode = element(metaNode, 'link');
+					linkNode = element(metaNode, 'link');
 					linkNode.setAttribute('rel', 'next');
 					linkNode.appendChild(text(
 						buffer[(i + 1 + buffer.length) % buffer.length][1]));
@@ -2049,25 +1952,35 @@ function createXMLGenerator () {
 
 		// post form metadata
 		(function () {
-			var postform = /(<form[^>]+enctype="multipart\/form-data"[^>]*>)(.+?)<\/form>/i.exec(content);
-			if (!postform) return;
-			var pfNode = element(metaNode, 'postform');
-			var attribRegex = /(action|method|enctype)="([^"]*)"/ig;
-			var attrib;
-			while ((attrib = attribRegex.exec(postform[1]))) {
-				pfNode.setAttribute(attrib[1], attrib[2]);
+			const postformRegex = /(<form[^>]+enctype="multipart\/form-data"[^>]*>)(.+?)<\/form>/ig;
+			let postform;
+			while ((postform = postformRegex.exec(content))) {
+				if (!/<input[^>]+value="regist"/.test(postform[2])) continue;
+
+				let pfNode = element(metaNode, 'postform');
+
+				// postform attributes
+				let attribRegex = /(action|method|enctype)="([^"]*)"/ig;
+				let attrib;
+				while ((attrib = attribRegex.exec(postform[1]))) {
+					pfNode.setAttribute(attrib[1], attrib[2]);
+				}
+
+				// input elements
+				let inputRegex = /<input[^>]+>/gi;
+				let input;
+				while ((input = inputRegex.exec(postform[2]))) {
+					let inputNode = element(pfNode, 'input');
+					let attribRegex = /(type|name|value)="([^"]*)"/ig;
+					let attrib;
+					while ((attrib = attribRegex.exec(input[0]))) {
+						inputNode.setAttribute(attrib[1], attrib[2]);
+					}
+				}
+
+				break;
 			}
 
-			var inputRegex = /<input[^>]+>/gi;
-			var input;
-			while ((input = inputRegex.exec(postform[2]))) {
-				var inputNode = element(pfNode, 'input');
-				var attribRegex = /(type|name|value)="([^"]*)"/ig;
-				var attrib;
-				while ((attrib = attribRegex.exec(input[0]))) {
-					inputNode.setAttribute(attrib[1], attrib[2]);
-				}
-			}
 		})();
 
 		// ads
@@ -2105,7 +2018,7 @@ function createXMLGenerator () {
 			let adsArray = Object.keys(adsHash);
 			for (let i = adsArray.length - 1; i > 0; i--) {
 				let index = Math.floor(Math.random() * (i + 1));
-				let tmp = adsArray[index];
+				let tmp = adsArray[i];
 				adsArray[i] = adsArray[index];
 				adsArray[index] = tmp;
 			}
@@ -2120,11 +2033,17 @@ function createXMLGenerator () {
 				let adNode = element(bannersNode, 'ad');
 				let className = 'unknown';
 
-				if (width == 468 && height == 60) {
+				if (width == 336) {
+					className = 'standard';
+				}
+				else if (width == 300) {
 					className = 'mini';
 				}
-				else if (width == 728 && height == 90) {
+				else if (width == 728) {
 					className = 'large';
+				}
+				else if (width == 160 && height == 600) {
+					className = 'skyscraper';
 				}
 
 				i = i.replace(/\bsrc=/, 'src="about:blank" data-src=');
@@ -2138,9 +2057,9 @@ function createXMLGenerator () {
 
 		// configurations
 		(function () {
-			var configNode = element(metaNode, 'configurations');
-			var cs = getCatalogSettings();
-			var paramNode;
+			let configNode = element(metaNode, 'configurations');
+			let cs = getCatalogSettings();
+			let paramNode;
 
 			paramNode = configNode.appendChild(element(configNode, 'param'));
 			paramNode.setAttribute('name', 'catalog.x');
@@ -2169,10 +2088,11 @@ function createXMLGenerator () {
 
 		let threadIndex = 0;
 		let threadRegex = /(<div\s+class="thre"[^>]*>\s*)(.+?<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
-		let matches;
 		let postTimeRegex = getPostTimeRegex();
+
 		markStatistics.start();
-		while ((matches = threadRegex.exec(content))) {
+
+		for (let matches; (matches = threadRegex.exec(content)); threadIndex++) {
 			let match = matches[0];
 			let topic = /^(.+?)<blockquote[^>]*>(.*?)<\/blockquote>(.*)/i.exec(match);
 			if (!topic) continue;
@@ -2353,9 +2273,10 @@ function createXMLGenerator () {
 				}
 				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
 					let thumbNode = element(topicNode, 'thumb');
+					let thumbnailSize = getThumbnailSize(thumbWidth, thumbHeight, 250, 250);
 					thumbNode.appendChild(text(thumbUrl));
-					thumbNode.setAttribute('width', thumbWidth);
-					thumbNode.setAttribute('height', thumbHeight);
+					thumbNode.setAttribute('width', thumbnailSize.width);
+					thumbNode.setAttribute('height', thumbnailSize.height);
 				}
 			}
 
@@ -2377,7 +2298,7 @@ function createXMLGenerator () {
 			 */
 
 			let hiddenRepliesCount = 0;
-			re =  /font color="#707070">レス(\d+)件省略。/i.exec(topicInfo);
+			re = /font color="#707070">レス(\d+)件省略。/i.exec(topicInfo);
 			if (re) {
 				hiddenRepliesCount = re[1] - 0;
 			}
@@ -2399,7 +2320,12 @@ function createXMLGenerator () {
 				});
 			}
 
-			if (threadIndex == 0) {
+			/*
+			 * misc
+			 */
+
+			// if summary mode, store lastest number
+			if (pageModes[0] == 'summary' && threadIndex == 0) {
 				if (result.repliesNode.childElementCount) {
 					siteInfo.latestNumber = $qs('number', result.repliesNode.lastElementChild).textContent - 0;
 				}
@@ -2407,8 +2333,6 @@ function createXMLGenerator () {
 
 			result.repliesNode.setAttribute("total", result.repliesCount);
 			result.repliesNode.setAttribute("hidden", hiddenRepliesCount);
-
-			threadIndex++;
 		}
 
 		setDefaultSubjectAndName(xml, metaNode, siteInfo.subHash, siteInfo.nameHash);
@@ -2420,61 +2344,243 @@ function createXMLGenerator () {
 		};
 	}
 
-	function remainingReplies (context, url, maxReplies, lowBoundNumber, callback) {
-		timingLogger.startTag('createXMLGenerator#remainingReplies');
-		url || (url = window.location.href);
-		typeof maxReplies == 'number' || (maxReplies = REST_REPLIES_PROCESS_COUNT);
+	function fetchReplies (s, regex, hiddenRepliesCount, maxReplies, lowBoundNumber, threadNode, subHash, nameHash, baseUrl) {
+		const text = textFactory(threadNode.ownerDocument);
+		const repliesNode = element(threadNode, 'replies');
+		const goal = hiddenRepliesCount + maxReplies;
+		const postTimeRegex = getPostTimeRegex();
 
-		var base = document.getElementsByTagName('base')[0];
-		if (base) {
-			url = base.getAttribute('href');
+		let repliesCount = hiddenRepliesCount;
+		let offset = hiddenRepliesCount + 1;
+		let reply;
+
+		for (;repliesCount < goal && (reply = regex.exec(s)); offset++, repliesCount++) {
+			let re = /^(.*)<blockquote[^>]*>(.*)<\/blockquote>/i.exec(reply[0]);
+			if (!re) continue;
+
+			let info = re[1];
+			let infoText = info.replace(/<\/?[\w\-:]+(\s+[\w\-:]+\s*=\s*"[^"]*")*[^>]*>/g, '');
+			let comment = re[2];
+			let replyNode = element(repliesNode, 'reply');
+			let number;
+
+			// number
+			re = /No\.(\d+)/i.exec(infoText);
+			if (re) {
+				number = re[1];
+				let numberNode = element(replyNode, 'number');
+				numberNode.appendChild(text(re[1]));
+				re = /^(\d*?)((\d)\3+)$/.exec(number);
+				if (re) {
+					numberNode.setAttribute('lead', re[1]);
+					numberNode.setAttribute('trail', re[2]);
+				}
+			}
+
+			// deletion flag
+			re = /<table[^>]*class="deleted"[^>]*>/i.exec(info);
+			if (re) {
+				element(replyNode, 'deleted');
+			}
+
+			// ID
+			re = /ID:([^ "]+)/.exec(infoText);
+			if (re) {
+				let idNode = element(replyNode, 'user_id');
+				idNode.appendChild(text(stripTags(re[1])));
+				markStatistics.notifyId(number, re[1]);
+			}
+
+			// mark
+			re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(comment);
+			if (re && (!re[1] || re[1].substr(-1) != '=')) {
+				if (!$qs('deleted', replyNode)) {
+					element(replyNode, 'deleted');
+				}
+
+				let markNode = element(replyNode, 'mark');
+				re[0].charAt(0) == '['
+					&& re[0].substr(-1) == ']'
+					&& markNode.setAttribute('bracket', 'true');
+				re[2] = stripTags(re[2]);
+				markNode.appendChild(text(re[2]));
+				markStatistics.notifyMark(number, re[2]);
+			}
+
+			// そうだね (that's right）
+			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(info);
+			if (re) {
+				let sodaneNode = element(replyNode, 'sodane');
+				sodaneNode.appendChild(text(re[1]
+					.replace('x', ' × ')
+					.replace('+', '＋')
+				));
+				sodaneNode.setAttribute('class', re[1] == '+' ? 'sodane-null' : 'sodane');
+			}
+
+			// skip, if we can
+			if (number <= lowBoundNumber) {
+				continue;
+			}
+
+			// offset
+			element(replyNode, 'offset').appendChild(text(offset));
+
+			// posted date
+			re = postTimeRegex.exec(info);
+			if (re) {
+				let postedDate = new Date(
+					2000 + (re[1] - 0),
+					re[2] - 1,
+					re[3] - 0,
+					re[4] - 0,
+					re[5] - 0,
+					re[6] - 0,
+					0
+				);
+				let postDateNode = element(replyNode, 'post_date');
+				postDateNode.appendChild(text(re[0]));
+				postDateNode.setAttribute('value', postedDate.getTime() / 1000);
+			}
+
+			// subject
+			re = /<input[^>]+type="checkbox"[^>]*>(?:<[^a][^>]*>)+([^<]+)/i.exec(info);
+			if (re) {
+				re[1] = re[1].replace(/^\s+|\s+$/g, '');
+				element(replyNode, 'sub').appendChild(text(re[1]));
+				subHash[re[1]] = (subHash[re[1]] || 0) + 1;
+			}
+
+			// name
+			re = /Name\s*<font[^>]*>(.+?)<\/font>/i.exec(info);
+			if (re) {
+				re[1] = re[1]
+					.replace(/<[^>]*>/g, '')
+					.replace(/^\s+|\s+$/g, '');
+				element(replyNode, 'name').appendChild(text(re[1]));
+				nameHash[re[1]] = (nameHash[re[1]] || 0) + 1;
+			}
+
+			// mail address
+			re = /<a href="mailto:([^"]*)"/i.exec(info);
+			if (re) {
+				let emailNode = element(replyNode, 'email');
+				emailNode.appendChild(text(stripTags(re[1])));
+				linkify(emailNode);
+			}
+
+			// src & thumbnail url
+			let imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
+			if (imagehref) {
+				let imageNode = element(replyNode, 'image');
+				let srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				imageNode.appendChild(text(srcUrl));
+				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
+
+				// animated
+				re = /<small[^>]*>アニメGIF.<\/small[^>]*>/i.exec(info);
+				if (re) {
+					imageNode.setAttribute('animated', 'true');
+				}
+
+				// bytes
+				re = /\balt="?(\d+)\s*B/i.exec(imagehref[2]);
+				if (re) {
+					imageNode.setAttribute('bytes', re[1]);
+					imageNode.setAttribute('size', getReadableSize(re[1]));
+				}
+
+				// thumbnail
+				let thumbUrl = '', thumbWidth = false, thumbHeight = false;
+				re = /\b(?:data-)?src=([^\s>]+)/i.exec(imagehref[2]);
+				if (re) {
+					thumbUrl = re[1].replace(/^["']|["']$/g, '');
+					thumbUrl = resolveRelativePath(thumbUrl, baseUrl);
+					thumbUrl = restoreDistributedImageURL(thumbUrl);
+				}
+				re = /\bwidth="?(\d+)"?/i.exec(imagehref[2]);
+				if (re) {
+					thumbWidth = re[1];
+				}
+				re = /\bheight="?(\d+)"?/i.exec(imagehref[2]);
+				if (re) {
+					thumbHeight = re[1];
+				}
+				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
+					let thumbNode = element(replyNode, 'thumb');
+					let thumbnailSize = getThumbnailSize(thumbWidth, thumbHeight, 250, 250);
+					thumbNode.appendChild(text(thumbUrl));
+					thumbNode.setAttribute('width', thumbnailSize.width);
+					thumbNode.setAttribute('height', thumbnailSize.height);
+				}
+			}
+
+			// comment
+			//if (repliesCount == 0) {
+			//	comment += '';
+			//}
+			pushComment(element(replyNode, 'comment'), comment);
 		}
 
+		return {
+			lastReached: repliesCount < goal && !reply,
+			repliesNode: repliesNode,
+			repliesCount: repliesCount,
+			regex: regex
+		}
+	}
+
+	function remainingReplies (context, maxReplies, lowBoundNumber, callback1, callback2) {
+		timingLogger.startTag('createXMLGenerator#remainingReplies');
+
+		const url = window.location.href;
+
 		function main () {
-			do {
-				if (context.length == 0) {
-					callback();
-					timingLogger.endTag();
-					return;
-				}
+			timingLogger.startTag('creating fragment of replies');
+			let xml = document.implementation.createDocument(null, 'futaba', null);
+			let result = fetchReplies(
+				context[0].content,
+				context[0].regex,
+				context[0].repliesCount,
+				maxReplies,
+				lowBoundNumber,
+				element(xml.documentElement, 'thread'),
+				siteInfo.subHash, siteInfo.nameHash, url);
 
-				var xml = document.implementation.createDocument(null, 'futaba', null);
-				var result = fetchReplies(
-					context[0].content,
-					context[0].regex,
-					context[0].repliesCount,
-					maxReplies,
-					lowBoundNumber,
-					element(xml.documentElement, 'thread'),
-					siteInfo.subHash, siteInfo.nameHash, url);
+			result.repliesNode.setAttribute("total", result.repliesCount);
+			result.repliesNode.setAttribute("hidden", context[0].repliesCount);
+			setDefaultSubjectAndName(xml, element(xml.documentElement, 'meta'), siteInfo.subHash, siteInfo.nameHash);
+			timingLogger.endTag();
 
-				result.repliesNode.setAttribute("total", result.repliesCount);
-				result.repliesNode.setAttribute("hidden", context[0].repliesCount);
-				setDefaultSubjectAndName(xml, element(xml.documentElement, 'meta'), siteInfo.subHash, siteInfo.nameHash);
+			timingLogger.startTag('calling back');
+			callback1(xml, context[0].index, result.repliesCount, context[0].repliesCount);
+			timingLogger.endTag();
 
-				var worked = callback(xml, context[0].index, result.repliesCount, context[0].repliesCount);
-
-				var lastIndex = context[0].regex.lastIndex;
-				if (!result.lastReached && context[0].regex.exec(context[0].content)) {
-					context[0].regex.lastIndex = lastIndex;
-					context[0].repliesCount = result.repliesCount;
-				}
-				else {
-					context.shift();
-				}
-			} while (!worked);
+			let lastIndex = context[0].regex.lastIndex;
+			if (!result.lastReached && context[0].regex.exec(context[0].content)) {
+				context[0].regex.lastIndex = lastIndex;
+				context[0].repliesCount = result.repliesCount;
+			}
+			else {
+				context.shift();
+			}
 
 			if (context.length) {
 				setTimeout(main, REST_REPLIES_PROCESS_INTERVAL);
 			}
 			else {
-				callback();
+				callback2();
 				timingLogger.endTag();
-				return;
 			}
 		}
 
-		main();
+		if (context.length) {
+			main();
+		}
+		else {
+			callback2();
+			timingLogger.endTag();
+		}
 	}
 
 	return {
@@ -2587,6 +2693,11 @@ function createPersistentStorage () {
 			type:'bool',
 			value:true,
 			name:'スペースキーによるスクロールを制御'
+		},
+		hook_edit_shortcuts: {
+			type:'bool',
+			value:true,
+			name:'テキスト入力時に Emacs ぽいショートカットを使用'
 		}
 	};
 	let runtime = {
@@ -2710,9 +2821,8 @@ function createPersistentStorage () {
 	}
 
 	function handleChanged (changes, areaName) {
-		if (onChanged) {
-			onChanged(changes, areaName);
-		}
+		if (!onChanged) return;
+		onChanged(changes, areaName);
 	}
 
 	function init () {
@@ -2812,6 +2922,7 @@ function createTimingLogger () {
 }
 
 function createClickDispatcher () {
+	const PASS_THROUGH = 'passthrough';
 	const keys = {};
 
 	function handler (e) {
@@ -2879,7 +2990,7 @@ function createClickDispatcher () {
 			}
 		}
 
-		if (isAnchor && result !== 'passthrough') {
+		if (isAnchor && result !== PASS_THROUGH) {
 			e.preventDefault();
 			e.stopPropagation();
 		}
@@ -2899,11 +3010,13 @@ function createClickDispatcher () {
 
 	return {
 		add:add,
-		remove:remove
+		remove:remove,
+		PASS_THROUGH: PASS_THROUGH
 	};
 }
 
 function createKeyManager () {
+	const PASS_THROUGH = 'passthrough';
 	const strokes = {};
 
 	function keypress (e) {
@@ -2927,7 +3040,7 @@ function createKeyManager () {
 				`${APP_NAME}: exception in keyManager: ${e.stack}`);
 			result = undefined;
 		}
-		if (result === 'passthrough') {
+		if (result === PASS_THROUGH) {
 			return;
 		}
 		return false;
@@ -3008,7 +3121,8 @@ function createKeyManager () {
 	return {
 		addStroke:addStroke,
 		removeStroke:removeStroke,
-		updateManifest:updateManifest
+		updateManifest:updateManifest,
+		PASS_THROUGH: PASS_THROUGH
 	};
 }
 
@@ -3588,7 +3702,6 @@ function createUrlStorage () {
 				slot.forEach(item => {
 					let key = item.key.split('-');
 					if (siteInfo.server == key[0] && siteInfo.board == key[1]) {
-						//console.log(`key: ${item.key} expire: ${(new Date(item.expire)).toLocaleString()}`);
 						result[key[2]] = item.count;
 					}
 				});
@@ -3907,7 +4020,7 @@ function createCatalogPopup (container) {
 		container = $(container);
 		if (!container) return;
 
-		container.addEventListener(MOVER_EVENT_NAME, mover, false);
+		container.addEventListener(MOVER_EVENT_NAME, mover);
 	}
 
 	init();
@@ -4398,6 +4511,9 @@ function createSelectionMenu () {
 		case 'youtube':
 			open('https://www.youtube.com/results?search_query=$TEXT$&search=Search');
 			break;
+		case 'twitter':
+			open('https://twitter.com/search?src=typd&q=$TEXT$');
+			break;
 		}
 	}
 
@@ -4571,8 +4687,10 @@ function createFavicon () {
 			let thumb = $qs('article:nth-of-type(1) img');
 			if (!thumb) break;
 
-			// thumbnail exists in the same domain as the document?
 			let re = /^[^:]+:\/\/([^\/]+)/.exec(thumb.src);
+			if (!re) break;
+
+			// thumbnail exists in the same domain as the document?
 			if (re[1] == window.location.host) {
 				// yes: use thumbnail directly
 				if (thumb.naturalWidth && thumb.naturalHeight) {
@@ -4587,8 +4705,9 @@ function createFavicon () {
 					};
 				}
 			}
+
+			// no: transform thumbnail url
 			else {
-				// no: transform thumbnail url
 				isLoading = true;
 				getImageFrom(restoreDistributedImageURL(thumb.src)).then(img => {
 					if (img) {
@@ -4934,6 +5053,7 @@ function setupWindowResizeEvent (frequencyMsecs, handler) {
 	}
 
 	window.addEventListener('resize', handleResize);
+	window.addEventListener('load', handleResize);
 	handler.call(window);
 }
 
@@ -5617,9 +5737,10 @@ function lightbox (anchor) {
 		if (!image) return;
 		if (!image.naturalWidth || !image.naturalHeight) return;
 
-		$t('lightbox-ratio',
-			`${image.naturalWidth}x${image.naturalHeight}, ` +
-			(image.offsetWidth / image.naturalWidth * 100).toFixed(2) + '%');
+		const size = `${image.naturalWidth}x${image.naturalHeight}`;
+		const zoomRatio = `   ${(image.offsetWidth / image.naturalWidth * 100).toFixed(2)}%`.substr(-7); // max: '100.00%'.length == 7
+
+		$t('lightbox-ratio', `${size}, ${zoomRatio}`);
 	}
 
 	/*
@@ -5952,7 +6073,6 @@ function lightbox (anchor) {
 					receiver.addEventListener('pointermove', handlePointerMove);
 					receiver.addEventListener('pointerup', handlePointerUp);
 					receiver.addEventListener('wheel', handlePointerWheel);
-					//receiver.addEventListener('pointercancel', e => {console.log(e.type);});
 
 					// debug handler
 					if (false) {
@@ -6567,7 +6687,7 @@ function modalDialog (opts) {
 			.addStroke('dialog.edit', ['\u000d', '<S-enter>'], (e, t) => {
 				if (t.nodeName != 'TEXTAREA'
 				|| !t.classList.contains('config-item')) {
-					return 'passthrough';
+					return keyManager.PASS_THROUGH;
 				}
 			})
 			.updateManifest();
@@ -7185,13 +7305,23 @@ function getTextForCatalog (text, maxLength) {
 }
 
 function nodeToString (container) {
-	var iterator = document.createNodeIterator(
+	container = container.cloneNode(true);
+	Array.prototype.forEach.call(
+		$qsa('div.link-siokara', container),
+		node => {
+			node.parentNode.replaceChild(
+				document.createTextNode($qs('a', node).textContent),
+				node);
+		}
+	);
+
+	const iterator = document.createNodeIterator(
 		container,
 		window.NodeFilter.SHOW_ELEMENT | window.NodeFilter.SHOW_TEXT,
 		null, false);
 
-	var result = [];
-	var currentNode;
+	const result = [];
+	let currentNode;
 	while ((currentNode = iterator.nextNode())) {
 		switch (currentNode.nodeType) {
 		case 1:
@@ -7663,7 +7793,7 @@ function parseModerateResponse (response) {
 		re = re[1].replace(/<\/body>.*$/i, '');
 	}
 	else {
-		re = s.replace(/<!DOCTYPE[^>]+>\r?\n?/i, '');
+		re = response.replace(/<!DOCTYPE[^>]+>\r?\n?/i, '');
 	}
 
 	return {error: re || 'なんか変です'};
@@ -8058,6 +8188,83 @@ function extractNico2 () {
 	setTimeout(extractNico2, 911);
 }
 
+function detectNoticeModification (notice, noticeNew) {
+	const list = $qs('#panel-content-notice ul');
+	if (!list) return;
+
+	const opcodes = new difflib.SequenceMatcher(
+		difflib.stringAsLines(notice),
+		difflib.stringAsLines(noticeNew)).get_opcodes();
+	const baseLines = notice
+		.replace(/__akahukuplus_viewers_count__/g, $('viewers').textContent)
+		.split('\n');
+	const newLines = noticeNew
+		.replace(/__akahukuplus_viewers_count__/g, $('viewers').textContent)
+		.split('\n');
+	const add = (rows, index1, index2, lines, className) => {
+		let markup = undefined;
+		if (typeof index1 == 'number' && index1 >= 0 && index1 < lines.length) {
+			markup = lines[index1];
+		}
+		else if (typeof index2 == 'number' && index2 >= 0 && index2 < lines.length) {
+			markup = lines[index2];
+		}
+		if (markup != undefined) {
+			rows.push({
+				className: className,
+				markup: markup
+			});
+		}
+	};
+	const rows = [];
+
+	for (let idx = 0; idx < opcodes.length; idx++) {
+		let [change, baseStart, baseEnd, newStart, newEnd] = opcodes[idx];
+
+		const rowCount = Math.max(baseEnd - baseStart, newEnd - newStart);
+		const topRows = [];
+		const botRows = [];
+
+		for (let i = 0; i < rowCount; i++) {
+			switch (change) {
+			case 'insert':
+				add(rows, null, newStart++, newLines, change);
+				break;
+
+			case 'replace':
+				if (baseStart < baseEnd) {
+					add(topRows, baseStart++, null, baseLines, 'delete');
+				}
+				if (newStart < newEnd) {
+					add(botRows, null, newStart++, newLines, 'insert');
+				}
+				break;
+
+			case 'delete':
+				add(rows, baseStart++, null, baseLines, change);
+				break;
+
+			default:
+				// equal
+				add(rows, baseStart++, newStart++, baseLines, change);
+				break;
+			}
+		}
+
+		if (change == 'replace') {
+			rows.push.apply(rows, topRows);
+			rows.push.apply(rows, botRows);
+		}
+	}
+
+	empty(list);
+	rows.forEach(row => {
+		const li = list.appendChild(document[CRE]('li'));
+		li.className = row.className;
+		li[IHTML] = row.markup;
+	});
+}
+
 /*
  * <<<1 functions for reload feature in reply mode
  */
@@ -8295,15 +8502,25 @@ function stripTextNodes (container) {
 }
 
 function processRemainingReplies (context, lowBoundNumber, callback) {
-	if (typeof lowBoundNumber != 'number') {
-		lowBoundNumber = -1;
+	let maxReplies;
+
+	// 'read more' function in reply mode, process whole new replies
+	if (typeof lowBoundNumber == 'number') {
+		maxReplies = 0x7fffffff;
 	}
+	// other: process per chunk
+	else {
+		lowBoundNumber = -1;
+		maxReplies = REST_REPLIES_PROCESS_COUNT;
+	}
+
 	timingLogger.reset().startTag(`proccessing remaining replies`, `lowBoundNumber:${lowBoundNumber}`);
 	xmlGenerator.remainingReplies(
-		context, null, null, lowBoundNumber,
+		context, maxReplies, lowBoundNumber,
 		function (xml, index, count, count2) {
-			timingLogger.startTag(`processRemainingReplies callback`, `index:${index}, count:${count}, count2:${count2}`);
 			let worked = false;
+			let container = getReplyContainer(index);
+			if (!container) return worked;
 
 			markStatistics.updatePostformView({
 				count: {
@@ -8314,89 +8531,72 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 				delta: null
 			});
 
-			if (xml) {
-				let container = getReplyContainer(index);
-				if (!container) return;
-
-				if (lowBoundNumber >= 0) {
-					timingLogger.startTag('update marked replies, ids, sodanes');
-					let markUpdated = updateMarkedReplies(xml, container, count2 + 1, count);
-					let idUpdated = updateReplyIDs(xml, container, count2 + 1, count);
-					let sodaneUpdated = updateReplySodanes(xml, container, count2 + 1, count);
-					worked = markUpdated || idUpdated || sodaneUpdated;
-					timingLogger.endTag(`markUpdated:${markUpdated}, idUpdated:${idUpdated}, sodaneUpdated:${sodaneUpdated}`);
-				}
-
-				if (lowBoundNumber < 0) {
-					xsltProcessor.setParameter(null, 'render_mode', 'replies');
-				}
-				else {
-					xsltProcessor.setParameter(null, 'low_bound_number', lowBoundNumber);
-					xsltProcessor.setParameter(null, 'render_mode', 'replies_diff');
-				}
-
-				try {
-					timingLogger.startTag('generate new replies fragment from xml');
-					let f = fixFragment(xsltProcessor.transformToFragment(xml, document));
-					if ($qs('.reply-wrap', f)) {
-						lowBoundNumber >= 0 && createRule(container);
-						appendFragment(container, f);
-						stripTextNodes(container);
-						if (lowBoundNumber < 0) {
-							worked = true;
-						}
-					}
-					timingLogger.endTag();
-				}
-				catch (e) {
-					console.error(`${APP_NAME}: processRemainingReplies: exception(1), ${e.stack}`);
-				}
-
-				try {
-					worked && callback && callback();
-				}
-				catch (e) {
-					console.error(`${APP_NAME}: processRemainingReplies: exception(2), ${e.stack}`);
-				}
-
-				timingLogger.endTag(`worked:${worked}`);
+			if (lowBoundNumber < 0) {
+				xsltProcessor.setParameter(null, 'render_mode', 'replies');
 			}
 			else {
-				let newStat;
+				let markUpdated = updateMarkedReplies(xml, container, count2 + 1, count);
+				let idUpdated = updateReplyIDs(xml, container, count2 + 1, count);
+				let sodaneUpdated = updateReplySodanes(xml, container, count2 + 1, count);
+				worked = markUpdated || idUpdated || sodaneUpdated;
 
-				if (pageModes[0] == 'reply') {
-					newStat = markStatistics.getStatistics(lowBoundNumber < 0);
+				xsltProcessor.setParameter(null, 'low_bound_number', lowBoundNumber);
+				xsltProcessor.setParameter(null, 'render_mode', 'replies_diff');
+			}
 
-					markStatistics.updatePanelView(newStat);
-					if (markStatistics.updatePostformView(newStat)) {
-						showFetchedRepliesStatus();
+			try {
+				let f = fixFragment(xsltProcessor.transformToFragment(xml, document));
+				if ($qs('.reply-wrap', f)) {
+					if (lowBoundNumber >= 0) {
+						createRule(container);
 					}
-					else {
-						lowBoundNumber >= 0 && showFetchedRepliesStatus('新着レスなし', true);
+
+					appendFragment(container, f);
+					stripTextNodes(container);
+
+					if (lowBoundNumber < 0) {
+						worked = true;
 					}
-					updateIdFrequency(newStat);
-
 				}
-
-				timingLogger.startTag('misc updates');
-				favicon.update();
-				extractTweets();
-				extractSiokaraThumbnails();
-				extractNico2();
-				extractIncompleteFiles();
-				timingLogger.endTag();
-
-				try {
-					callback && callback(newStat);
-				}
-				catch (e) {
-					console.error(`${APP_NAME}: processRemainingReplies: exception(3), ${e.stack}`);
-				}
-
-				timingLogger.forceEndTag();
+			}
+			catch (e) {
+				console.error(`${APP_NAME}: processRemainingReplies: exception(1), ${e.stack}`);
 			}
 
 			return worked;
+		},
+		function () {
+			let newStat;
+
+			if (pageModes[0] == 'reply') {
+				newStat = markStatistics.getStatistics(lowBoundNumber < 0);
+
+				markStatistics.updatePanelView(newStat);
+				if (markStatistics.updatePostformView(newStat)) {
+					showFetchedRepliesStatus();
+				}
+				else {
+					if (lowBoundNumber >= 0) {
+						showFetchedRepliesStatus('新着レスなし', true);
+					}
+				}
+				updateIdFrequency(newStat);
+			}
+
+			favicon.update();
+			extractTweets();
+			extractSiokaraThumbnails();
+			extractNico2();
+			extractIncompleteFiles();
+
+			try {
+				callback && callback(newStat);
+			}
+			catch (e) {
+				console.error(`${APP_NAME}: processRemainingReplies: exception(3), ${e.stack}`);
+			}
+
+			timingLogger.forceEndTag();
 		}
 	);
 }
@@ -8406,25 +8606,26 @@ function scrollToNewReplies () {
 	if (!rule) return;
 
 	const scrollTop = docScrollTop();
-	const diff = rule.nextSibling.getBoundingClientRect().top - Math.floor(viewportRect.height / 2);
-	if (diff <= 0) return;
+	const distance = rule.nextSibling.getBoundingClientRect().top - Math.floor(viewportRect.height / 2);
+	if (distance <= 0) return;
 
-	const startTime = Date.now();
-	const timeLimit = startTime + RELOAD_AUTO_SCROLL_CONSUME;
-	const timerPrecision = 5;
+	let startTime = null;
 
-	setTimeout(function handleScroll () {
-		const now = Date.now();
-		if (now < timeLimit) {
+	window.requestAnimationFrame(function handleScroll (time) {
+		if (!startTime) {
+			startTime = time;
+		}
+		const elapsed = time - startTime;
+		if (elapsed < RELOAD_AUTO_SCROLL_CONSUME) {
 			window.scrollTo(
 				0,
-				scrollTop + diff * ((now - startTime) / RELOAD_AUTO_SCROLL_CONSUME));
-			setTimeout(handleScroll, timerPrecision);
+				Math.floor(scrollTop + distance * (elapsed / RELOAD_AUTO_SCROLL_CONSUME)));
+			window.requestAnimationFrame(handleScroll);
 		}
 		else {
-			window.scrollTo(0, scrollTop + diff);
+			window.scrollTo(0, scrollTop + distance);
 		}
-	}, timerPrecision);
+	});
 }
 
 /*
@@ -8779,7 +8980,7 @@ const commands = {
 				0, parseInt(viewportRect.height / 2) * (e.shift ? -1 : 1));
 		}
 		else {
-			return 'passthrough';
+			return keyManager.PASS_THROUGH;
 		}
 	},
 	invokeMousewheelEvent: function () {
@@ -8980,16 +9181,21 @@ const commands = {
 
 			switch (status) {
 			case 404:
+				showFetchedRepliesStatus();
+				setBottomStatus('完了: 404 Not Found');
 				$t('expires-remains', '-');
 				$t('pf-expires-remains', '-');
-				showFetchedRepliesStatus();
-				setBottomStatus('完了: 404 Not found');
-				$t('reload-anchor', 'Not found. ファイルがないよ。');
+				$t('reload-anchor', 'Not Found. ファイルがないよ。');
 				timingLogger.forceEndTag();
 				return;
 			case 304:
 				showFetchedRepliesStatus('更新なし', true);
-				setBottomStatus('完了: 更新なし');
+				setBottomStatus('完了: 304 Not Modified');
+				timingLogger.forceEndTag();
+				return;
+			case /^5[0-9]{2}$/.test(status) && status:
+				showFetchedRepliesStatus(`サーバエラー`, true);
+				setBottomStatus(`完了: サーバエラー(${status})`);
 				timingLogger.forceEndTag();
 				return;
 			}
@@ -8998,10 +9204,12 @@ const commands = {
 				throw new Error(`内容が変だよ (${status})`);
 			}
 
-			timingLogger.startTag('generate internal xml');
+			// process topic block
+
+			timingLogger.startTag('generate internal xml for topic block');
 			try {
 				timingLogger.startTag('generate');
-				result = xmlGenerator.run(doc.documentElement[IHTML], null, 0);
+				result = xmlGenerator.run(doc.documentElement[IHTML], 0);
 				timingLogger.endTag();
 
 				timingLogger.startTag('applying data bindings');
@@ -9018,6 +9226,8 @@ const commands = {
 				timingLogger.endTag();
 			}
 
+			// process replies block
+
 			let lastNumber = ($qs([
 				'article:nth-of-type(1)',
 				'.reply-wrap:last-child',
@@ -9030,21 +9240,20 @@ const commands = {
 			sendToBackend(
 				'notify-viewers',
 				{
-					viewers: $('viewers').textContent - 0,
+					viewers: $qs('meta viewers', result.xml).textContent - 0,
 					siteInfo: siteInfo
 				});
 
 			timingLogger.forceEndTag();
 
 			// process remaiing replies
-			processRemainingReplies(result.remainingRepliesContext, lastNumber,
-				function (newStat) {
-					if (newStat) {
-						let message = newStat.delta.total ?
-							`新着 ${newStat.delta.total} レス` : '新着レスなし';
-						setBottomStatus(`完了: ${message}`);
-						scrollToNewReplies();
-					}
+			processRemainingReplies(
+				result.remainingRepliesContext, lastNumber,
+				newStat => {
+					let message = newStat.delta.total ?
+						`新着 ${newStat.delta.total} レス` : '新着レスなし';
+					setBottomStatus(`完了: ${message}`);
+					scrollToNewReplies();
 				}
 			);
 		})
@@ -9056,6 +9265,31 @@ const commands = {
 		})
 		.finally(() => {
 			transport.release(TRANSPORT_TYPE);
+
+			if ('noticeNew' in siteInfo) {
+				if (siteInfo.notice == siteInfo.noticeNew) {
+					delete siteInfo.noticeNew;
+				}
+				else {
+					if (siteInfo.notice != '') {
+						detectNoticeModification(siteInfo.notice, siteInfo.noticeNew);
+						commands.activateNoticeTab();
+						window.alert('注意書きが更新されたみたいです。');
+					}
+					chrome.storage.sync.get({notices:{}}, result => {
+						if (chrome.runtime.lastError) {
+							console.error(`${APP_NAME}: reloadReplies(finally block): ${chrome.runtime.lastError.message}`);
+						}
+						else {
+							result.notices[`${siteInfo.server}/${siteInfo.board}`] = siteInfo.noticeNew;
+							storage.set(result);
+						}
+
+						siteInfo.notice = siteInfo.noticeNew;
+						delete siteInfo.noticeNew;
+					});
+				}
+			}
 		});
 	},
 	reloadCatalog: function () { /*returns promise*/
@@ -9477,11 +9711,13 @@ const commands = {
 		xhr.onload = () => {
 			setTimeout(() => {
 				let n = parseInt(xhr.responseText, 10) || 0;
-				t.textContent = `そうだね × ${n}`;
+				if (n) {
+					t.textContent = `そうだね × ${n}`;
+					t.classList.remove('sodane-null');
+					t.classList.add('sodane');
+				}
 				t.removeAttribute('data-busy');
 				t.removeAttribute('data-text');
-				t.classList.remove('sodane-null');
-				t.classList.add('sodane');
 				t = xhr = xhr.onload = xhr.onerror = null;
 			}, WAIT_AFTER_POST);
 		};
@@ -9893,114 +10129,87 @@ const commands = {
 	 */
 
 	toggleSage: function () {
-		var email = $('email');
+		const email = $('email');
 		if (!email) return;
 		email.value = /\bsage\b/.test(email.value) ?
 			email.value.replace(/\s*\bsage\b\s*/g, '') :
 			`sage ${email.value}`;
 		email.setSelectionRange(email.value.length, email.value.length);
 	},
-	cursorPrev: function (e, t) {
-		var n = t.selectionStart;
-		var v = t.value;
-		var column = 0;
-		while (n-- > 0 && !/[\n]/.test(v.charAt(n))) {
-			column++;
-		}
-		while (--n >= 0 && !/[\n]/.test(v.charAt(n))) {
-			;
-		}
-		if (n < 0) {
-			n = 0;
-		}
-		else {
-			n++;
-			while (column > 0 && n < v.length && !/[\n]/.test(v.charAt(n))) {
-				n++;
-				column--;
-			}
-		}
-		t.selectionStart = n;
-		t.selectionEnd = n;
+	cursorPreviousLine: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		const alter = e.shift ? 'extend' : 'move';
+		document.getSelection().modify(alter, 'backward', 'line');
 	},
-	cursorNext: function (e, t) {
-		var n = t.selectionEnd;
-		var v = t.value;
-		var column = 0;
-		while (n-- > 0 && !/[\n]/.test(v.charAt(n))) {
-			column++;
-		}
-		while (++n < v.length && !/[\n]/.test(v.charAt(n))) {
-			;
-		}
-		if (n >= v.length) {
-			n = v.length;
-		}
-		else {
-			n++;
-			while (column > 0 && n < v.length && !/[\n]/.test(v.charAt(n))) {
-				n++;
-				column--;
-			}
-		}
-		t.selectionStart = n;
-		t.selectionEnd = n;
+	cursorNextLine: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		const alter = e.shift ? 'extend' : 'move';
+		document.getSelection().modify(alter, 'forward', 'line');
 	},
-	cursorBack: function (e, t) {
-		var n = t.selectionStart;
-		var v = t.value;
-		if (n <= 0) {
-			n = 0;
-			t.selectionStart = n;
-			t.selectionEnd = n;
-			return;
-		}
-		n--;
-		if (/[\n]/.test(v.charAt(n))) {
-			while (n >= 0 && /[\n]/.test(v.charAt(n))) {
-				n--;
-			}
-			n++;
-		}
-		t.selectionStart = n;
-		t.selectionEnd = n;
+	cursorBackwardWord: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		const alter = e.shift ? 'extend' : 'move';
+		document.getSelection().modify(alter, 'backward', 'word');
 	},
-	cursorForward: function (e, t) {
-		var n = t.selectionEnd;
-		var v = t.value;
-		if (n >= v.length) {
-			n = v.length;
-			t.selectionStart = n;
-			t.selectionEnd = n;
-			return;
-		}
-		if (/[\n]/.test(v.charAt(n))) {
-			while (n < v.length && /[\n]/.test(v.charAt(n))) {
-				n++;
-			}
-		}
-		else {
-			n++;
-		}
-		t.selectionStart = n;
-		t.selectionEnd = n;
+	cursorForwardWord: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		const alter = e.shift ? 'extend' : 'move';
+		document.getSelection().modify(alter, 'forward', 'word');
 	},
-	cursorTopOfLine: function (e, t) {
-		var n = t.selectionStart;
-		var v = t.value;
-		var lastpos = t.getAttribute('data-last-pos');
+	cursorBackwardChar: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		const alter = e.shift ? 'extend' : 'move';
+		document.getSelection().modify(alter, 'backward', 'character');
+	},
+	cursorForwardChar: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		const alter = e.shift ? 'extend' : 'move';
+		document.getSelection().modify(alter, 'forward', 'character');
+	},
+	cursorDeleteBackwardChar: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		let n = t.selectionStart;
+		let m = t.selectionEnd;
+		if (n == m) {
+			document.getSelection().modify('move', 'backward', 'character');
+			n = t.selectionStart;
+		}
+		t.value = t.value.substring(0, n) + t.value.substring(m);
+		t.selectionStart = t.selectionEnd = n;
+	},
+	cursorDeleteBackwardWord: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		let n = t.selectionStart;
+		let m = t.selectionEnd;
+		if (n == m) {
+			document.getSelection().modify('move', 'backward', 'word');
+			n = t.selectionStart;
+		}
+		t.value = t.value.substring(0, n) + t.value.substring(m);
+		t.selectionStart = t.selectionEnd = n;
+	},
+	cursorDeleteBackwardBlock: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		let n = t.selectionStart;
+		let m = t.selectionEnd;
+		if (n == m) {
+			document.getSelection().modify('move', 'backward', 'lineboundary');
+			n = t.selectionStart;
+		}
+		t.value = t.value.substring(0, n) + t.value.substring(m);
+		t.selectionStart = t.selectionEnd = n;
+	},
+	cursorBeginningOfLine: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		let n = t.selectionStart;
+		const v = t.value;
+		const lastpos = t.getAttribute('data-last-pos');
 		if (n == 0 && t.selectionEnd == v.length && lastpos) {
-			n = lastpos - 0;
-			if (n >= 0 && /[\n]/.test(v.charAt(n))) {
-				n--;
-			}
-			while (n >= 0 && !/[\n]/.test(v.charAt(n))) {
-				n--;
-			}
-			n++;
-			t.selectionStart = n;
-			t.selectionEnd = n;
 			t.removeAttribute('data-last-pos');
+			n = lastpos - 0;
+			t.setSelectionRange(n, n);
+			const alter = e.shift ? 'extend' : 'move';
+			document.getSelection().modify(alter, 'backward', 'lineboundary');
 		}
 		else {
 			t.setAttribute('data-last-pos', n);
@@ -10008,14 +10217,10 @@ const commands = {
 			t.selectionEnd = v.length;
 		}
 	},
-	cursorBottomOfLine: function (e, t) {
-		var n = t.selectionEnd;
-		var v = t.value;
-		while (n < v.length && !/[\n]/.test(v.charAt(n))) {
-			n++;
-		}
-		t.selectionStart = n;
-		t.selectionEnd = n;
+	cursorEndOfLine: function (e, t) {
+		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
+		const alter = e.shift ? 'extend' : 'move';
+		document.getSelection().modify(alter, 'forward', 'lineboundary');
 	},
 
 	/*
@@ -10060,6 +10265,8 @@ const commands = {
 			pageModes.shift();
 			historyStateWrapper.updateHash('');
 		}
+
+		window.scrollTo(0, 0);
 	},
 	updateCatalogSettings: function (settings) {
 		let cs = getCatalogSettings();
@@ -10242,6 +10449,9 @@ timingLogger.startTag(`booting ${APP_NAME}`);
 
 storage = createPersistentStorage();
 storage.onChanged = (changes, areaName) => {
+	if ('notices' in changes) {
+		siteInfo.notice = changes.notices.newValue[`${siteInfo.server}/${siteInfo.board}`] || '';
+	}
 	if ('config' in changes) {
 		const data = Object.assign(
 			storage.getAllConfigDefault(),
@@ -10249,7 +10459,7 @@ storage.onChanged = (changes, areaName) => {
 		storage.assignConfig(data);
 		applyDataBindings(xmlGenerator.run('').xml);
 	}
-	else if ('runtime' in changes) {
+	if ('runtime' in changes) {
 		storage.assignRuntime(changes.runtime.newValue);
 	}
 };
@@ -10263,9 +10473,10 @@ if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/res\
 	siteInfo.resno = RegExp.$3 - 0;
 	pageModes.unshift('reply');
 }
-else if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)/)) {
+else if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/(?:([^.]+)\.htm)?/)) {
 	siteInfo.server = RegExp.$1;
 	siteInfo.board = RegExp.$2;
+	siteInfo.summaryIndex = RegExp.$3 - 0 || 0;
 	pageModes.unshift('summary');
 }
 
@@ -10279,6 +10490,7 @@ Promise.all([
 			{
 				version: '0.0.1',
 				migrated: false,
+				notices: {},
 				config: storage.getAllConfigDefault(),
 				runtime: storage.runtime
 			},
@@ -10403,6 +10615,8 @@ Promise.all([
 			window.localStorage.removeItem(localKey);
 		}
 	}
+
+	siteInfo.notice = storageData.notices[`${siteInfo.server}/${siteInfo.board}`] || '';
 
 	storage.assignConfig(storageData.config);
 	storage.assignRuntime(storageData.runtime);

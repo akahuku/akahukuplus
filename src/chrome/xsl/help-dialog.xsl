@@ -84,15 +84,23 @@
 				<tr><td><kbd>esc</kbd></td>							<td>閉じる</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>s</kbd></td>			<td>sage の切り替え</td></tr>
 				<tr><td><kbd>shift</kbd>+<kbd>enter</kbd></td>		<td>送信</td></tr>
-				<tr><td><kbd>ctrl</kbd>+<kbd>a</kbd></td>			<td>行頭</td></tr>
+				<tr><td colspan="2"><small>以下は Emacs ぽいショートカット ON 時に有効です</small></td></tr>
+				<tr><td><kbd>ctrl</kbd>+<kbd>a</kbd></td>			<td>全選択、または行頭</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>e</kbd></td>			<td>行末</td></tr>
-				<!--
-				<tr><td><kbd>ctrl</kbd>+<kbd>p</kbd></td>			<td>前の行</td></tr>
-				<tr><td><kbd>ctrl</kbd>+<kbd>n</kbd></td>			<td>次の行</td></tr>
-				-->
+				<tr><td><kbd>ctrl</kbd>+<kbd>k</kbd></td>			<td>前の行</td></tr>
+				<tr><td><kbd>ctrl</kbd>+<kbd>j</kbd></td>			<td>次の行</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>b</kbd></td>			<td>前の文字</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>f</kbd></td>			<td>次の文字</td></tr>
+				<tr><td><kbd>alt</kbd>+<kbd>b</kbd></td>			<td>前の単語</td></tr>
+				<tr><td><kbd>alt</kbd>+<kbd>f</kbd></td>			<td>次の単語</td></tr>
+				<tr><td><kbd>ctrl</kbd>+<kbd>h</kbd></td>			<td>前の1文字を削除</td></tr>
+				<tr><td><kbd>ctrl</kbd>+<kbd>w</kbd></td>			<td>前の1単語を削除</td></tr>
+				<tr><td><kbd>ctrl</kbd>+<kbd>u</kbd></td>			<td>行頭までを削除</td></tr>
+			</table>
+		</div>
 
+		<div>
+			<table>
 				<tr><td colspan="2"><h3>lightbox</h3></td></tr>
 				<tr><td><kbd>O</kbd></td>				<td>画像全体を表示</td></tr>
 				<tr><td><kbd>A</kbd></td>				<td>原寸で表示</td></tr>
