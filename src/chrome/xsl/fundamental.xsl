@@ -70,7 +70,7 @@ a:hover {
 }
 
 .comment a {
-	word-break:break-all;
+	overflow-wrap:break-word;
 }
 
 hr {
@@ -153,6 +153,10 @@ input[type="checkbox"] {
 	}
 }
 
+twitter-widget {
+	clear:both;
+}
+
 /*
  * header
  */
@@ -206,10 +210,6 @@ input[type="checkbox"] {
 #header h1 a {
 	color:inherit;
 	text-decoration:inherit;
-}
-
-#header label {
-	white-space:nowrap;
 }
 
 #header img {
@@ -689,6 +689,7 @@ article.summary .replies {
 }
 
 #content .inline-video-container .youtube {
+	clear:both;
 	width:420px;
 	height:315px;
 }
@@ -727,7 +728,27 @@ article.summary .replies {
 }
 
 #footer .credit {
-	margin:16px 0 32px 0;
+	margin:16px 0 16px 0;
+}
+
+#footer .debug-tools {
+	margin:0 0 16px 0;
+}
+
+#footer .fts-form-wrap {
+	margin:0 0 48px 0;
+	padding:0;
+}
+
+#footer .fts-form-wrap label {
+	display:flex;
+	margin:0 auto 0 auto;
+	justify-content:center;
+}
+
+#footer .fts-form-wrap input[type="text"] {
+	margin:0 0 0 8px;
+	width:16em;
 }
 
 /*
@@ -843,7 +864,8 @@ article.summary .replies {
 	font-weight:bold;
 }
 
-#postform #com {
+#postform #com,
+#postform #com2 {
 	display:block;
 	margin:0;
 	padding:0;
@@ -856,9 +878,25 @@ article.summary .replies {
 	line-height:1.2;
 }
 
+#postform #com:empty:before {
+    content:attr(data-placeholder);
+    diaplay:block;
+    color:#888;
+    font-style:italic;
+}
+
+#postform #com {
+	white-space:pre-wrap;
+}
+
+#postform #com2 {
+	display:none;
+}
+
 #postform .comment-wrap {
 	box-sizing:border-box;
 	width:100%;
+	min-height:6em;
 	margin:0;
 	padding:4px;
 	border:1px solid #ea8;
@@ -897,19 +935,6 @@ article.summary .replies {
 #postform #pwd {
 	margin:0 4px 0 0;
 	width:8em;
-}
-
-#postform-wrap #comment-backend {
-	visibility:hidden;
-	position:fixed;
-	left:0;
-	top:0;
-	padding:0;
-	background-color:#fff;
-	color:#000;
-	line-height:1.2;
-	font-size:small;
-	white-space:pre-wrap;
 }
 
 #postform-wrap .nav {
@@ -1025,7 +1050,7 @@ article.summary .replies {
 }
 
 #ad-aside-wrap div.size-large:hover {
-	left:-378px; /*-(728-350)px*/
+	left:-392px; /*-(728-336)px*/
 }
 
 #ad-aside-wrap div.size-mini {
@@ -1166,6 +1191,8 @@ article.summary .replies {
 #panel-content-mark li p.sub-header {
 	font-weight:bold;
 	border-bottom:1px dotted silver;
+	word-wrap:break-word;
+	overflow-wrap:break-word;
 }
 
 #panel-content-mark li p.sub-header span {
@@ -1237,7 +1264,7 @@ article.summary .replies {
 	line-height:1.1;
 	font-size:x-small;
 	text-decoration:none;
-	word-break:break-all;
+	overflow-wrap:break-word;
 }
 
 #panel-content-search #search-result > a.new {
@@ -1874,6 +1901,10 @@ article.summary .replies {
 #catalog .catalog-threads-wrap a.long { background-color:#c9e6e9; border-color:#c9e6e9; }
 #catalog .catalog-threads-wrap a.warned { border:2px solid #d00; padding:1px; }
 
+#catalog .catalog-threads-wrap .text {
+	white-space:nowrap;
+}
+
 #catalog .catalog-threads-wrap .info {
 	padding:1px;
 	color:#789922;
@@ -1904,7 +1935,7 @@ div.catalog-popup {
 	box-shadow:0 0 4px 4px rgba(0,0,0,.25);
 	box-sizing:border-box;
 	font-size:x-small;
-	word-break:break-all;
+	overflow-wrap:break-word;
 	overflow:hidden;
 	text-overflow:ellipsis;
 	transition-property:opacity;
@@ -2047,11 +2078,6 @@ div.catalog-popup span {
 				<xsl:if test="$page_mode='reply'">
 					&#160; <a class="js" href="#track">自動追尾</a>
 				</xsl:if>
-				<xsl:if test="$dev_mode='1'">
-					&#160; <a class="js" href="#reload-ext">Reload Extension</a>
-					&#160; <a class="js" href="#notice-test">Notice Test</a>
-					&#160; <label><input type="checkbox" data-href="#toggle-logging"/>Timing log</label>
-				</xsl:if>
 			</div>
 			<div>
 				<a href="{meta/home}" target="_top">ホーム</a>
@@ -2108,6 +2134,23 @@ div.catalog-popup span {
 				+ <a href="//www.2chan.net/" target="_top">futaba</a>
 				/ This page is under control of <a href="https://akahuku.github.io/akahukuplus/" target="_blank"><xsl:value-of select="$app_name"/>/<xsl:value-of select="meta/version"/></a>
 			—</div>
+			<xsl:if test="$dev_mode='1'">
+			<div class="debug-tools">
+				Debug Tools: <a class="js" href="#reload-ext">Reload Extension</a>
+				+ <a class="js" href="#notice-test">Notice Test</a>
+				+ <label><input type="checkbox" data-href="#toggle-logging"/>Timing log</label>
+				+ <a class="js" href="#reload-full">Full Reload</a>
+				+ <a class="js" href="#reload-delta">Delta Reload</a>
+			</div>
+			</xsl:if>
+			<div class="fts-form-wrap">
+				<form action="/b/futaba.php?guid=on" method="POST" target="_blank" enctype="multipart/form-data">
+					<input type="hidden" name="mode" value="search"/>
+					<label>
+						<input type="text" name="keyword" id="fts-query"/><button type="submit" id="fts-submit">検索</button>
+					</label>
+				</form>
+			</div>
 		</footer>
 		<div class="wheel-status hide" id="wheel-status"><span class="wheel-status-text"></span><span class="blink-cursor">&#x2582;</span></div>
 		<div id="ad-aside-wrap">
@@ -2196,7 +2239,7 @@ div.catalog-popup span {
 						<tr>
 							<th>コメント</th>
 							<td>
-								<div class="comment-wrap"><textarea name="com" id="com" resize="false" rows="4" placeholder="Shift+Enterで送信"/></div>
+								<div class="comment-wrap"><textarea name="com" id="com2" resize="false" /><div id="com" contenteditable="true" data-placeholder="Shift+Enterで送信"></div></div>
 								<div class="comment-info flex">
 									<div id="comment-info-summary">そんな決め方でいいのか！？</div>
 									<div id="comment-info-details"></div>
@@ -2266,7 +2309,6 @@ div.catalog-popup span {
 					<div id="post-image-thumbnail-info"></div>
 				</div>
 			</div>
-			<div id="comment-backend"></div>
 		</div>
 		<div id="quote-popup-pool"/><div id="quote-popup-pool2"/>
 		<div id="selection-menu" class="hide">
@@ -2465,7 +2507,7 @@ div.catalog-popup span {
 	<div class="text">
 		<div class="topic-wrap" data-number="{topic/number}">
 			<div>
-				<input type="checkbox"/>&#160;<xsl:if test="topic/sub"><span class="sub def_{topic/sub=$sub_default}"><xsl:value-of select="topic/sub"/></span> | </xsl:if> <xsl:if test="topic/name"><span class="name def_{topic/name=$name_default}"><xsl:value-of select="topic/name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="topic/post_date"/></span> | <xsl:if test="topic/user_id"><span class="user-id">ID:<xsl:value-of select="topic/user_id"/></span><span></span> | </xsl:if> <a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{topic/sodane/@class} js" href="#sodane"><xsl:value-of select="topic/sodane"/></a>&#160;<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
+				<input type="checkbox"/>&#160;<xsl:if test="topic/sub"><span class="sub def_{topic/sub=$sub_default}"><xsl:value-of select="topic/sub"/></span> | </xsl:if> <xsl:if test="topic/name"><span class="name def_{topic/name=$name_default}"><xsl:value-of select="topic/name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="topic/post_date"/></span> | <xsl:if test="topic/ip"><span class="ip">IP:<xsl:value-of select="topic/ip"/></span> | </xsl:if> <xsl:if test="topic/user_id"><span class="user-id" data-id="{topic/user_id}">ID:<xsl:value-of select="topic/user_id"/></span><span></span> | </xsl:if> <a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{topic/sodane/@class} js" href="#sodane"><xsl:value-of select="topic/sodane"/></a>&#160;<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
 			</div>
 			<xsl:if test="topic/email"><div class="email">[<xsl:apply-templates select="topic/email"/>]</div></xsl:if>
 			<div class="comment"><xsl:apply-templates select="topic/comment"/></div>
@@ -2512,7 +2554,7 @@ div.catalog-popup span {
 	<div>…</div>
 	<div class="{substring('deleted',1,count(deleted)*7)}" data-number="{number}">
 		<div>
-			<span class="no"><xsl:value-of select="offset"/></span>&#160;<input type="checkbox"/> <xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span> | </xsl:if> <xsl:if test="name"><span class="name def_{name=$name_default}"><xsl:value-of select="name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="post_date"/></span> | <a class="postno" href="#quote">No.<xsl:apply-templates select="number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{sodane/@class} js" href="#sodane"><xsl:value-of select="sodane"/></a>
+			<span class="no"><xsl:value-of select="offset"/></span>&#160;<input type="checkbox"/> <xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span> | </xsl:if> <xsl:if test="name"><span class="name def_{name=$name_default}"><xsl:value-of select="name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="post_date"/></span> | <xsl:if test="ip"><span class="ip"><xsl:value-of select="ip"/></span> | </xsl:if> <a class="postno" href="#quote">No.<xsl:apply-templates select="number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{sodane/@class} js" href="#sodane"><xsl:value-of select="sodane"/></a>
 		</div>
 		<xsl:if test="image">
 			<div class="reply-image">
@@ -2530,7 +2572,7 @@ div.catalog-popup span {
 		</xsl:if>
 		<xsl:if test="email"><div class="email">[<xsl:apply-templates select="email"/>]</div></xsl:if>
 		<div class="comment"><xsl:apply-templates select="comment"/></div>
-		<xsl:if test="user_id"><div class="user-id">── <span class="user-id">ID:<xsl:value-of select="user_id"/></span><span></span></div></xsl:if>
+		<xsl:if test="user_id"><div class="user-id">── <span class="user-id" data-id="{user_id}">ID:<xsl:value-of select="user_id"/></span><span></span></div></xsl:if>
 	</div>
 </div>
 </xsl:template>

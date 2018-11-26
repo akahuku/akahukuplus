@@ -274,6 +274,9 @@
 				var caretRange = window.getSelection().getRangeAt(0);
 				var r = document.createRange();
 
+				if (!el.firstChild) {
+					el.appendChild(document.createTextNode(''));
+				}
 				r.setStartBefore(el.firstChild);
 				r.setEnd(caretRange.startContainer, caretRange.startOffset);
 				return r.toString().length;
@@ -288,6 +291,9 @@
 				var caretRange = window.getSelection().getRangeAt(0);
 				var r = document.createRange();
 
+				if (!el.firstChild) {
+					el.appendChild(document.createTextNode(''));
+				}
 				r.setStartBefore(el.firstChild);
 				r.setEnd(caretRange.endContainer, caretRange.endOffset);
 				return r.toString().length;
@@ -983,11 +989,9 @@
 
 	function paste (e) {
 		if (!isEditable(e)) return;
-
-		e.preventDefault();
-
 		if (!handlePasteEvent) return;
 
+		e.preventDefault();
 		pushCompositionedString(e, e.clipboardData.getData('text/plain'));
 	}
 	// >>>

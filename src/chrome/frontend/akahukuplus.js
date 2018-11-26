@@ -104,7 +104,8 @@ const siteInfo = {
 	subHash: {},
 	nameHash: {},
 	latestNumber: 0,
-	notice: ''
+	notice: '',
+	idDisplay: false
 };
 const cursorPos = {
 	x: 0,
@@ -112,6 +113,10 @@ const cursorPos = {
 	pagex: 0,
 	pagey: 0,
 	moved: false
+};
+const reloadStatus = {
+	lastReloaded: Date.now(),
+	receivedBytes: 0
 };
 const pageModes = [];
 const appStates = ['command'];
@@ -457,6 +462,8 @@ function install (mode) {
 		.add('#draw',           commands.openDrawDialog)
 		.add('#toggle-panel',   commands.togglePanelVisibility)
 		.add('#reload',         commands.reload)
+		.add('#reload-full',    commands.reloadFull)
+		.add('#reload-delta',   commands.reloadDelta)
 		.add('#sage',           commands.toggleSage)
 		.add('#search-start',   commands.search)
 		.add('#clear-upfile',   commands.clearUpfile)
@@ -547,10 +554,6 @@ function install (mode) {
 		})
 		.add('.switch-to', (e, t) => {
 			historyStateWrapper.pushState(t.href);
-			if (pageModes[0] == 'catalog') {
-				commands.toggleCatalogVisibility();
-			}
-			commands.reload();
 		})
 		.add('.lightbox',  (e, t) => {
 			if (storage.config.auto_save_image.value) {
@@ -669,10 +672,10 @@ function install (mode) {
 		.addStroke('command.edit', '\u000b', commands.cursorPreviousLine)		// ^K: ^N can not be used, this is also defined like vi.
 		.addStroke('command.edit', '\u0006', commands.cursorForwardChar)		// ^F
 		.addStroke('command.edit', '\u0002', commands.cursorBackwardChar)		// ^B
-		.addStroke('command.edit', '<A-F>',  commands.cursorForwardWord)		// Alt+F
-		.addStroke('command.edit', '<A-B>',  commands.cursorBackwardWord)		// Alt+B
+		.addStroke('command.edit', '<A-F>',  commands.cursorForwardWord)		// <Alt+F>
+		.addStroke('command.edit', '<A-B>',  commands.cursorBackwardWord)		// <Alt+B>
 		.addStroke('command.edit', '\u0008', commands.cursorDeleteBackwardChar)	// ^H
-		.addStroke('command.edit', '\u0017', commands.cursorDeleteBackwardWord)	// ^W
+		.addStroke('command.edit', '<A-H>',  commands.cursorDeleteBackwardWord)	// <Alt+H>: Chrome reserves ^W
 		.addStroke('command.edit', '\u0015', commands.cursorDeleteBackwardBlock)// ^U
 
 		.updateManifest();
@@ -682,6 +685,7 @@ function install (mode) {
 	 */
 
 	favicon = createFavicon();
+	favicon.update();
 
 	/*
 	 * window resize handler
@@ -766,7 +770,7 @@ function install (mode) {
 	 * history handler
 	 */
 
-	historyStateWrapper = createHistoryStateWrapper(e => {
+	historyStateWrapper = createHistoryStateWrapper(() => {
 		/*
 		console.log([
 			`  previous page mode: ${pageModes[0]}`,
@@ -782,6 +786,8 @@ function install (mode) {
 		}
 
 		if (pageModes[0] == 'summary') {
+			let re = /(\d+)\.htm$/.exec(window.location.pathname);
+			siteInfo.summaryIndex = re ? re[1] : 0;
 			commands.reload();
 		}
 		else if (pageModes[0] == 'catalog' && pageModes[1] == 'summary') {
@@ -1222,6 +1228,7 @@ function createResourceManager () {
 			xhr.responseType = responseType;
 		}
 
+		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 		xhr.send();
 	}
 
@@ -1518,15 +1525,15 @@ function createXMLGenerator () {
 			m = RegExp.$2 - 0;
 		}
 
-		// 23:00 -> 01:00頃消えます: treat next day
+		// 23:00 -> 01:00頃消えます: treat as next day
 		if (h != undefined && h < fromDate.getHours() && D == undefined) {
 			D = fromDate.getDate() + 1;
 		}
-		// 31日 -> 1日頃消えます: treat next month
+		// 31日 -> 1日頃消えます: treat as next month
 		if (D != undefined && D < fromDate.getDate() && M == undefined) {
 			M = fromDate.getMonth() + 1;
 		}
-		// 12月 -> 1月頃消えます: treat next year
+		// 12月 -> 1月頃消えます: treat as next year
 		if (M != undefined && M < fromDate.getMonth() && Y == undefined) {
 			Y = fromDate.getFullYear() + 1;
 		}
@@ -1821,10 +1828,16 @@ function createXMLGenerator () {
 		content = content.replace(/<script[^>]*>.*?<\/script>/gi, '');
 
 		// strip comments
-		content = content.replace(/<!--.*?-->/g, ' ');
+		//content = content.replace(/<!--.*?-->/g, ' ');
 
-		// legalize all references
-		content = content.replace(/&amp;/g, '&');
+		// resolve some references
+		{
+			const refmap = {
+				amp: '&',
+				quot: "'"
+			};
+			content = content.replace(/&(amp|quot);/g, ($0, $1) => refmap[$1]);
+		}
 
 		// experimental feature
 		if (IDEOGRAPH_CONVERSION_CONTENT) {
@@ -1967,7 +1980,7 @@ function createXMLGenerator () {
 				}
 
 				// input elements
-				let inputRegex = /<input[^>]+>/gi;
+				const inputRegex = /<input[^>]+>/gi;
 				let input;
 				while ((input = inputRegex.exec(postform[2]))) {
 					let inputNode = element(pfNode, 'input');
@@ -2086,9 +2099,9 @@ function createXMLGenerator () {
 		 * split content into threads
 		 */
 
+		const threadRegex = /(<div\s+class="thre"[^>]*>\s*)(.+?<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
+		const postTimeRegex = getPostTimeRegex();
 		let threadIndex = 0;
-		let threadRegex = /(<div\s+class="thre"[^>]*>\s*)(.+?<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
-		let postTimeRegex = getPostTimeRegex();
 
 		markStatistics.start();
 
@@ -2208,15 +2221,18 @@ function createXMLGenerator () {
 			}
 
 			// mail address
-			re = /<a href="mailto:([^"]*)"/i.exec(topicInfo);
+			re = /<a[^>]+href="mailto:([^"]*)"/i.exec(topicInfo);
 			if (re) {
 				let emailNode = element(topicNode, 'email');
 				emailNode.appendChild(text(stripTags(re[1])));
 				linkify(emailNode);
+				if (isReplyMode && /ID表示/i.test(re[1])) {
+					siteInfo.idDisplay = true;
+				}
 			}
 
 			// そうだね (that's right）
-			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
+			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
 			if (re) {
 				let sodaneNode = element(topicNode, 'sodane');
 				sodaneNode.appendChild(text(re[1]
@@ -2234,8 +2250,15 @@ function createXMLGenerator () {
 				markStatistics.notifyId(threadNumber, re[1]);
 			}
 
+			// IP
+			re = /IP:([a-zA-Z0-9_*:.\-()]+)/.exec(topicInfoText);
+			if (re) {
+				let ipNode = element(topicNode, 'ip');
+				ipNode.appendChild(text(re[1]));
+			}
+
 			// src & thumbnail url
-			let imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(topicInfo);
+			let imagehref = /<br><a[^>]+href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(topicInfo);
 			if (imagehref) {
 				let imageNode = element(topicNode, 'image');
 				let srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
@@ -2243,7 +2266,7 @@ function createXMLGenerator () {
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
 				// animated
-				re = /<small[^>]*>アニメGIF.<\/small[^>]*>/i.exec(topicInfo);
+				re = /<small[^>]*>アニメGIF\.<\/small[^>]*>|<!--AnimationGIF-->/i.exec(topicInfo);
 				if (re) {
 					imageNode.setAttribute('animated', 'true');
 				}
@@ -2391,6 +2414,13 @@ function createXMLGenerator () {
 				markStatistics.notifyId(number, re[1]);
 			}
 
+			// IP
+			re = /IP:([a-zA-Z0-9_*:.\-()]+)/.exec(infoText);
+			if (re) {
+				let ipNode = element(replyNode, 'ip');
+				ipNode.appendChild(text(re[1]));
+			}
+
 			// mark
 			re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(comment);
 			if (re && (!re[1] || re[1].substr(-1) != '=')) {
@@ -2408,7 +2438,7 @@ function createXMLGenerator () {
 			}
 
 			// そうだね (that's right）
-			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(info);
+			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(info);
 			if (re) {
 				let sodaneNode = element(replyNode, 'sodane');
 				sodaneNode.appendChild(text(re[1]
@@ -2418,13 +2448,13 @@ function createXMLGenerator () {
 				sodaneNode.setAttribute('class', re[1] == '+' ? 'sodane-null' : 'sodane');
 			}
 
+			// offset
+			element(replyNode, 'offset').appendChild(text(offset));
+
 			// skip, if we can
 			if (number <= lowBoundNumber) {
 				continue;
 			}
-
-			// offset
-			element(replyNode, 'offset').appendChild(text(offset));
 
 			// posted date
 			re = postTimeRegex.exec(info);
@@ -2462,7 +2492,7 @@ function createXMLGenerator () {
 			}
 
 			// mail address
-			re = /<a href="mailto:([^"]*)"/i.exec(info);
+			re = /<a[^>]+href="mailto:([^"]*)"/i.exec(info);
 			if (re) {
 				let emailNode = element(replyNode, 'email');
 				emailNode.appendChild(text(stripTags(re[1])));
@@ -2470,7 +2500,7 @@ function createXMLGenerator () {
 			}
 
 			// src & thumbnail url
-			let imagehref = /<br><a href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
+			let imagehref = /<br><a[^>]+href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
 			if (imagehref) {
 				let imageNode = element(replyNode, 'image');
 				let srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
@@ -2478,7 +2508,7 @@ function createXMLGenerator () {
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
 				// animated
-				re = /<small[^>]*>アニメGIF.<\/small[^>]*>/i.exec(info);
+				re = /<small[^>]*>アニメGIF\.<\/small[^>]*>|<!--AnimationGIF-->/i.exec(info);
 				if (re) {
 					imageNode.setAttribute('animated', 'true');
 				}
@@ -2530,6 +2560,179 @@ function createXMLGenerator () {
 		}
 	}
 
+	function runFromJson (content, hiddenRepliesCount) {
+		timingLogger.startTag('createXMLGenerator#runFromJson');
+
+		const url = window.location.href;
+		const xml = document.implementation.createDocument(null, 'futaba', null);
+		const text = textFactory(xml);
+		const baseUrl = url;
+		const enclosureNode = xml.documentElement;
+		const metaNode = element(enclosureNode, 'meta');
+
+		element(metaNode, 'mode')
+			.appendChild(text('reply'));
+		element(metaNode, 'url')
+			.appendChild(text(url));
+		element(metaNode, 'version')
+			.appendChild(text(version));
+		element(metaNode, 'extension_id')
+			.appendChild(text(getExtensionId()));
+
+		/*
+		 * thread meta informations
+		 */
+
+		let threadNode = element(enclosureNode, 'thread');
+		threadNode.setAttribute('url', baseUrl);
+
+		/*
+		 * replies
+		 */
+
+		// PHP's json_encode handles the following character references,
+		// so we need to solve them.
+		const refmap = {
+			amp: '&',
+			quot: '"',
+			apos: "'"
+		};
+		const ref = function (s) {
+			return s.replace(/&(amp|quot|apos);/g, ($0, $1) => refmap[$1]);
+		}
+
+		markStatistics.start();
+
+		const repliesNode = element(threadNode, 'replies');
+		let offset = hiddenRepliesCount || 0;
+		for (const replyNumber in content.res) {
+			const reply = content.res[replyNumber];
+
+			offset++;
+			const replyNode = element(repliesNode, 'reply');
+
+			// number
+			{
+				let numberNode = element(replyNode, 'number');
+				numberNode.appendChild(text(replyNumber));
+
+				let re = /^(\d*?)((\d)\3+)$/.exec(replyNumber);
+				if (re) {
+					numberNode.setAttribute('lead', re[1]);
+					numberNode.setAttribute('trail', re[2]);
+				}
+			}
+
+			// deletion flag, mark
+			{
+				let re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(reply.com);
+				let isMark = re && (!re[1] || re[1].substr(-1) != '=');
+				if (isMark) {
+					let markNode = element(replyNode, 'mark');
+					if (re[0].charAt(0) == '[' && re[0].substr(-1) == ']') {
+						markNode.setAttribute('bracket', 'true');
+					}
+					markNode.appendChild(text(stripTags(re[2])));
+					markStatistics.notifyMark(replyNumber, re[2]);
+				}
+			}
+
+			// ID
+			if (reply.id != '') {
+				const id = reply.id.replace(/^id:\s*/i, '');
+				let idNode = element(replyNode, 'user_id');
+				idNode.appendChild(text(id));
+				markStatistics.notifyId(replyNumber, id);
+			}
+
+			// sodane
+			if (content.dispsod - 0) {
+				let sodaneNode = element(replyNode, 'sodane');
+				if (replyNumber in content.sd) {
+					sodaneNode.appendChild(text(`そうだね × ${content.sd[replyNumber]}`));
+					sodaneNode.setAttribute('class', 'sodane');
+				}
+				else {
+					sodaneNode.appendChild(text(`＋`));
+					sodaneNode.setAttribute('class', 'sodane-null');
+				}
+			}
+
+			// offset
+			element(replyNode, 'offset').appendChild(text(offset));
+
+			// posted date
+			{
+				let postedDate = new Date(reply.tim - 0);
+				let postDateNode = element(replyNode, 'post_date');
+				postDateNode.appendChild(text(reply.now.replace(/<[^>]*>/g, '')));
+				postDateNode.setAttribute('value', postedDate.getTime() / 1000);
+			}
+
+			// subject and name
+			if (content.dispname - 0) {
+				if (reply.sub != '') {
+					element(replyNode, 'sub').appendChild(text(ref(reply.sub)));
+					siteInfo.subHash[reply.sub] = (siteInfo.subHash[reply.sub] || 0) + 1;
+				}
+
+				if (reply.name != '') {
+					element(replyNode, 'name').appendChild(text(ref(reply.name)));
+					siteInfo.nameHash[reply.name] = (siteInfo.nameHash[reply.name] || 0) + 1;
+				}
+			}
+
+			// mail address
+			if (reply.email != '') {
+				let emailNode = element(replyNode, 'email');
+				emailNode.appendChild(text(stripTags(ref(reply.email))));
+				linkify(emailNode);
+			}
+
+			// src & thumbnail url
+			if (reply.ext != '') {
+				let imageNode = element(replyNode, 'image');
+				let srcUrl = restoreDistributedImageURL(resolveRelativePath(reply.src, baseUrl));
+				imageNode.appendChild(text(srcUrl));
+				imageNode.setAttribute('base_name', reply.src.match(/[^\/]+$/)[0]);
+
+				// animated
+				if (/<!--AnimationGIF-->/i.test(reply.now)) {
+					imageNode.setAttribute('animated', 'true');
+				}
+
+				// bytes
+				{
+					imageNode.setAttribute('bytes', reply.fsize);
+					imageNode.setAttribute('size', getReadableSize(reply.fsize));
+				}
+
+				// thumbnail
+				if (reply.thumb != '') {
+					let thumbUrl = resolveRelativePath(reply.thumb, baseUrl);
+					thumbUrl = restoreDistributedImageURL(thumbUrl);
+
+					let thumbNode = element(replyNode, 'thumb');
+					let thumbnailSize = getThumbnailSize(reply.w, reply.h, 250, 250);
+					thumbNode.appendChild(text(thumbUrl));
+					thumbNode.setAttribute('width', thumbnailSize.width);
+					thumbNode.setAttribute('height', thumbnailSize.height);
+				}
+			}
+
+			pushComment(element(replyNode, 'comment'), ref(reply.com));
+		}
+
+		repliesNode.setAttribute("total", offset);
+		repliesNode.setAttribute("hidden", hiddenRepliesCount);
+		setDefaultSubjectAndName(xml, metaNode, siteInfo.subHash, siteInfo.nameHash);
+
+		return {
+			delta: offset - hiddenRepliesCount,
+			xml: xml
+		};
+	}
+
 	function remainingReplies (context, maxReplies, lowBoundNumber, callback1, callback2) {
 		timingLogger.startTag('createXMLGenerator#remainingReplies');
 
@@ -2552,7 +2755,7 @@ function createXMLGenerator () {
 			setDefaultSubjectAndName(xml, element(xml.documentElement, 'meta'), siteInfo.subHash, siteInfo.nameHash);
 			timingLogger.endTag();
 
-			timingLogger.startTag('calling back');
+			timingLogger.startTag('intermediate call back');
 			callback1(xml, context[0].index, result.repliesCount, context[0].repliesCount);
 			timingLogger.endTag();
 
@@ -2569,7 +2772,10 @@ function createXMLGenerator () {
 				setTimeout(main, REST_REPLIES_PROCESS_INTERVAL);
 			}
 			else {
+				timingLogger.startTag('final call back');
 				callback2();
+				timingLogger.endTag();
+
 				timingLogger.endTag();
 			}
 		}
@@ -2578,14 +2784,18 @@ function createXMLGenerator () {
 			main();
 		}
 		else {
+			timingLogger.startTag('final calling back');
 			callback2();
+			timingLogger.endTag();
+
 			timingLogger.endTag();
 		}
 	}
 
 	return {
 		run: run,
-		remainingReplies: remainingReplies
+		remainingReplies: remainingReplies,
+		runFromJson: runFromJson
 	};
 }
 
@@ -2599,7 +2809,7 @@ function createPersistentStorage () {
 			value:120,
 			name:'ホイールの1目盛りの単位移動量',
 			desc:`通常は120だった気がするけど, 環境によってはもっと小さい値かもしれません。
-右のテキストボックス上でホイールを回すと移動量が表示されるので, それらのうち最小の正の値を入力してください`,
+右のテキストボックス上でホイールを回すと移動量が表示されるので, それらのうち最小の正の値を入力してください。`,
 		},
 		wheel_reload_threshold_override: {
 			type:'int',
@@ -2698,6 +2908,12 @@ function createPersistentStorage () {
 			type:'bool',
 			value:true,
 			name:'テキスト入力時に Emacs ぽいショートカットを使用'
+		},
+		full_reload_interval: {
+			type:'int',
+			value:2,
+			name:'フルリロードする間隔(分)',
+			min:0, max:60
 		}
 	};
 	let runtime = {
@@ -3047,9 +3263,13 @@ function createKeyManager () {
 	}
 
 	function getFocusedNodeName () {
-		let focusedNodeName = document.activeElement.nodeName.toLowerCase();
+		const el = document.activeElement;
+		let focusedNodeName = el.nodeName.toLowerCase();
 		if (focusedNodeName == 'input') {
-			focusedNodeName += '.' + document.activeElement.type.toLowerCase();
+			focusedNodeName += '.' + el.type.toLowerCase();
+		}
+		else if (el.contentEditable == 'true') {
+			focusedNodeName += '.contentEditable';
 		}
 		return focusedNodeName;
 	}
@@ -3059,7 +3279,7 @@ function createKeyManager () {
 	}
 
 	function isTextInputElement (name) {
-		return /^(?:textarea|input\.(?:text|password))$/.test(name);
+		return /^(?:textarea|input\.(?:text|password)|[^.]+\.contentEditable)$/.test(name);
 	}
 
 	function addStroke (mode, stroke, handler, isPrior) {
@@ -3116,7 +3336,7 @@ function createKeyManager () {
 		qeema.setManifest(m);
 	}
 
-	qeema.install().addListener(keypress);
+	qeema.install({handlePasteEvent: false}).addListener(keypress);
 
 	return {
 		addStroke:addStroke,
@@ -3151,6 +3371,7 @@ function createSound (name) {
 function createMarkStatistics () {
 	let marks, otherMarks, ids;
 	let repliesCount, newEntries;
+	let lastStatistics;
 
 	const KEY_MAP = {
 		'管理人': 'admin',
@@ -3158,10 +3379,6 @@ function createMarkStatistics () {
 		'スレッドを立てた人によって削除されました': 'passive',
 		'書き込みをした人によって削除されました': 'active'
 	};
-
-	function getRepliesCount () {
-		return $qsa('article:first-child .reply-wrap').length;
-	}
 
 	function notifyMark (number, content) {
 		let key = KEY_MAP[content];
@@ -3222,7 +3439,7 @@ function createMarkStatistics () {
 			for (let i in marks) {
 				result[i] = [];
 				for (let num in marks[i]) {
-					let isNew = (`${i}_${num}`) in newEntries;
+					let isNew = `${i}_${num}` in newEntries;
 					if (isNew) {
 						newMarks[num] = 1;
 					}
@@ -3244,7 +3461,7 @@ function createMarkStatistics () {
 			for (let host in otherMarks) {
 				result[host] = [];
 				for (let num in otherMarks[host]) {
-					let isNew = (`other_${num}`) in newEntries;
+					let isNew = `other_${num}` in newEntries;
 					if (isNew) {
 						newMarks[num] = 1;
 					}
@@ -3267,11 +3484,12 @@ function createMarkStatistics () {
 				result[id] = [];
 
 				for (let num in ids[id]) {
-					let isNew = (`id_${num}`) in newEntries;
+					let isNew = `id_${num}` in newEntries;
 					if (isNew) {
 						newIds[id] = 1;
 					}
 					extIds[id] = 1;
+
 					result[id].push({
 						isNew: isNew,
 						number: num
@@ -3282,7 +3500,7 @@ function createMarkStatistics () {
 			return result;
 		}
 
-		return {
+		return lastStatistics = {
 			markData: getMarkData(),
 			otherMarkData: getOtherMarkData(),
 			idData: getIdData(),
@@ -3299,6 +3517,10 @@ function createMarkStatistics () {
 				id: dropDelta ? 0 : Object.keys(newIds).length,
 			}
 		};
+	}
+
+	function clearStatistics () {
+		lastStatistics = undefined;
 	}
 
 	function updatePanelView (statistics) {
@@ -3432,8 +3654,7 @@ function createMarkStatistics () {
 			if (siteInfo.server == 'may' && siteInfo.board == 'id') {
 				identified = false;
 			}
-			else if ((node = $qs('.topic-wrap .email'))
-			&& /ID表示/i.test(node.textContent)) {
+			else if (siteInfo.idDisplay) {
 				identified = false;
 			}
 		}
@@ -3465,11 +3686,13 @@ function createMarkStatistics () {
 		reset: reset,
 		start: start,
 		getStatistics: getStatistics,
+		clearStatistics: clearStatistics,
 		notifyMark: notifyMark,
 		notifyId: notifyId,
 		updatePanelView: updatePanelView,
 		updatePostformView: updatePostformView,
-		resetPostformView: resetPostformView
+		resetPostformView: resetPostformView,
+		get lastStatistics () {return lastStatistics}
 	};
 }
 
@@ -4120,97 +4343,131 @@ function createQuotePopup () {
 		}
 
 		// immediately return if cache exists
-		var cache = getQuoteOriginCache(quote);
+		const cache = getQuoteOriginCache(quote);
 		if (cache) {
 			return cache;
 		}
 
-		var sentinelNo = getPostNumber(sentinelWrap);
+		const sentinelNo = getPostNumber(sentinelWrap);
 
 		// lookup quote type...
-		var re = /^>+\s*(?:no\.)?(\d+)\s*(?:\n|$)/i.exec(quote.textContent);
-		if (re) {
-			// quote via post number
-			var quotedNo = re[1] - 0;
-			if (quotedNo >= sentinelNo) {
-				return null;
-			}
 
-			var origin = $qs([
-				`article .topic-wrap[data-number="${quotedNo}"]`,
-				`article .reply-wrap > [data-number="${quotedNo}"]`
-			].join(','));
-			if (!origin) {
-				return null;
-			}
-			if (origin == sentinelWrap) {
-				return null;
-			}
+		// post number (>No.xxxxxxxx)
+		{
+			let re = /^>+\s*(?:no\.)?(\d+)\s*(?:\n|$)/i.exec(quote.textContent);
+			if (re) {
+				const quotedNo = re[1] - 0;
+				if (quotedNo >= sentinelNo) {
+					return null;
+				}
 
-			var index = $qs('.no', origin);
-			if (index) {
-				index = index.textContent - 0;
-			}
-			else {
-				index = 0;
-			}
+				let origin = $qs([
+					`article .topic-wrap[data-number="${quotedNo}"]`,
+					`article .reply-wrap > [data-number="${quotedNo}"]`
+				].join(','));
+				if (!origin) {
+					return null;
+				}
+				if (origin == sentinelWrap) {
+					return null;
+				}
 
-			if (!origin.classList.contains('topic-wrap')) {
-				origin = origin.parentNode;
-			}
-
-			return {
-				index: index,
-				element: origin
-			};
-		}
-
-		// quote via content string
-		var span = document[CRE]('span');
-		var quoteText = quote.textContent.replace(/[\s\u3000]*$/, '');
-		var quoteTextForSearch;
-
-		if (singleLine) {
-			quoteTextForSearch = quoteText;
-		}
-		else {
-			sentinelComment[IHTML].split(/<br[^>]*>/i).some(function (t) {
-				span[IHTML] = t;
-				var result = false;
-				var fragment = span.textContent
-					.replace(/^\s+/, '')
-					.replace(/[\s\u3000]+$/, '');
-
-				if (/^(?:>|&gt;)/.test(fragment)) {
-					if (!quoteTextForSearch) {
-						quoteTextForSearch = [fragment];
-					}
-					else {
-						quoteTextForSearch.push(fragment);
-					}
-					if (fragment == quoteText) {
-						quoteTextForSearch = quoteTextForSearch.join('\n');
-						result = true;
-					}
+				let index = $qs('.no', origin);
+				if (index) {
+					index = index.textContent - 0;
 				}
 				else {
-					quoteTextForSearch = undefined;
+					index = 0;
 				}
-				return result;
-			});
+
+				if (!origin.classList.contains('topic-wrap')) {
+					origin = origin.parentNode;
+				}
+
+				return {
+					index: index,
+					element: origin
+				};
+			}
 		}
 
-		quoteTextForSearch = quoteTextForSearch
-			.replace(/^(?:>|&gt;)/, '')
-			.replace(/\n(?:>|&gt;)/g, '\n');
+		// attached file name (>xxxxxxxxxxx.xxx)
+		{
+			let re = /^>+\s*(\d+\.\w+)/i.exec(quote.textContent);
+			if (re) {
+				let origin = $qs(`article a[href$="${re[1]}"]`);
+				if (!origin) {
+					return null;
+				}
+				if (origin == sentinelWrap) {
+					return null;
+				}
 
-		var nodes = $qsa([
+				let index;
+				if (origin.parentNode.classList.contains('reply-image')) {
+					origin = getWrapElement(origin);
+					index = $qs('.no', origin).textContent - 0;
+				}
+				else {
+					origin = $qs('article .topic-wrap');
+					index = 0;
+				}
+
+				return {
+					index: index,
+					element: origin
+				};
+			}
+		}
+
+		// quote content
+		let quoteTextForSearch;
+		{
+			let span = document[CRE]('span');
+			let quoteText = quote.textContent.replace(/[\s\u3000]*$/, '');
+
+			if (singleLine) {
+				quoteTextForSearch = quoteText;
+			}
+			else {
+				sentinelComment[IHTML].split(/<br[^>]*>/i).some(function (t) {
+					span[IHTML] = t;
+					var result = false;
+					var fragment = span.textContent
+						.replace(/^\s+/, '')
+						.replace(/[\s\u3000]+$/, '');
+
+					if (/^(?:>|&gt;)/.test(fragment)) {
+						if (!quoteTextForSearch) {
+							quoteTextForSearch = [fragment];
+						}
+						else {
+							quoteTextForSearch.push(fragment);
+						}
+						if (fragment == quoteText) {
+							quoteTextForSearch = quoteTextForSearch.join('\n');
+							result = true;
+						}
+					}
+					else {
+						quoteTextForSearch = undefined;
+					}
+					return result;
+				});
+			}
+
+			quoteTextForSearch = quoteTextForSearch
+				.replace(/^(?:>|&gt;)/, '')
+				.replace(/\n(?:>|&gt;)/g, '\n');
+		}
+
+		const nodes = $qsa([
 			'article .topic-wrap .comment',
 			'article .reply-wrap .comment'
 		].join(','));
-		for (var i = 0, goal = nodes.length; i < goal ; i++) {
-			var origin = getWrapElement(nodes[i]);
-			var originNo = getPostNumber(origin);
+		for (let i = 0, goal = nodes.length; i < goal ; i++) {
+			let origin = getWrapElement(nodes[i]);
+			let originNo = getPostNumber(origin);
 
 			if (originNo >= sentinelNo) {
 				break;
@@ -4380,6 +4637,12 @@ function createSelectionMenu () {
 	function mup (e) {
 		if (!enabled) return;
 
+		let element = document.elementFromPoint(cursorPos.x, cursorPos.y);
+		while (element) {
+			if (element.contentEditable == 'true') return;
+			element = element.parentNode;
+		}
+
 		const menu = $('selection-menu');
 		if (!menu) return;
 
@@ -4431,10 +4694,9 @@ function createSelectionMenu () {
 			{
 				const com = $('com');
 				if (com) {
-					quote(com, text, /^quote\b/.test(key));
-					commands.activatePostForm();
-					com.setSelectionRange(com.value.length, com.value.length);
-					com.dispatchEvent(new InputEvent('input'));
+					commands.activatePostForm().then(() => {
+						quote(com, text, /^quote\b/.test(key));
+					});
 				}
 			}
 			break;
@@ -4467,10 +4729,9 @@ function createSelectionMenu () {
 								.join(''))
 							.join('');
 
-						quote(com, result, false);
-						commands.activatePostForm();
-						com.setSelectionRange(com.value.length, com.value.length);
-						com.dispatchEvent(new InputEvent('input'));
+						commands.activatePostForm().then(() => {
+							quote(com, result, false);
+						});
 					}
 					else {
 						setBottomStatus('選択範囲が変です。');
@@ -4536,21 +4797,26 @@ function createSelectionMenu () {
 		target = $(target);
 		if (!target) return;
 
-		let s = text;
-		if (addPrefix) {
-			s = getQuoted(s);
-		}
-		if (s == '') {
-			return;
-		}
-		if (/^\s*$/.test(target.value)) {
-			target.value = s.replace(/\n$/, '');
-		}
-		else {
-			target.value = `${target.value.replace(/\n$/, '')}\n${s}`;
+		let s = addPrefix ? getQuoted(text) : text;
+		s = s.replace(/^\s+|\s+$/g, '');
+		if (s == '') return;
+
+		if (!/^\s*/.test(target.textContent)) {
+			s = `\n${s}`;
 		}
 
-		target.value += '\n';
+		setCaretToContentLast(target);
+		document.execCommand('insertText', false, `${s}\n`);
+	}
+
+	function setCaretToContentLast (el) {
+		if ('value' in el) {
+			el.setSelectionRange(el.value.length, el.value.length);
+		}
+		else {
+			document.execCommand('selectAll', false, null);
+			document.getSelection().getRangeAt(0).collapse(false);
+		}
 	}
 
 	function setClipboardGecko (text) {
@@ -4734,6 +5000,7 @@ function createHistoryStateWrapper (popstateHandler) {
 	return {
 		pushState: function (url) {
 			window.history.pushState(null, '', url);
+			popstateHandler();
 		},
 		updateHash: function (hash) {
 			if (hash != '') {
@@ -5058,18 +5325,17 @@ function setupWindowResizeEvent (frequencyMsecs, handler) {
 }
 
 function setupPostFormItemEvent (items) {
-	let initialComHeight;
-	let timer;
+	const timers = {};
 
 	function updateInfoCore (result, item) {
-		let el = $(item.id);
+		const el = $(item.id);
 		if (!el) return result;
 
-		let span = $('comment-info-details').appendChild(document[CRE]('span'));
-		let lines = el.value.replace(/[\r\n\s]+$/, '').split(/\r?\n/);
-		let bytes = lines.join('\r\n').replace(/[^\u0001-\u007f\uff61-\uff9f]/g, '__').length;
-		let linesOvered = item.lines ? lines.length > item.lines : false;
-		let bytesOvered = item.bytes ? bytes > item.bytes : false;
+		const span = $('comment-info-details').appendChild(document[CRE]('span'));
+		const lines = getContentsFromEditable(el).replace(/[\r\n\s]+$/, '').split(/\r?\n/);
+		const bytes = lines.join('\r\n').replace(/[^\u0001-\u007f\uff61-\uff9f]/g, '__').length;
+		const linesOvered = item.lines ? lines.length > item.lines : false;
+		const bytesOvered = item.bytes ? bytes > item.bytes : false;
 
 		if (linesOvered || bytesOvered) {
 			span.classList.add('warn');
@@ -5087,19 +5353,19 @@ function setupPostFormItemEvent (items) {
 		return result;
 	}
 
-	function fixTextAreaHeight (e) {
+	function adjustTextAreaHeight (e) {
 		let com = e.target;
-		let comBackend = $('comment-backend');
-		if (!comBackend) return;
-		comBackend.style.width = com.scrollWidth + 'px';
-		$t(comBackend, com.value + (/[\r\n]/.test(com.value.substr(-1)) ? '_' : ''));
-		com.style.height = Math.max(
-			initialComHeight, Math.min(
-				comBackend.offsetHeight,
-				Math.floor(viewportRect.height * 0.8))) + 'px';
+		if (com.innerHTML != '' && /^\n*$/.test(com.innerText)) {
+			empty(com);
+		}
+
+		$('com2').value = getContentsFromEditable(com);
+
+		com.style.height = '';
+		com.style.height = Math.min(com.scrollHeight, Math.floor(viewportRect.height * 0.8)) + 'px';
 	}
 
-	function updateInfo (e) {
+	function updateInfo () {
 		empty('comment-info-details');
 
 		const summary = $('comment-info-summary');
@@ -5111,11 +5377,15 @@ function setupPostFormItemEvent (items) {
 		}
 	}
 
-	function register (fn) {
-		if (timer) {
-			clearTimeout(timer);
+	function register (tag, fn, e) {
+		if (timers[tag]) {
+			clearTimeout(timers[tag]);
+			delete timers[tag];
 		}
-		timer = setTimeout(fn, 50);
+		timers[tag] = setTimeout(e => {
+			delete timers[tag];
+			fn(e);
+		}, 50, e);
 	}
 
 	function isFileElementReady () {
@@ -5171,72 +5441,15 @@ function setupPostFormItemEvent (items) {
 		console.log(head + ': ' + logs.join(' → '));
 	}
 
-	function handleDragOver (e) {
-		if (!isFileElementReady()) return;
-		if (!e.dataTransfer || !e.dataTransfer.items) return;
-		if (!findAcceptableFile(e.dataTransfer.items)) return;
-
-		e.preventDefault();
-		//dumpElement('    dragover', e.target);
-
-		register(() => {
-			if (!$('postform-wrap').classList.contains('hover')) {
-				commands.activatePostForm().then(() => {
-				});
-			}
-			$('postform-drop-indicator').classList.remove('hide');
-		});
+	function pasteText (e, text) {
+		document.execCommand('insertText', false, text);
 	}
 
-	function handleDragEnter (e) {
-		if (!isFileElementReady()) return;
-
-		e.preventDefault();
-		//dumpElement('    dragenter', e.target);
-	}
-
-	function handleDragLeave (e) {
-		if (!isFileElementReady()) return;
-
-		//dumpElement('    dragleave', e.target);
-
-		let isDocument = e.target == document
-			|| e.target == document.documentElement
-			|| e.target == document.body;
-		if (isDocument && $('postform-wrap').classList.contains('hover')) {
-			register(() => {
-				commands.deactivatePostForm().then(() => {
-					$('postform-drop-indicator').classList.add('hide');
-				});
-			});
-		}
-	}
-
-	function handleDrop (e) {
-		if (!isFileElementReady()) return;
-
-		e.preventDefault();
-		$('postform-drop-indicator').classList.add('hide');
-		handleTextAreaPaste(e);
-		$('com').focus();
-	}
-
-	function handleTextAreaPaste (e) {
-		const upfile = $('upfile');
-		if (!isFileElementReady()) return;
-
-		const dataTransfer = e.clipboardData || e.dataTransfer;
-		if (!dataTransfer) return;
-
-		if (!dataTransfer.files
-		|| dataTransfer.files.length == 0) {
-			setTimeout(fixTextAreaHeight, 0, e);
-			return;
-		}
-
-		let file = findAcceptableFile(dataTransfer.files);
+	function pasteFile (e, file) {
 		if (!file) return;
+		if (!isFileElementReady()) return;
 
+		const upfile = $('upfile');
 		upfile.setAttribute('data-pasting', '1');
 		setBottomStatus('画像を貼り付けています...', true);
 		resetForm('baseform', 'upfile', 'textonly');
@@ -5277,19 +5490,106 @@ function setupPostFormItemEvent (items) {
 		});
 	}
 
+	/*
+	 * drag and drop handlers
+	 */
+
+	function handleDragOver (e) {
+		if (!isFileElementReady()) return;
+		if (!e.dataTransfer || !e.dataTransfer.items) return;
+		if (!findAcceptableFile(e.dataTransfer.items)) return;
+
+		e.preventDefault();
+		//dumpElement('    dragover', e.target);
+
+		register('dnd', () => {
+			if (!$('postform-wrap').classList.contains('hover')) {
+				commands.activatePostForm().then(() => {
+				});
+			}
+			$('postform-drop-indicator').classList.remove('hide');
+		});
+	}
+
+	function handleDragEnter (e) {
+		if (!isFileElementReady()) return;
+
+		e.preventDefault();
+		//dumpElement('    dragenter', e.target);
+	}
+
+	function handleDragLeave (e) {
+		if (!isFileElementReady()) return;
+
+		//dumpElement('    dragleave', e.target);
+
+		let isDocument = e.target == document
+			|| e.target == document.documentElement
+			|| e.target == document.body;
+		if (isDocument && $('postform-wrap').classList.contains('hover')) {
+			register('dnd', () => {
+				commands.deactivatePostForm().then(() => {
+					$('postform-drop-indicator').classList.add('hide');
+				});
+			});
+		}
+	}
+
+	function handleDrop (e) {
+		if (!isFileElementReady()) return;
+
+		e.preventDefault();
+		$('postform-drop-indicator').classList.add('hide');
+		handleTextAreaPaste(e);
+		$('com').focus();
+	}
+
+	/*
+	 * misc handlers
+	 */
+
+	function handleTextAreaPaste (e) {
+		const dataTransfer = e.clipboardData || e.dataTransfer;
+		if (!dataTransfer) return;
+
+		let data;
+		if (dataTransfer.files
+		&& dataTransfer.files.length
+		&& (data = findAcceptableFile(dataTransfer.files))) {
+			e.preventDefault();
+			return pasteFile(e, data);
+		}
+		else if ((data = dataTransfer.getData('text/plain')) != '') {
+			e.preventDefault();
+			return pasteText(e, data);
+		}
+	}
+
+	function registerTextAreaHeightAdjuster (e) {
+		register('textarea', adjustTextAreaHeight, e);
+	}
+
+	function registerUpdateInfo (e) {
+		register('input', updateInfo, e);
+	}
+
+	/*
+	 * init
+	 */
+
 	items.forEach(item => {
 		let el = $(item.id);
 		if (!el) return;
 
-		if (el.nodeName == 'TEXTAREA') {
-			el.addEventListener('input', fixTextAreaHeight);
+		if (el.nodeName == 'TEXTAREA' || el.contentEditable == 'true') {
+			el.addEventListener('input', registerTextAreaHeightAdjuster);
 			el.addEventListener('paste', handleTextAreaPaste);
 		}
 		else {
-			el.addEventListener('paste', updateInfo);
+			el.addEventListener('paste', registerUpdateInfo);
 		}
 
-		el.addEventListener('input', updateInfo);
+		el.addEventListener('input', registerUpdateInfo);
 	});
 
 	document.addEventListener('dragover', handleDragOver);
@@ -5299,8 +5599,7 @@ function setupPostFormItemEvent (items) {
 
 	let com = $('com');
 	if (com) {
-		initialComHeight = com.offsetHeight;
-		updateInfo.call(com);
+		updateInfo();
 	}
 }
 
@@ -5751,7 +6050,6 @@ function lightbox (anchor) {
 		if (isInTransition) return;
 
 		receiver.setPointerCapture(e.pointerId);
-		document.body.style.userSelect = 'none';
 
 		e.preventDefault();
 
@@ -5823,7 +6121,6 @@ function lightbox (anchor) {
 	function handlePointerUp (e) {
 		if (isInTransition) return;
 
-		document.body.style.userSelect = '';
 		image && imageWrap.classList.remove('dragging');
 		receiver.releasePointerCapture(e.pointerId);
 		receiver.removeEventListener('pointermove', handlePointerMove);
@@ -6022,6 +6319,7 @@ function lightbox (anchor) {
 		link.href = anchor.href;
 
 		// start
+		document.body.style.userSelect = 'none';
 		lightboxWrap.classList.remove('hide');
 		Promise.all([
 			getImageFrom(anchor.href).then(loadedImage => {
@@ -6173,6 +6471,7 @@ function lightbox (anchor) {
 				appStates.shift();
 				keyManager.updateManifest();
 				document.body.removeAttribute(RUNNING_EXCLUSION_KEY);
+				document.body.style.userSelect = '';
 			});
 	}
 
@@ -7364,6 +7663,7 @@ function getBlobFrom (url) { /*returns promise*/
 			xhr = null;
 		};
 
+		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 		xhr.send();
 	});
 }
@@ -7403,17 +7703,64 @@ function getImageFrom (target) { /*returns promise*/
 }
 
 function getPostTimeRegex () {
-	return /(\d+)\/(\d+)\/(\d+)\(.\)(\d+):(\d+):(\d+)(?:\s+IP:[a-zA-Z0-9_*:.\-()]+)?/;
+	return /(\d+)\/(\d+)\/(\d+)\(.\)(\d+):(\d+):(\d+)/;
 }
 
 function getReadableSize (s) {
-	if (s >= 1024 * 1024) {
+	if (s >= 1024 * 1024 * 1024) {
+		return (s / (1024 * 1024 * 1024)).toFixed(2) + 'GiB';
+	}
+	else if (s >= 1024 * 1024) {
 		return (s / (1024 * 1024)).toFixed(2) + 'MiB';
 	}
 	else if (s >= 1024) {
 		return (s / 1024).toFixed(2) + 'KiB';
 	}
 	return s + ' Bytes';
+}
+
+function getContentsFromEditable (el) {
+	let value;
+	if ('value' in el) {
+		value = el.value;
+	}
+	else {
+		const div = document[CRE]('div');
+
+		// Insert newlines around block elements.
+		// This code may be a little heuristic.
+		let html = el.innerHTML;
+		html = html.replace(/(?:\n|<br[^>]*>)(<div)/gi, '$1');
+		html = html.replace(/(<\/div[^>]*>)([^<]+)$/i, '$1\n$2');
+		html = html.replace(/<div[^>]*>(.*?)<\/div[^>]*>/gi, '\n$1');
+		html = html.replace(/<br[^>]*>/g, '\n');
+		div.innerHTML = html;
+
+		// innerText is important to preserve newline.
+		// On the other hande, textContent drops all newlines.
+		value = div.innerText;
+
+		// Trim all leading and trailing spaces
+		value = value.replace(/^\s+|\s$/g, '');
+
+		if (false) {
+			console.log([
+				`original: "${el.innerHTML}"`,
+				`modified: "${html}"`,
+				`  result: "${value}"`
+			].join('\n'));
+		}
+	}
+	return value;
+}
+
+function setContentsToEditable (el, s) {
+	if ('value' in el) {
+		el.value = s;
+	}
+	else {
+		el.textContent = s;
+	}
 }
 
 function displayInlineVideo (anchor) {
@@ -7491,6 +7838,20 @@ function displayInlineAudio (anchor) {
 	anchor = thumbnail.parentNode;
 	anchor.parentNode.insertBefore(audio, anchor);
 	thumbnail.classList.add('hide');
+}
+
+function isHighSurrogate (ch) {
+	if (typeof ch == 'string') {
+		ch = ch.charCodeAt(0);
+	}
+	return 0xd800 <= ch && ch <= 0xdbff;
+}
+
+function isLowSurrogate (ch) {
+	if (typeof ch == 'string') {
+		ch = ch.charCodeAt(0);
+	}
+	return 0xdc00 <= ch && ch <= 0xdfff;
 }
 
 const 新字体の漢字を舊字體に変換 = (function () {
@@ -7702,6 +8063,7 @@ function postBase (type, form) { /*returns promise*/
 				xhr = form = null;
 			};
 
+			xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 			xhr.send(data);
 		});
 	}
@@ -7724,6 +8086,7 @@ function postBase (type, form) { /*returns promise*/
 				xhr = form = null;
 			};
 
+			xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 			xhr.send(data);
 		});
 	}
@@ -7753,10 +8116,15 @@ function resetForm () {
 	for (let i = 0; i < arguments.length; i++) {
 		let org = $(arguments[i]);
 		if (!org) continue;
-		let clone = org.cloneNode(false);
-		elements.push({org:org, clone:clone});
-		org.parentNode.replaceChild(clone, org);
-		form.appendChild(org);
+		if (org.contentEditable == 'true') {
+			empty(org);
+		}
+		else {
+			let clone = org.cloneNode(false);
+			elements.push({org:org, clone:clone});
+			org.parentNode.replaceChild(clone, org);
+			form.appendChild(org);
+		}
 	}
 
 	if (elements.length) {
@@ -7845,7 +8213,7 @@ function registerReleaseFormLock () {
  * <<<1 functions for reloading
  */
 
-function reloadBase (type) { /*returns promise*/
+function reloadBase (type, opts) { /*returns promise*/
 	timingLogger.startTag('reloadBase');
 
 	function detectionTest (doc) {
@@ -7897,11 +8265,14 @@ function reloadBase (type) { /*returns promise*/
 		);
 	}
 
+	opts || (opts = {});
+
 	return new Promise((resolve, reject) => {
 		const now = Date.now();
+		const method = (opts.method || 'get').toUpperCase();
 
 		let xhr = transport.create(type);
-		xhr.open('GET', window.location.href);
+		xhr.open(method, window.location.href);
 		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 		DEBUG_IGNORE_LAST_MODIFIED && (siteInfo.lastModified = 0);
 		xhr.setRequestHeader('If-Modified-Since', siteInfo.lastModified || FALLBACK_LAST_MODIFIED);
@@ -7909,22 +8280,30 @@ function reloadBase (type) { /*returns promise*/
 		xhr.onload = function (e) {
 			timingLogger.endTag();
 
-			let lm = xhr.getResponseHeader('Last-Modified');
+			const lm = xhr.getResponseHeader('Last-Modified');
 			if (lm) {
 				siteInfo.lastModified = lm;
 			}
 
-			timingLogger.startTag('parsing html');
-			let doc;
-			if (xhr.status == 200) {
-				doc = getDOMFromString(xhr.responseText);
-				if (!doc) {
-					timingLogger.endTag(); // parsing html
-					reject(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
-					return;
-				}
+			let size = xhr.getResponseHeader('Content-Length');
+			if (size) {
+				size = size - 0;
+				reloadStatus.receivedBytes += size;
 			}
-			timingLogger.endTag();
+
+			let doc;
+			if (method != 'HEAD') {
+				timingLogger.startTag('parsing html');
+				if (xhr.status == 200) {
+					doc = getDOMFromString(xhr.responseText);
+					if (!doc) {
+						timingLogger.endTag(); // parsing html
+						reject(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
+						return;
+					}
+				}
+				timingLogger.endTag();
+			}
 
 			//doc && detectionTest();
 
@@ -7947,6 +8326,77 @@ function reloadBase (type) { /*returns promise*/
 			xhr = null;
 		};
 
+		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
+		xhr.send();
+	});
+}
+
+function reloadBaseViaAPI (type, opts) { /*returns promise*/
+	timingLogger.startTag('reloadBaseViaAPI');
+
+	opts || (opts = {});
+
+	return new Promise((resolve, reject) => {
+		const now = Date.now();
+		const url = [
+			`${location.protocol}//${location.host}/${siteInfo.board}/futaba.php`,
+			`?mode=json`,
+			`&res=${siteInfo.resno}`,
+			`&start=${getLastReplyNumber() + 1}`
+		].join('');
+
+		let xhr = transport.create(type);
+		xhr.open('GET', url);
+		xhr.overrideMimeType(`text/html;charset=UTF-8`);
+		xhr.setRequestHeader('If-Modified-Since', FALLBACK_LAST_MODIFIED);
+
+		xhr.onload = function (e) {
+			timingLogger.endTag();
+
+			let size = xhr.getResponseHeader('Content-Length');
+			if (size) {
+				size = size - 0;
+				reloadStatus.receivedBytes += size;
+			}
+
+			let doc;
+			timingLogger.startTag('parsing json');
+			if (xhr.status == 200) {
+				try {
+					doc = xhr.responseText;
+					doc = JSON.parse(doc);
+				}
+				catch (e) {
+					doc = undefined;
+				}
+				if (!doc) {
+					timingLogger.endTag(); // parsing json
+					reject(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
+					return;
+				}
+			}
+			timingLogger.endTag();
+
+			resolve({
+				doc: doc,
+				now: now,
+				status: xhr.status
+			});
+		};
+
+		xhr.onerror = function (e) {
+			timingLogger.endTag();
+
+			reject(new Error(
+				'ネットワークエラーにより内容を取得できません。' +
+				`\n(${xhr.status})`));
+		};
+
+		xhr.onloadend = function () {
+			xhr = null;
+		};
+
+		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 		xhr.send();
 	});
 }
@@ -8003,6 +8453,7 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 			xhr = null;
 		};
 
+		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 		xhr.send();
 	});
 }
@@ -8326,6 +8777,7 @@ function updateTopicID (xml, container) {
 		var span = postno.parentNode.insertBefore((document[CRE]('span')), postno);
 		span.className = 'user-id';
 		span.textContent = 'ID:' + ids[i].textContent;
+		span.setAttribute('data-id', ids[i].textContent);
 		postno.parentNode.insertBefore(document[CRE]('span'), postno);
 		postno.parentNode.insertBefore(document.createTextNode(' |'), postno);
 
@@ -8336,7 +8788,7 @@ function updateTopicID (xml, container) {
 
 function updateTopicSodane (xml, container) {
 	var result = false;
-	var sodanes = $qsa('topic > sodane[className="sodane"]', xml);
+	var sodanes = $qsa('topic > sodane.sodane', xml);
 	for (var i = 0, goal = sodanes.length; i < goal; i++) {
 		var number = $qs('number', sodanes[i].parentNode).textContent;
 		var node = $qs(`.topic-wrap[data-number="${number}"]`, container);
@@ -8355,111 +8807,152 @@ function updateTopicSodane (xml, container) {
 	return result;
 }
 
-function updateMarkedReplies (xml, container, start, end) {
-	var result = false;
-	var marks = $qsa('reply > mark', xml);
-	var parentSelector = getParentSelector(start, end);
-	for (var i = 0, goal = marks.length; i < goal; i++) {
-		var number = $qs('number', marks[i].parentNode).textContent;
+function updateReplyAssets (xml, container, selector, handler) {
+	timingLogger.startTag(`updateReplyAssets(${selector})`);
+	const assets = $qsa(selector, xml);
+	const replies = container.children;
+	const hiddenReplies = container.getAttribute('hidden') - 0;
+	let result = 0;
+	for (const asset of assets) {
+		// retrieve offset
+		const offset = $qs('offset', asset.parentNode).textContent - hiddenReplies - 1;
+		if (offset < 0 || offset >= container.childElementCount) {
+			continue;
+		}
 
-		var node = $qs(`${parentSelector} > [data-number="${number}"]`, container);
-		if (!node || node.classList.contains('deleted')) continue;
+		// retrieve current reply
+		const number = $qs('number', asset.parentNode).textContent;
+		const node = $qs(`[data-number="${number}"]`, replies[offset]);
+		if (!node) {
+			console.error([
+				`internal number unmatch:`,
+				`number: ${number}`,
+				`actual number: ${$qs('[data-number]').getAttribute('data-number')}`
+			].join('\n'));
+			continue;
+		}
 
+		const processed = handler(asset, node);
+		processed && result++;
+	}
+	timingLogger.endTag(`/ ${result} items`);
+	return result;
+}
+
+function updateMarkedReplies (xml, container) {
+	return updateReplyAssets(xml, container, 'reply > mark', (asset, node) => {
+		// Do nothing if already deleted-mark flagged
+		// TODO: We may have to distinguish remote host display, deletion by commenter,
+		// deletion by poster, and なー.
+		if (node.classList.contains('deleted')) return;
 		node.classList.add('deleted');
 
-		var comment = $qs('.comment', node);
-		if (!comment) continue;
+		// retrieve current comment
+		const comment = $qs('.comment', node);
+		if (!comment) {
+			console.error([
+				`comment not found:`,
+				`${node.outerHTML}`
+			].join('\n'));
+			return;
+		}
 
-		var isBracket = marks[i].getAttribute('bracket') == 'true';
+		// insert mark
+		const isBracket = asset.getAttribute('bracket') == 'true';
 		comment.insertBefore(document[CRE]('br'), comment.firstChild);
 		isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
-		var m = comment.insertBefore(document[CRE]('span'), comment.firstChild);
+		const m = comment.insertBefore(document[CRE]('span'), comment.firstChild);
 		m.className = 'mark';
-		m.textContent = marks[i].textContent;
+		m.textContent = asset.textContent;
 		isBracket && comment.insertBefore(document.createTextNode('['), comment.firstChild);
 
-		result = true;
-	}
-	return result;
+		return true;
+	});
 }
 
-function updateReplyIDs (xml, container, start, end) {
-	var result = false;
-	var ids = $qsa('reply > user_id', xml);
-	var parentSelector = getParentSelector(start, end);
-	for (var i = 0, goal = ids.length; i < goal; i++) {
-		var number = $qs('number', ids[i].parentNode).textContent;
+function updateReplyIDs (xml, container) {
+	// In ID表示 mode, ID is displayed in all comments,
+	// So we must not do anything.
+	if (siteInfo.idDisplay) {
+		return 0;
+	}
 
-		var node = $qs(`${parentSelector} > [data-number="${number}"]`, container);
-		if (!node || $qs('.user-id', node)) continue;
+	return updateReplyAssets(xml, container, 'reply > user_id', (asset, node) => {
+		// Do nothing if already user id exists
+		if ($qs('.user-id', node)) return;
 
-		var div = node.appendChild(document[CRE]('div'));
+		// insert id
+		const div = node.appendChild(document[CRE]('div'));
 		div.appendChild(document.createTextNode('──'));
-		var span = div.appendChild(document[CRE]('span'));
+		const span = div.appendChild(document[CRE]('span'));
 		div.className = span.className = 'user-id';
-		span.textContent = 'ID:' + ids[i].textContent;
+		span.textContent = 'ID:' + asset.textContent;
+		span.setAttribute('data-id', asset.textContent);
 		div.appendChild(document[CRE]('span'));
 
-		result = true;
-	}
-	return result;
+		return true;
+	});
 }
 
-function updateReplySodanes (xml, container, start, end) {
-	var result = false;
-	var sodanes = $qsa('reply > sodane[className="sodane"]', xml);
-	var parentSelector = getParentSelector(start, end);
-	for (var i = 0, goal = sodanes.length; i < goal; i++) {
-		var number = $qs('number', sodanes[i].parentNode).textContent;
+function updateReplySodanes (xml, container) {
+	return updateReplyAssets(xml, container, 'reply > sodane.sodane', (asset, node) => {
+		// retrieve sodane node
+		const sodane = $qs('.sodane, .sodane-null', node);
+		if (!sodane) {
+			console.error([
+				`sodane not found:`,
+				`${node.outerHTML}`
+			].join('\n'));
+			return;
+		}
 
-		var node = $qs(`${parentSelector} > [data-number="${number}"]`, container);
-		if (!node) continue;
+		// Do nothing if number of sodanes is the same
+		if (sodane.textContent == asset.textContent) return;
 
-		var sodane = $qs('.sodane, .sodane-null', node);
-		if (!sodane) continue;
-		if (sodane.textContent == sodanes[i].textContent) continue;
-
+		// insert sodane
 		sodane.classList.remove('sodane-null');
 		sodane.classList.add('sodane');
-		sodane.textContent = sodanes[i].textContent;
+		sodane.textContent = asset.textContent;
 
-		result = true;
-	}
-	return result;
+		return true;
+	});
 }
 
 function updateIdFrequency (stat) {
-	for (var id in stat.idData) {
-		for (var i = 0, goal = stat.idData[id].length; i < goal; i++) {
-			if (stat.idData[id].length == 1) continue;
+	timingLogger.startTag(`updateIdFrequency`);
+	for (let id in stat.idData) {
+		const idData = stat.idData[id];
 
-			var number = stat.idData[id][i].number;
-			var unit = $qs([
-				`article .topic-wrap[data-number="${number}"] span.user-id`,
-				`article .reply-wrap > [data-number="${number}"] span.user-id`
-			].join(','));
-			if (!unit) continue;
+		// Single ID must not be counted
+		if (idData.length == 1) continue;
 
-			$t(unit.nextSibling, `(${i + 1}/${stat.idData[id].length})`);
+		const selector = [
+			`article .topic-wrap span.user-id[data-id="${id}"]`,
+			`article .reply-wrap span.user-id[data-id="${id}"]`
+		].join(',');
+
+		// Important optimization: If the total number of IDs has not changed,
+		// It is not necessary to update entire posts with current ID
+		const re = /\d+\/(\d+)/.exec($qs(selector).nextSibling.textContent);
+		if (re && re[1] - 0 == idData.length) continue;
+
+		// Count up all posts with the same ID...
+		const posts = $qsa(selector);
+		for (let i = 0, index = 1, goal = posts.length; i < goal; i++, index++) {
+			$t(posts[i].nextSibling, `(${index}/${idData.length})`);
 		}
 	}
-}
-
-function getParentSelector (start, end) {
-	var parentSelector = '.reply-wrap';
-
-	// start and end are 1-based.
-	if (typeof start == 'number' && typeof end == 'number') {
-		parentSelector += `:nth-child(n+${start})`;
-		parentSelector += `:nth-child(-n+${end})`;
-	}
-
-	return parentSelector;
+	timingLogger.endTag();
 }
 
 function getReplyContainer (index) {
 	index || (index = 0);
 	return $qs(`article:nth-of-type(${index + 1}) .replies`);
+}
+
+function getRepliesCount (index) {
+	index || (index = 0);
+	return $qsa(`article:nth-of-type(${index + 1}) .reply-wrap`).length;
 }
 
 function getRule (container) {
@@ -8468,8 +8961,20 @@ function getRule (container) {
 	return $qs('.rule', container);
 }
 
+function getLastReplyNumber (index) {
+	index || (index = 0);
+	return ($qs([
+		`article:nth-of-type(${index + 1})`,
+		'.reply-wrap:last-child',
+		'[data-number]'
+	].join(' ')) || $qs([
+		`article:nth-of-type(${index + 1})`,
+		'.topic-wrap'
+	].join(' '))).getAttribute('data-number') - 0;
+}
+
 function createRule (container) {
-	var rule = getRule(container);
+	let rule = getRule(container);
 	if (!rule) {
 		rule = container.appendChild(document[CRE]('div'));
 		rule.className = 'rule';
@@ -8480,23 +8985,28 @@ function createRule (container) {
 function removeRule (container) {
 	container || (container = getReplyContainer());
 	if (!container) return;
-	var rule = $qs('.rule', container);
+	const rule = $qs('.rule', container);
 	if (!rule) return;
 	rule.parentNode.removeChild(rule);
 }
 
 function stripTextNodes (container) {
+	/*
+	 * In the replies container, the index of node may be used as
+	 * an offset of reply. Therefore, we have to remove unnecessary
+	 * text nodes.
+	 */
 	container || (container = getReplyContainer());
 	if (!container) return;
 
-	var result = document.evaluate(
+	const result = document.evaluate(
 		'./text()', container, null,
 		window.XPathResult.UNORDERED_NODE_SNAPSHOT_TYPE,
 		null);
 	if (!result) return;
 
-	for (var i = 0, goal = result.snapshotLength; i < goal; i++) {
-		var node = result.snapshotItem(i);
+	for (let i = 0, goal = result.snapshotLength; i < goal; i++) {
+		const node = result.snapshotItem(i);
 		node.parentNode.removeChild(node);
 	}
 }
@@ -8568,40 +9078,58 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 		function () {
 			let newStat;
 
-			if (pageModes[0] == 'reply') {
-				newStat = markStatistics.getStatistics(lowBoundNumber < 0);
+			timingLogger.startTag('statistics update');
 
-				markStatistics.updatePanelView(newStat);
-				if (markStatistics.updatePostformView(newStat)) {
-					showFetchedRepliesStatus();
+			// reload on reply mode
+			if (pageModes[0] == 'reply' && lowBoundNumber >= 0) {
+				newStat = markStatistics.getStatistics();
+
+				if (newStat.delta.total) {
+					if ($qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)')) {
+						markStatistics.updatePanelView(newStat);
+					}
+					markStatistics.updatePostformView(newStat);
+
+					callback && callback(newStat);
+
+					scrollToNewReplies(() => {
+						updateIdFrequency(newStat);
+
+						extractTweets();
+						extractSiokaraThumbnails();
+						extractNico2();
+						extractIncompleteFiles();
+					});
 				}
 				else {
-					if (lowBoundNumber >= 0) {
-						showFetchedRepliesStatus('新着レスなし', true);
-					}
+					callback && callback(newStat);
 				}
-				updateIdFrequency(newStat);
 			}
 
-			favicon.update();
-			extractTweets();
-			extractSiokaraThumbnails();
-			extractNico2();
-			extractIncompleteFiles();
-
-			try {
+			// first load on summary or reply mode
+			else {
+				newStat = markStatistics.getStatistics(true);
+				if ($qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)')) {
+					markStatistics.updatePanelView(newStat);
+				}
+				markStatistics.updatePostformView(newStat);
 				callback && callback(newStat);
+				updateIdFrequency(newStat);
+
+				extractTweets();
+				extractSiokaraThumbnails();
+				extractNico2();
+				extractIncompleteFiles();
 			}
-			catch (e) {
-				console.error(`${APP_NAME}: processRemainingReplies: exception(3), ${e.stack}`);
-			}
+
+			timingLogger.endTag();
 
 			timingLogger.forceEndTag();
 		}
 	);
 }
 
-function scrollToNewReplies () {
+function scrollToNewReplies (callback) {
 	const rule = getRule();
 	if (!rule) return;
 
@@ -8624,6 +9152,7 @@ function scrollToNewReplies () {
 		}
 		else {
 			window.scrollTo(0, scrollTop + distance);
+			callback && callback();
 		}
 	});
 }
@@ -8998,20 +9527,14 @@ const commands = {
 	summaryBack: function () { /*returns promise*/
 		let current = $qs('.nav .nav-links .current');
 		if (!current || !current.previousSibling) return;
+		if (transport.isRapidAccess('reload-summary')) return;
 		historyStateWrapper.pushState(current.previousSibling.href);
-		if (pageModes[0] == 'catalog') {
-			commands.toggleCatalogVisibility();
-		}
-		return commands.reload();
 	},
 	summaryNext: function () { /*returns promise*/
 		let current = $qs('.nav .nav-links .current');
 		if (!current || !current.nextSibling) return;
+		if (transport.isRapidAccess('reload-summary')) return;
 		historyStateWrapper.pushState(current.nextSibling.href);
-		if (pageModes[0] == 'catalog') {
-			commands.toggleCatalogVisibility();
-		}
-		return commands.reload();
 	},
 
 	/*
@@ -9023,11 +9546,36 @@ const commands = {
 		case 'summary':
 			return commands.reloadSummary();
 		case 'reply':
-			return commands.reloadReplies();
+			{
+				const now = Date.now();
+				if (now - reloadStatus.lastReloaded < storage.config.full_reload_interval.value * 1000 * 60) {
+					return commands.reloadRepliesViaAPI();
+				}
+				else {
+					reloadStatus.lastReloaded = now;
+					return commands.reloadReplies();
+				}
+			}
 		case 'catalog':
 			return commands.reloadCatalog();
 		default:
 			throw new Error(`Unknown page mode: ${pageModes[0]}`);
+		}
+	},
+	reloadFull: function () {
+		if (pageModes[0] == 'reply') {
+			return commands.reloadReplies();
+		}
+		else {
+			return commands.reload();
+		}
+	},
+	reloadDelta: function () {
+		if (pageModes[0] == 'reply') {
+			return commands.reloadRepliesViaAPI();
+		}
+		else {
+			return commands.reload();
 		}
 	},
 	reloadSummary: function () { /*returns promise*/
@@ -9125,7 +9673,6 @@ const commands = {
 				footer.classList.remove('hide');
 				content = indicator = footer = null;
 
-				favicon.update();
 				extractTweets();
 				extractSiokaraThumbnails();
 				extractNico2();
@@ -9190,12 +9737,12 @@ const commands = {
 				return;
 			case 304:
 				showFetchedRepliesStatus('更新なし', true);
-				setBottomStatus('完了: 304 Not Modified');
+				setBottomStatus('完了: Full Reload, 304 Not Modified');
 				timingLogger.forceEndTag();
 				return;
 			case /^5[0-9]{2}$/.test(status) && status:
 				showFetchedRepliesStatus(`サーバエラー`, true);
-				setBottomStatus(`完了: サーバエラー(${status})`);
+				setBottomStatus(`完了: Full Reload, ${status} Server Error`);
 				timingLogger.forceEndTag();
 				return;
 			}
@@ -9205,6 +9752,8 @@ const commands = {
 			}
 
 			// process topic block
+
+			setBottomStatus('処理中...', true);
 
 			timingLogger.startTag('generate internal xml for topic block');
 			try {
@@ -9228,15 +9777,6 @@ const commands = {
 
 			// process replies block
 
-			let lastNumber = ($qs([
-				'article:nth-of-type(1)',
-				'.reply-wrap:last-child',
-				'[data-number]'
-			].join(' ')) || $qs([
-				'article:nth-of-type(1)',
-				'.topic-wrap'
-			].join(' '))).getAttribute('data-number') - 0;
-
 			sendToBackend(
 				'notify-viewers',
 				{
@@ -9248,12 +9788,15 @@ const commands = {
 
 			// process remaiing replies
 			processRemainingReplies(
-				result.remainingRepliesContext, lastNumber,
+				result.remainingRepliesContext,
+				getLastReplyNumber(),
 				newStat => {
-					let message = newStat.delta.total ?
-						`新着 ${newStat.delta.total} レス` : '新着レスなし';
-					setBottomStatus(`完了: ${message}`);
-					scrollToNewReplies();
+					const message = newStat.delta.total ?
+						`新着 ${newStat.delta.total} レス` :
+						'新着レスなし';
+
+					showFetchedRepliesStatus(message, true);
+					setBottomStatus(`完了: Full Reload, Total ${getReadableSize(reloadStatus.receivedBytes)}`);
 				}
 			);
 		})
@@ -9290,6 +9833,175 @@ const commands = {
 					});
 				}
 			}
+		});
+	},
+	reloadRepliesViaAPI: function () {
+		const TRANSPORT_MAIN_TYPE = 'reload-replies';
+		const TRANSPORT_SUB_TYPE = 'reload-replies-api';
+
+		if (transport.isRunning(TRANSPORT_MAIN_TYPE)) {
+			transport.abort(TRANSPORT_MAIN_TYPE);
+			showFetchedRepliesStatus('中断しました', true);
+			return Promise.resolve();
+		}
+
+		if (transport.isRapidAccess(TRANSPORT_MAIN_TYPE)) {
+			return Promise.resolve();
+		}
+
+		if (pageModes[0] != 'reply') {
+			return Promise.resolve();
+		}
+
+		timingLogger.reset().startTag('reloading replies via API');
+		setBottomStatus('読み込み中...', true);
+		removeRule();
+		markStatistics.resetPostformView();
+
+		return reloadBase(TRANSPORT_MAIN_TYPE, {method: 'head'})
+		.then(reloadResult => {
+			const {doc, now, status} = reloadResult;
+
+			switch (status) {
+			case 404:
+				showFetchedRepliesStatus();
+				setBottomStatus('完了: 404 Not Found');
+				$t('expires-remains', '-');
+				$t('pf-expires-remains', '-');
+				$t('reload-anchor', 'Not Found. ファイルがないよ。');
+				timingLogger.forceEndTag();
+				return;
+			case 304:
+				showFetchedRepliesStatus('更新なし', true);
+				setBottomStatus('完了: Delta Reload, 304 Not Modified');
+				timingLogger.forceEndTag();
+				return;
+			case /^5[0-9]{2}$/.test(status) && status:
+				showFetchedRepliesStatus(`サーバエラー`, true);
+				setBottomStatus(`完了: Delta Reload, ${status} Server Error`);
+				timingLogger.forceEndTag();
+				return;
+			}
+
+			return reloadBaseViaAPI('')
+			.then(reloadResult => {
+				const {doc, now, status} = reloadResult;
+				/*
+				 * sample: {
+				 *   "old": 1,
+				 *   "dispname": 1,
+				 *   "dispsod": 1,
+				 *   "die": "12:13",
+				 *   "dielong": "Tue, 20 Nov 2018 03:13:45 GMT",
+				 *   "maxres": "",
+				 *   "res": {
+				 *     "600031491": {
+				 *       "now": "18/11/20(火)11:54:36",
+				 *       "name": "としあき",
+				 *       "email": "",
+				 *       "sub": "無念",
+				 *       "com": "<font color=\"#789922\">&gt;「自分たちだけでロック出たら純子ちゃんの居場所無くなる」</font><br>出なかったらだよ<br>迷惑をかけた責任を感じて余計負担になるってことだろ",
+				 *       "ext": "",						// wheather media file is attached
+				 *       "w": 0,
+				 *       "h": 0,
+				 *       "tim": "1542682476633",
+				 *       "fsize": 0,
+				 *       "del": "",						// wheather this comment is deleted:
+				 *                                           'del': スレッドを立てた人によって削除されました
+				 *                                           'selfdel': 書き込みをした人によって削除されました
+				 *                                           'admindel': なー
+				 *       "host": "",
+				 *       "id": "",
+				 *       "src": "/b/src/1542682476633",
+				 *       "thumb": "/b/thumb/1542682476633s.jpg"
+				 *    },
+				 *    "600031506": {
+				 *       "now": "18/11/20(火)11:54:44",
+				 *       "name": "としあき",
+				 *       "email": "",
+				 *       "sub": "無念",
+				 *       "com": "<font color=\"#789922\">&gt;サキちゃんの事を考えると下半身に血が集まってくる</font><br>特にサキっちょに集まるな",
+				 *       "ext": "",
+				 *       "w": 0,
+				 *       "h": 0,
+				 *       "tim": "1542682484050",
+				 *       "fsize": 0,
+				 *       "del": "",
+				 *       "host": "",
+				 *       "id": "",
+				 *       "src": "/b/src/1542682484050",
+				 *       "thumb": "/b/thumb/1542682484050s.jpg"
+				 *     },
+				 *     "600249697": {
+				 *       "now": "18/11/21(水)14:09:36",
+				 *       "name": "としあき",
+				 *       "email": "・3・",
+				 *       "sub": "無念",
+				 *       "com": "<font color=\"#789922\">&gt;佐賀ってスガキヤある？なかったら田舎だが<\/font><br>スガキヤとかやっとかめだなも<br>雁道に住んどったもんだで<br>高辻のダイエーによう行っとったでよ",
+				 *       "ext": "",
+				 *       "w": 0,
+				 *       "h": 0,
+				 *       "tim": "1542776976479",
+				 *       "fsize": 0,
+				 *       "del": "",
+				 *       "host": "ntsaga008056.saga.nt.ngn.ppp.infoweb.ne.jp",	// [<font color="#ff0000">remote-host</font>]
+				 *       "id": "",
+				 *       "src": "\/b\/src\/1542776976479",
+				 *       "thumb": "\/b\/thumb\/1542776976479s.jpg"
+				 *     }
+				 *   }
+				 * }
+				 */
+				const result = xmlGenerator.runFromJson(doc, $qs('article .replies').childElementCount);
+
+				xsltProcessor.setParameter(null, 'render_mode', 'replies');
+				const container = getReplyContainer();
+				const fragment = fixFragment(xsltProcessor.transformToFragment(result.xml, document));
+
+				if ($qs('.reply-wrap', fragment)) {
+					createRule(container);
+					appendFragment(container, fragment);
+					stripTextNodes(container);
+
+					const newStat = markStatistics.getStatistics();
+					if ($qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)')) {
+						markStatistics.updatePanelView(newStat);
+					}
+					markStatistics.updatePostformView(newStat);
+
+					const message = `新着 ${newStat.delta.total} レス`;
+					showFetchedRepliesStatus(message, true);
+					setBottomStatus(`完了: Delta Reload, Total ${getReadableSize(reloadStatus.receivedBytes)}`);
+
+					scrollToNewReplies(() => {
+						updateIdFrequency(newStat);
+
+						extractTweets();
+						extractSiokaraThumbnails();
+						extractNico2();
+						extractIncompleteFiles();
+
+						timingLogger.forceEndTag();
+					});
+				}
+				else {
+					const message = '新着レスなし';
+					showFetchedRepliesStatus(message, true);
+					setBottomStatus(`完了: Delta Reload, Total ${getReadableSize(reloadStatus.receivedBytes)}`);
+
+					timingLogger.forceEndTag();
+				}
+			});
+		})
+		.catch(err => {
+			showFetchedRepliesStatus(err.message);
+			setBottomStatus(err.message);
+			timingLogger.forceEndTag();
+			console.error(`${APP_NAME}: reloadRepliesViaAPI failed: ${err.stack}`);
+		})
+		.finally(() => {
+			transport.release(TRANSPORT_MAIN_TYPE);
+			transport.release(TRANSPORT_SUB_TYPE);
 		});
 	},
 	reloadCatalog: function () { /*returns promise*/
@@ -9655,7 +10367,7 @@ const commands = {
 				return delay(WAIT_AFTER_POST).then(() => {
 					commands.deactivatePostForm();
 					setPostThumbnail();
-					resetForm('com', 'upfile', 'textonly', 'baseform');
+					resetForm('com', 'com2', 'upfile', 'textonly', 'baseform');
 					overrideUpfile = undefined;
 					setBottomStatus('投稿完了');
 
@@ -9730,6 +10442,7 @@ const commands = {
 				t = xhr = xhr.onload = xhr.onerror = null;
 			}, WAIT_AFTER_POST);
 		};
+		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 		xhr.send();
 	},
 	saveImage: function (e, t) { /*returns promise*/
@@ -10078,6 +10791,7 @@ const commands = {
 		xhr.onloadend = () => {
 			xhr = null;
 		};
+		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 		xhr.send();
 	},
 	openHelpDialog: (e, anchor) => {
@@ -10158,69 +10872,119 @@ const commands = {
 	},
 	cursorBackwardChar: function (e, t) {
 		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		const alter = e.shift ? 'extend' : 'move';
-		document.getSelection().modify(alter, 'backward', 'character');
+		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
+			let st = t.selectionStart;
+			if (st >= 1 && !isLowSurrogate(t.value.charAt(st - 1))) st--;
+			else if (st >= 2 && isHighSurrogate(t.value.charAt(st - 2)) && isLowSurrogate(t.value.charAt(st - 1))) st -= 2;
+			t.selectionStart = st;
+			if (!e.shift) t.selectionEnd = st;
+		}
+		else {
+			const alter = e.shift ? 'extend' : 'move';
+			document.getSelection().modify(alter, 'backward', 'character');
+		}
 	},
 	cursorForwardChar: function (e, t) {
 		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		const alter = e.shift ? 'extend' : 'move';
-		document.getSelection().modify(alter, 'forward', 'character');
+		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
+			let ed = t.selectionEnd;
+			if (ed <= t.value.length - 1 && !isHighSurrogate(t.value.charAt(ed + 1))) ed++;
+			else if (ed <= t.value.length - 2 && isHighSurrogate(t.value.charAt(ed + 1)) && isLowSurrogate(t.value.charAt(ed + 2))) ed += 2;
+			t.selectionEnd = ed;
+			if (!e.shift) t.selectionStart = ed;
+		}
+		else {
+			const alter = e.shift ? 'extend' : 'move';
+			document.getSelection().modify(alter, 'forward', 'character');
+		}
 	},
 	cursorDeleteBackwardChar: function (e, t) {
 		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		let n = t.selectionStart;
-		let m = t.selectionEnd;
-		if (n == m) {
-			document.getSelection().modify('move', 'backward', 'character');
-			n = t.selectionStart;
+		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
+			commands.cursorBackwardChar({shift: true}, t);
+			const st = t.selectionStart;
+			const ed = t.selectionEnd;
+			const v = t.value;
+			t.value = v.substring(0, st) + v.substring(ed);
+			t.selectionStart = t.selectionEnd = st;
 		}
-		t.value = t.value.substring(0, n) + t.value.substring(m);
-		t.selectionStart = t.selectionEnd = n;
+		else {
+			const selection = document.getSelection();
+			const range = selection.getRangeAt(0);
+			if (range.collapsed) {
+				selection.modify('extend', 'backward', 'character');
+			}
+			document.execCommand('delete', false, null);
+		}
 	},
 	cursorDeleteBackwardWord: function (e, t) {
 		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		let n = t.selectionStart;
-		let m = t.selectionEnd;
-		if (n == m) {
-			document.getSelection().modify('move', 'backward', 'word');
-			n = t.selectionStart;
+		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
+			// TBD
 		}
-		t.value = t.value.substring(0, n) + t.value.substring(m);
-		t.selectionStart = t.selectionEnd = n;
+		else {
+			const selection = document.getSelection();
+			const range = selection.getRangeAt(0);
+			if (range.collapsed) {
+				selection.modify('extend', 'backward', 'word');
+			}
+			document.execCommand('delete', false, null);
+		}
 	},
 	cursorDeleteBackwardBlock: function (e, t) {
 		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		let n = t.selectionStart;
-		let m = t.selectionEnd;
-		if (n == m) {
-			document.getSelection().modify('move', 'backward', 'lineboundary');
-			n = t.selectionStart;
+		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
+			const st = t.selectionEnd;
+			const v = t.value;
+			t.value = v.substring(st);
+			t.selectionStart = t.selectionEnd = 0;
 		}
-		t.value = t.value.substring(0, n) + t.value.substring(m);
-		t.selectionStart = t.selectionEnd = n;
+		else {
+			const selection = document.getSelection();
+			const range = selection.getRangeAt(0);
+			if (range.collapsed) {
+				selection.modify('extend', 'backward', 'lineboundary');
+			}
+			document.execCommand('delete', false, null);
+		}
 	},
 	cursorBeginningOfLine: function (e, t) {
 		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		let n = t.selectionStart;
-		const v = t.value;
-		const lastpos = t.getAttribute('data-last-pos');
-		if (n == 0 && t.selectionEnd == v.length && lastpos) {
-			t.removeAttribute('data-last-pos');
-			n = lastpos - 0;
-			t.setSelectionRange(n, n);
-			const alter = e.shift ? 'extend' : 'move';
-			document.getSelection().modify(alter, 'backward', 'lineboundary');
+		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
+			if (t.selectionStart == 0 && t.selectionEnd == t.value.length) {
+				t.selectionStart = t.selectionEnd = 0;
+			}
+			else {
+				t.selectionStart = 0;
+				t.selectionEnd = t.value.length;
+			}
 		}
 		else {
-			t.setAttribute('data-last-pos', n);
-			t.selectionStart = 0;
-			t.selectionEnd = v.length;
+			let n = qeema.editable.selectionStart(t);
+			const selection = document.getSelection();
+			const range = selection.getRangeAt(0);
+			if (range.toString() == t.textContent) {
+				n = t.getAttribute('data-last-pos') - 0;
+				t.removeAttribute('data-last-pos');
+				qeema.editable.setSelectionRange(t, n, n);
+				const alter = e.shift ? 'extend' : 'move';
+				selection.modify(alter, 'backward', 'lineboundary');
+			}
+			else {
+				t.setAttribute('data-last-pos', n);
+				selection.selectAllChildren(t);
+			}
 		}
 	},
 	cursorEndOfLine: function (e, t) {
 		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		const alter = e.shift ? 'extend' : 'move';
-		document.getSelection().modify(alter, 'forward', 'lineboundary');
+		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
+			t.selectionStart = t.selectionEnd = t.value.length;
+		}
+		else {
+			const alter = e.shift ? 'extend' : 'move';
+			document.getSelection().modify(alter, 'forward', 'lineboundary');
+		}
 	},
 
 	/*
@@ -10319,6 +11083,10 @@ const commands = {
 		showPanel();
 	},
 	activateStatisticsTab: function () {
+		if (!$qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)') && markStatistics.lastStatistics) {
+			markStatistics.updatePanelView(markStatistics.lastStatistics);
+			markStatistics.clearStatistics();
+		}
 		activatePanelTab($qs('.panel-tab[href="#mark"]'));
 		showPanel();
 	},
