@@ -91,8 +91,8 @@
 				<tr><td><kbd>ctrl</kbd>+<kbd>[</kbd></td>			<td>閉じる</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>s</kbd></td>			<td>sage の切り替え</td></tr>
 				<tr><td><kbd>shift</kbd>+<kbd>enter</kbd></td>		<td>送信</td></tr>
-				<tr><td colspan="2" class="notice">以下は Emacs ぽいショートカット ON 時に有効です</td></tr>
-				<tr><td><kbd>ctrl</kbd>+<kbd>a</kbd></td>			<td>全選択、または行頭</td></tr>
+				<tr><td colspan="2" class="notice">以下は Emacs ぽいショートカット ON 時に有効</td></tr>
+				<tr><td><kbd>ctrl</kbd>+<kbd>a</kbd></td>			<td>全選択/行頭</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>e</kbd></td>			<td>行末</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>k</kbd></td>			<td>前の行</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>j</kbd></td>			<td>次の行</td></tr>

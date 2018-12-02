@@ -145,6 +145,8 @@ a.js:hover kbd {
 
 input[type="checkbox"] {
 	vertical-align:middle;
+	position:relative;
+	bottom:1px;
 }
 
 @keyframes blink {
@@ -301,6 +303,12 @@ twitter-widget {
 
 .page-mode-header.catalog-mode {
 	background-color:#48c;
+}
+
+.topic-wrap .sep,
+.reply-wrap .sep {
+	margin:0 .25em 0 .25em;
+	color:#888;
 }
 
 .topic-wrap .sub,
@@ -2138,9 +2146,13 @@ div.catalog-popup span {
 			<div class="debug-tools">
 				Debug Tools: <a class="js" href="#reload-ext">Reload Extension</a>
 				+ <a class="js" href="#notice-test">Notice Test</a>
-				+ <label><input type="checkbox" data-href="#toggle-logging"/>Timing log</label>
 				+ <a class="js" href="#reload-full">Full Reload</a>
 				+ <a class="js" href="#reload-delta">Delta Reload</a>
+				+ <a class="js" href="#dump-stats">Dump Stats</a>
+				+ <a class="js" href="#dump-reload-data">Dump Reload Data</a>
+				+ <a class="js" href="#empty-replies">Empty replies</a>
+				+ <label><input type="checkbox" data-href="#toggle-timing-log"/>Timing log</label>
+				+ <label><input type="checkbox" data-href="#toggle-comment-log"/>Comment log</label>
 			</div>
 			</xsl:if>
 			<div class="fts-form-wrap">
@@ -2507,7 +2519,13 @@ div.catalog-popup span {
 	<div class="text">
 		<div class="topic-wrap" data-number="{topic/number}">
 			<div>
-				<input type="checkbox"/>&#160;<xsl:if test="topic/sub"><span class="sub def_{topic/sub=$sub_default}"><xsl:value-of select="topic/sub"/></span> | </xsl:if> <xsl:if test="topic/name"><span class="name def_{topic/name=$name_default}"><xsl:value-of select="topic/name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="topic/post_date"/></span> | <xsl:if test="topic/ip"><span class="ip">IP:<xsl:value-of select="topic/ip"/></span> | </xsl:if> <xsl:if test="topic/user_id"><span class="user-id" data-id="{topic/user_id}">ID:<xsl:value-of select="topic/user_id"/></span><span></span> | </xsl:if> <a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{topic/sodane/@class} js" href="#sodane"><xsl:value-of select="topic/sodane"/></a>&#160;<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
+				<input type="checkbox"/>
+				<xsl:if test="topic/sub"><span class="sub def_{topic/sub=$sub_default}"><xsl:value-of select="topic/sub"/></span><span class="sep">|</span></xsl:if>
+				<xsl:if test="topic/name"><span class="name def_{topic/name=$name_default}"><xsl:value-of select="topic/name"/></span><span class="sep">|</span> </xsl:if>
+				<span class="postdate"><xsl:value-of select="topic/post_date"/></span><span class="sep">|</span>
+				<xsl:if test="topic/ip"><span class="ip">IP:<xsl:value-of select="topic/ip"/></span><span class="sep">|</span></xsl:if>
+				<xsl:if test="topic/user_id"><span class="user-id" data-id="{topic/user_id}">ID:<xsl:value-of select="topic/user_id"/></span><span></span><span class="sep">|</span></xsl:if>
+				<a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{topic/sodane/@class} js" href="#sodane"><xsl:value-of select="topic/sodane"/></a>&#160;<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
 			</div>
 			<xsl:if test="topic/email"><div class="email">[<xsl:apply-templates select="topic/email"/>]</div></xsl:if>
 			<div class="comment"><xsl:apply-templates select="topic/comment"/></div>
@@ -2554,7 +2572,13 @@ div.catalog-popup span {
 	<div>…</div>
 	<div class="{substring('deleted',1,count(deleted)*7)}" data-number="{number}">
 		<div>
-			<span class="no"><xsl:value-of select="offset"/></span>&#160;<input type="checkbox"/> <xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span> | </xsl:if> <xsl:if test="name"><span class="name def_{name=$name_default}"><xsl:value-of select="name"/></span> | </xsl:if> <span class="postdate"><xsl:value-of select="post_date"/></span> | <xsl:if test="ip"><span class="ip"><xsl:value-of select="ip"/></span> | </xsl:if> <a class="postno" href="#quote">No.<xsl:apply-templates select="number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{sodane/@class} js" href="#sodane"><xsl:value-of select="sodane"/></a>
+			<span class="no"><xsl:value-of select="offset"/></span>
+			<input type="checkbox"/>
+			<xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span><span class="sep">|</span></xsl:if>
+			<xsl:if test="name"><span class="name def_{name=$name_default}"><xsl:value-of select="name"/></span><span class="sep">|</span></xsl:if>
+			<span class="postdate"><xsl:value-of select="post_date"/></span><span class="sep">|</span>
+			<xsl:if test="ip"><span class="ip"><xsl:value-of select="ip"/></span><span class="sep">|</span></xsl:if>
+			<a class="postno" href="#quote">No.<xsl:apply-templates select="number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{sodane/@class} js" href="#sodane"><xsl:value-of select="sodane"/></a>
 		</div>
 		<xsl:if test="image">
 			<div class="reply-image">

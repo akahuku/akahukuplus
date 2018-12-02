@@ -10,6 +10,9 @@ if (document.querySelector('meta[name="generator"][content="akahukuplus"]')) {
 	console.log('akahukuplus: multiple execution of content script.');
 	window.location.reload();
 }
+else if (document.getElementById('cf-wrapper')) {
+	// Error page by CloudFlare. Do nothing.
+}
 else {
 
 /*
@@ -116,7 +119,16 @@ const cursorPos = {
 };
 const reloadStatus = {
 	lastReloaded: Date.now(),
-	receivedBytes: 0
+	lastReloadType: '',
+	lastReceivedText: '',
+	lastRepliesCount: 0,
+	lastReceivedBytes: 0,
+	lastReceivedCompressedBytes: 0,
+	totalReceivedBytes: 0,
+	totalReceivedCompressedBytes: 0
+};
+reloadStatus.size = function (key) {
+	return getReadableSize(this[key]);
 };
 const pageModes = [];
 const appStates = ['command'];
@@ -357,10 +369,7 @@ function transformWholeDocument (xsl) {
 	timingLogger.endTag();
 
 	if (DEBUG_DUMP_INTERNAL_XML) {
-		let node = document.body.appendChild(document[CRE]('pre'));
-		node.appendChild(document.createTextNode(serializeXML(generateResult.xml)));
-		node.style.fontFamily = 'Consolas,monospace';
-		node.style.whiteSpace = 'pre-wrap';
+		dumpDebugText(serializeXML(generateResult.xml));
 	}
 
 	fragment = xsl = null;
@@ -462,17 +471,22 @@ function install (mode) {
 		.add('#draw',           commands.openDrawDialog)
 		.add('#toggle-panel',   commands.togglePanelVisibility)
 		.add('#reload',         commands.reload)
-		.add('#reload-full',    commands.reloadFull)
-		.add('#reload-delta',   commands.reloadDelta)
 		.add('#sage',           commands.toggleSage)
 		.add('#search-start',   commands.search)
 		.add('#clear-upfile',   commands.clearUpfile)
 		.add('#toggle-catalog', commands.toggleCatalogVisibility)
 		.add('#track',          commands.registerTrack)
 		.add('#reload-ext',     commands.reloadExtension)
-		.add('#toggle-logging', commands.toggleLogging)
 		.add('#prev-summary',   commands.summaryBack)
 		.add('#next-summary',   commands.summaryNext)
+
+		.add('#reload-full',       commands.reloadFull)
+		.add('#reload-delta',      commands.reloadDelta)
+		.add('#dump-stats',        commands.dumpStats)
+		.add('#dump-reload-data',  commands.dumpReloadData)
+		.add('#empty-replies',     commands.emptyReplies)
+		.add('#notice-test',       commands.noticeTest)
+		.add('#toggle-timing-log', commands.toggleLogging)
 
 		.add('#search-item', (e, t) => {
 			let number = t.getAttribute('data-number');
@@ -506,25 +520,6 @@ function install (mode) {
 				text: $('catalog-with-text').checked ? storage.config.catalog_text_max_length.value : 0
 			});
 			window.alert('はい。');
-		})
-		.add('#notice-test', (e, t) => {
-			// for debug
-			if (!devMode) return;
-
-			let lines = siteInfo.notice.split('\n');
-
-			// delete
-			lines.splice(2, 2);
-
-			// replace
-			lines = lines.map(t => t.replace(/(最大)(\d+)(レス)/g, ($0, $1, $2, $3) => $1 + (parseInt($2, 10) * 2) + $3));
-
-			// add
-			lines.push(`Appended line #1: ${Math.random()}`);
-			lines.push(`Appended line #2: ${Math.random()}`);
-
-			siteInfo.notice = lines.join('\n');
-			setBottomStatus('notice modified for debug');
 		})
 
 		.add('.del', (e, t) => {
@@ -662,7 +657,7 @@ function install (mode) {
 		.addStroke('command', '\u001b', commands.deactivatePostForm)
 
 		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)	// <esc>
-		.addStroke('command.edit', '\u0013', commands.toggleSage)			// ^S
+		.addStroke('command.edit', ['\u0013', '<A-S>'], commands.toggleSage)			// ^S, <Alt+S>
 		.addStroke('command.edit', '<S-enter>', commands.post)				// <Shift+Enter>
 
 		// These shortcuts for text editing are basically emacs-like...
@@ -984,6 +979,7 @@ function install (mode) {
 	 */
 
 	sounds = {
+		identified: createSound('identified'),
 		detectNewMark: createSound('new-mark'),
 		imageSaved: createSound('image-saved'),
 	};
@@ -1314,14 +1310,34 @@ function createXMLGenerator () {
 		return result.join('');
 	}
 
-	function textFactory (xml) {
-		return function (s) {
-			return xml.createTextNode(
-				('' + s)
-				.replace(/&amp;/g, '&')
-				.replace(/&lt;/g, '<')
-				.replace(/&gt;/g, '>'));
-		};
+	function textFactory (xml, nodeOnly) {
+		if (nodeOnly) {
+			return function (s) {
+				return xml.createTextNode('' + s);
+			};
+		}
+		else {
+			const refmap = {
+				amp: '&',
+				lt: '<',
+				gt: '>',
+				quot: '"',
+				apos: "'"
+			};
+			return function (s) {
+				s = ('' + s)
+					// PHP's json_encode handles the following character references,
+					// so we need to solve them.
+					.replace(/&(amp|lt|gt|quot|apos);/g, ($0, $1) => refmap[$1]);
+
+				// Some UA convert a code point beyond BMP into surrogate pairs.
+				// This is an error for the standard, and it should be a single
+				// character reference.
+				s = resolveCharacterReference(s);
+
+				return xml.createTextNode(s);
+			};
+		}
 	}
 
 	function text (xml, s) {
@@ -1491,9 +1507,11 @@ function createXMLGenerator () {
 				}
 			}
 			else {
+				/*
 				re = re
 					.replace(/&#([0-9]+);/g, function ($0, $1) {return String.fromCharCode(parseInt($1, 10))})
 					.replace(/&#x([0-9a-f]+);/gi, function ($0, $1) {return String.fromCharCode(parseInt($1, 16))});
+				*/
 				stack[0].appendChild(text(stack[0].ownerDocument, re));
 				linkify(stack[0]);
 			}
@@ -1829,15 +1847,6 @@ function createXMLGenerator () {
 
 		// strip comments
 		//content = content.replace(/<!--.*?-->/g, ' ');
-
-		// resolve some references
-		{
-			const refmap = {
-				amp: '&',
-				quot: "'"
-			};
-			content = content.replace(/&(amp|quot);/g, ($0, $1) => refmap[$1]);
-		}
 
 		// experimental feature
 		if (IDEOGRAPH_CONVERSION_CONTENT) {
@@ -2429,9 +2438,9 @@ function createXMLGenerator () {
 				}
 
 				let markNode = element(replyNode, 'mark');
-				re[0].charAt(0) == '['
-					&& re[0].substr(-1) == ']'
-					&& markNode.setAttribute('bracket', 'true');
+				if (re[0].charAt(0) == '[' && re[0].substr(-1) == ']') {
+					markNode.setAttribute('bracket', 'true');
+				}
 				re[2] = stripTags(re[2]);
 				markNode.appendChild(text(re[2]));
 				markStatistics.notifyMark(number, re[2]);
@@ -2565,7 +2574,7 @@ function createXMLGenerator () {
 
 		const url = window.location.href;
 		const xml = document.implementation.createDocument(null, 'futaba', null);
-		const text = textFactory(xml);
+		const text = textFactory(xml, true);
 		const baseUrl = url;
 		const enclosureNode = xml.documentElement;
 		const metaNode = element(enclosureNode, 'meta');
@@ -2589,17 +2598,6 @@ function createXMLGenerator () {
 		/*
 		 * replies
 		 */
-
-		// PHP's json_encode handles the following character references,
-		// so we need to solve them.
-		const refmap = {
-			amp: '&',
-			quot: '"',
-			apos: "'"
-		};
-		const ref = function (s) {
-			return s.replace(/&(amp|quot|apos);/g, ($0, $1) => refmap[$1]);
-		}
 
 		markStatistics.start();
 
@@ -2626,13 +2624,17 @@ function createXMLGenerator () {
 			// deletion flag, mark
 			{
 				let re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(reply.com);
-				let isMark = re && (!re[1] || re[1].substr(-1) != '=');
-				if (isMark) {
+				if (re && (!re[1] || re[1].substr(-1) != '=')) {
+					if (!$qs('deleted', replyNode)) {
+						element(replyNode, 'deleted');
+					}
+
 					let markNode = element(replyNode, 'mark');
 					if (re[0].charAt(0) == '[' && re[0].substr(-1) == ']') {
 						markNode.setAttribute('bracket', 'true');
 					}
-					markNode.appendChild(text(stripTags(re[2])));
+					re[2] = stripTags(re[2]);
+					markNode.appendChild(text(re[2]));
 					markStatistics.notifyMark(replyNumber, re[2]);
 				}
 			}
@@ -2672,12 +2674,12 @@ function createXMLGenerator () {
 			// subject and name
 			if (content.dispname - 0) {
 				if (reply.sub != '') {
-					element(replyNode, 'sub').appendChild(text(ref(reply.sub)));
+					element(replyNode, 'sub').appendChild(text(reply.sub));
 					siteInfo.subHash[reply.sub] = (siteInfo.subHash[reply.sub] || 0) + 1;
 				}
 
 				if (reply.name != '') {
-					element(replyNode, 'name').appendChild(text(ref(reply.name)));
+					element(replyNode, 'name').appendChild(text(reply.name));
 					siteInfo.nameHash[reply.name] = (siteInfo.nameHash[reply.name] || 0) + 1;
 				}
 			}
@@ -2685,7 +2687,7 @@ function createXMLGenerator () {
 			// mail address
 			if (reply.email != '') {
 				let emailNode = element(replyNode, 'email');
-				emailNode.appendChild(text(stripTags(ref(reply.email))));
+				emailNode.appendChild(text(stripTags(reply.email)));
 				linkify(emailNode);
 			}
 
@@ -2720,7 +2722,7 @@ function createXMLGenerator () {
 				}
 			}
 
-			pushComment(element(replyNode, 'comment'), ref(reply.com));
+			pushComment(element(replyNode, 'comment'), reply.com);
 		}
 
 		repliesNode.setAttribute("total", offset);
@@ -3346,8 +3348,8 @@ function createKeyManager () {
 	};
 }
 
-function createSound (name) {
-	let volume = 50;
+function createSound (name, volume) {
+	volume || (volume = 50);
 	return {
 		play: function play () {
 			if (volume <= 0) return;
@@ -3361,7 +3363,7 @@ function createSound (name) {
 		},
 		set volume (v) {
 			v = parseInt(v, 10);
-			if (typeof v == 'number' && v >= 0 && v <= 100) {
+			if (!isNaN(v) && v >= 0 && v <= 100) {
 				volume = v;
 			}
 		}
@@ -3622,7 +3624,6 @@ function createMarkStatistics () {
 	}
 
 	function updatePostformView (statistics) {
-		let result = false;
 		let marked = false;
 		let identified = false;
 
@@ -3636,8 +3637,7 @@ function createMarkStatistics () {
 				continue;
 			}
 
-			result = true;
-			let s = current + `(${diff > 0 ? '+' : ''}${diff})`;
+			let s = `${current}(${diff > 0 ? '+' : ''}${diff})`;
 			$t(`replies-${i}`, s);
 			$t(`pf-replies-${i}`, s);
 
@@ -3650,7 +3650,6 @@ function createMarkStatistics () {
 		}
 
 		if (identified) {
-			let node;
 			if (siteInfo.server == 'may' && siteInfo.board == 'id') {
 				identified = false;
 			}
@@ -3658,19 +3657,24 @@ function createMarkStatistics () {
 				identified = false;
 			}
 		}
-		if (marked || identified) {
+
+		if (marked) {
 			sounds.detectNewMark.play();
 		}
 
-		return result;
+		if (identified) {
+			sounds.identified.play();
+		}
+
+		return marked || identified;
 	}
 
 	function resetPostformView () {
 		[
 			'replies-total', 'replies-mark', 'replies-id',
 			'pf-replies-total', 'pf-replies-mark', 'pf-replies-id'
-		].forEach(function (id) {
-			let e = $(id);
+		].forEach(id => {
+			const e = $(id);
 			if (!e) return;
 			$t(e, e.textContent.replace(/\([-+]?\d+\)$/, ''));
 		});
@@ -3942,13 +3946,6 @@ function createUrlStorage () {
 			});
 		});
 	}
-
-	/*
-	 * TODO: THIS STATEMENT IS TRANSIENT.
-	 * WHEN AKAHUKUPLUS THAT USES chrome.storage HAS FULLY DISTRIBUTED,
-	 * WE SHOULD DELETE THIS CODE.
-	 */
-	window.localStorage.removeItem('postUrl');
 
 	return {
 		memo: memo,
@@ -4527,9 +4524,11 @@ function createQuotePopup () {
 
 		Array.prototype.forEach.call(
 			$qsa('input[type="checkbox"], iframe, video, audio', div),
-			node => {
-				node.parentNode.removeChild(node);
-			}
+			node => { node.parentNode.removeChild(node); }
+		);
+		Array.prototype.forEach.call(
+			$qsa('img.hide', div),
+			node => { node.classList.remove('hide'); }
 		);
 
 		// positioning
@@ -4801,7 +4800,7 @@ function createSelectionMenu () {
 		s = s.replace(/^\s+|\s+$/g, '');
 		if (s == '') return;
 
-		if (!/^\s*/.test(target.textContent)) {
+		if (!/^\s*$/.test(target.textContent)) {
 			s = `\n${s}`;
 		}
 
@@ -5680,10 +5679,10 @@ function setupCustomEventHandler () {
 				statusHideTimer = null;
 			}
 			if (!e.detail.persistent) {
-				statusHideTimer = setTimeout(function () {
+				statusHideTimer = setTimeout(() => {
 					statusHideTimer = null;
 					ws.classList.add('hide');
-				}, 1000 * 3);
+				}, 1000 * 5);
 			}
 		}
 	}, false);
@@ -7706,7 +7705,10 @@ function getPostTimeRegex () {
 	return /(\d+)\/(\d+)\/(\d+)\(.\)(\d+):(\d+):(\d+)/;
 }
 
-function getReadableSize (s) {
+function getReadableSize (size) {
+	const s = size - 0;
+	if (isNaN(s)) return size;
+
 	if (s >= 1024 * 1024 * 1024) {
 		return (s / (1024 * 1024 * 1024)).toFixed(2) + 'GiB';
 	}
@@ -7716,7 +7718,7 @@ function getReadableSize (s) {
 	else if (s >= 1024) {
 		return (s / 1024).toFixed(2) + 'KiB';
 	}
-	return s + ' Bytes';
+	return s + 'Bytes';
 }
 
 function getContentsFromEditable (el) {
@@ -7740,10 +7742,10 @@ function getContentsFromEditable (el) {
 		// On the other hande, textContent drops all newlines.
 		value = div.innerText;
 
-		// Trim all leading and trailing spaces
-		value = value.replace(/^\s+|\s$/g, '');
+		// Trim all leading spaces
+		value = value.replace(/^\s+/g, '');
 
-		if (false) {
+		if (devMode && $qs('[data-href="#toggle-comment-log"]').checked) {
 			console.log([
 				`original: "${el.innerHTML}"`,
 				`modified: "${html}"`,
@@ -7852,6 +7854,45 @@ function isLowSurrogate (ch) {
 		ch = ch.charCodeAt(0);
 	}
 	return 0xdc00 <= ch && ch <= 0xdfff;
+}
+
+function isSurrogate (ch) {
+	return isHighSurrogate(ch) || isLowSurrogate(ch);
+}
+
+function resolveCharacterReference (s) {
+	return s.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, ($0, $1) => {
+		if ($1.charAt(0).toLowerCase() == 'x') {
+			$1 = parseInt($1.substring(1), 16);
+		}
+		else {
+			$1 = parseInt($1, 10);
+		}
+		return String.fromCodePoint($1);
+	});
+}
+
+function dumpDebugText (text) {
+	if (!devMode) return;
+
+	const ID = 'akahukuplus-debug-dump-container';
+	let node = $(ID);
+
+	if (text != undefined) {
+		if (!node) {
+			node = document.body.appendChild(document[CRE]('pre'));
+			node.id = ID;
+			node.style.fontFamily = 'Consolas,monospace';
+			node.style.whiteSpace = 'pre-wrap';
+		}
+		empty(node);
+		node.appendChild(document.createTextNode(text));
+	}
+	else {
+		if (node) {
+			node.parentNode.removeChild(node);
+		}
+	}
 }
 
 const 新字体の漢字を舊字體に変換 = (function () {
@@ -8266,6 +8307,8 @@ function reloadBase (type, opts) { /*returns promise*/
 	}
 
 	opts || (opts = {});
+	reloadStatus.lastReloadType = 'full';
+	reloadStatus.lastReceivedBytes = reloadStatus.lastReceivedCompressedBytes = 0;
 
 	return new Promise((resolve, reject) => {
 		const now = Date.now();
@@ -8277,6 +8320,11 @@ function reloadBase (type, opts) { /*returns promise*/
 		DEBUG_IGNORE_LAST_MODIFIED && (siteInfo.lastModified = 0);
 		xhr.setRequestHeader('If-Modified-Since', siteInfo.lastModified || FALLBACK_LAST_MODIFIED);
 
+		xhr.onprogress = function (e) {
+			reloadStatus.lastReceivedBytes += e.loaded;
+			reloadStatus.lastReceivedCompressedBytes += e.loaded;
+		};
+
 		xhr.onload = function (e) {
 			timingLogger.endTag();
 
@@ -8285,24 +8333,71 @@ function reloadBase (type, opts) { /*returns promise*/
 				siteInfo.lastModified = lm;
 			}
 
-			let size = xhr.getResponseHeader('Content-Length');
-			if (size) {
-				size = size - 0;
-				reloadStatus.receivedBytes += size;
+			if (devMode) {
+				reloadStatus.lastReceivedText = xhr.responseText;
 			}
 
+			let headerSize = xhr.getAllResponseHeaders().length;
+			if (window.location.protocol == 'https:') {
+				headerSize = Math.ceil(headerSize * 0.33);	// this factor is heuristic.
+			}
+			reloadStatus.lastReceivedBytes += headerSize;
+			reloadStatus.lastReceivedCompressedBytes += headerSize;
+
 			let doc;
-			if (method != 'HEAD') {
-				timingLogger.startTag('parsing html');
-				if (xhr.status == 200) {
-					doc = getDOMFromString(xhr.responseText);
-					if (!doc) {
-						timingLogger.endTag(); // parsing html
-						reject(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
-						return;
+
+			if (method == 'HEAD') {
+				reloadStatus.totalReceivedBytes += reloadStatus.lastReceivedBytes;
+				reloadStatus.totalReceivedCompressedBytes += reloadStatus.lastReceivedCompressedBytes;
+			}
+			else if (method != 'HEAD' && xhr.status == 200) {
+				if (/gzip/.test(xhr.getResponseHeader('Content-Encoding'))) {
+					const contentLength = xhr.getResponseHeader('Content-Length');
+					if (contentLength) {
+						reloadStatus.lastReceivedCompressedBytes = parseInt(contentLength, 10) + headerSize;
 					}
 				}
+
+				reloadStatus.totalReceivedBytes += reloadStatus.lastReceivedBytes;
+				reloadStatus.totalReceivedCompressedBytes += reloadStatus.lastReceivedCompressedBytes;
+
+				/*
+				console.log([
+					'*** full reload ***',
+					`       header size: ${headerSize}`,
+					`    content length: ${xhr.getResponseHeader('Content-Length')} (${getReadableSize(xhr.getResponseHeader('Content-Length') - 0)})`,
+					` lastReceivedBytes: ${reloadStatus.lastReceivedBytes} (${getReadableSize(reloadStatus.lastReceivedBytes)})`,
+					`totalReceivedBytes: ${reloadStatus.totalReceivedBytes} (${getReadableSize(reloadStatus.totalReceivedBytes)})`,
+					`----`,
+					` lastReceivedCompressedBytes: ${reloadStatus.lastReceivedCompressedBytes} (${getReadableSize(reloadStatus.lastReceivedCompressedBytes)})`,
+					`totalReceivedCompressedBytes: ${reloadStatus.totalReceivedCompressedBytes} (${getReadableSize(reloadStatus.totalReceivedCompressedBytes)})`
+				].join('\n'));
+				*/
+
+				timingLogger.startTag('parsing html');
+				doc = xhr.responseText;
+				doc = doc.replace(
+					/>([^<]+)</g,
+					($0, $1) => {
+						$1 = resolveCharacterReference($1);
+						$1 = $1.replace(/</g, '&lt;')
+							.replace(/>/g, '&gt;');
+						return `>${$1}<`;
+					});
+				doc = doc.replace(
+					/(<a\s+href="mailto:)([^"]+)("[^>]*>)/gi,
+					($0, $1, $2, $3) => {
+						$2 = resolveCharacterReference($2);
+						$2 = $2.replace(/"/g, '&quot;');
+						return `${$1}${$2}${$3}`;
+					});
+				doc = getDOMFromString(doc);
 				timingLogger.endTag();
+
+				if (!doc) {
+					reject(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
+					return;
+				}
 			}
 
 			//doc && detectionTest();
@@ -8335,6 +8430,8 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 	timingLogger.startTag('reloadBaseViaAPI');
 
 	opts || (opts = {});
+	reloadStatus.lastReloadType = 'delta';
+	reloadStatus.lastReceivedBytes = reloadStatus.lastReceivedCompressedBytes = 0;
 
 	return new Promise((resolve, reject) => {
 		const now = Date.now();
@@ -8350,32 +8447,114 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 		xhr.overrideMimeType(`text/html;charset=UTF-8`);
 		xhr.setRequestHeader('If-Modified-Since', FALLBACK_LAST_MODIFIED);
 
+		xhr.onprogress = function (e) {
+			reloadStatus.lastReceivedBytes += e.loaded;
+			reloadStatus.lastReceivedCompressedBytes += e.loaded;
+		};
+
 		xhr.onload = function (e) {
 			timingLogger.endTag();
 
-			let size = xhr.getResponseHeader('Content-Length');
-			if (size) {
-				size = size - 0;
-				reloadStatus.receivedBytes += size;
+			if (devMode) {
+				reloadStatus.lastReceivedText = xhr.responseText;
 			}
 
+			let headerSize = xhr.getAllResponseHeaders().length;
+			if (window.location.protocol == 'https:') {
+				headerSize = Math.ceil(headerSize * 0.33);	// this factor is heuristic.
+			}
+			reloadStatus.lastReceivedBytes += headerSize;
+			reloadStatus.lastReceivedCompressedBytes += headerSize;
+
 			let doc;
-			timingLogger.startTag('parsing json');
+
 			if (xhr.status == 200) {
+				if (/gzip/.test(xhr.getResponseHeader('Content-Encoding'))) {
+					const contentLength = xhr.getResponseHeader('Content-Length');
+					if (contentLength) {
+						reloadStatus.lastReceivedCompressedBytes = parseInt(contentLength, 10) + headerSize;
+					}
+					else {
+						let factor;
+						[
+							[  512, 0.95],
+							[ 1024, 0.65],
+							[ 2048, 0.50],
+							[ 4096, 0.40],
+							[ 8192, 0.30],
+							[16384, 0.20],
+							[32768, 0.18],
+							[65536, 0.16],
+							[0x7fffffff, 0.14]
+						].some(set => {
+							if (reloadStatus.lastReceivedBytes < set[0]) {
+								factor = set[1];
+								return true;
+							}
+						});
+
+						reloadStatus.lastReceivedCompressedBytes = Math.ceil(reloadStatus.lastReceivedBytes * factor) + headerSize;
+					}
+				}
+
+				reloadStatus.totalReceivedBytes += reloadStatus.lastReceivedBytes;
+				reloadStatus.totalReceivedCompressedBytes += reloadStatus.lastReceivedCompressedBytes;
+
+				/*
+				console.log([
+					'*** delta reload ***',
+					`       header size: ${headerSize}`,
+					` lastReceivedBytes: ${reloadStatus.lastReceivedBytes} (${getReadableSize(reloadStatus.lastReceivedBytes)})`,
+					`totalReceivedBytes: ${reloadStatus.totalReceivedBytes} (${getReadableSize(reloadStatus.totalReceivedBytes)})`,
+					`----`,
+					` lastReceivedCompressedBytes: ${reloadStatus.lastReceivedCompressedBytes} (${getReadableSize(reloadStatus.lastReceivedCompressedBytes)})`,
+					`totalReceivedCompressedBytes: ${reloadStatus.totalReceivedCompressedBytes} (${getReadableSize(reloadStatus.totalReceivedCompressedBytes)})`
+				].join('\n'));
+				*/
+
+				timingLogger.startTag('parsing json');
 				try {
+					const refmap = {
+						amp: '&',
+						lt: '<',
+						gt: '>',
+						quot: '"',
+						apos: "'"
+					};
+
 					doc = xhr.responseText;
-					doc = JSON.parse(doc);
+					doc = JSON.parse(doc, (key, value) => {
+						if (typeof value == 'string') {
+
+							// PHP's json_encode handles the following character references,
+							// so we need to solve them.
+							value = value.replace(/&(amp|quot|apos);/g, ($0, $1) => refmap[$1]);
+
+							// Some UA convert a code point beyond BMP into surrogate pairs.
+							// This is an error for the standard, and it should be a single
+							// character reference.
+							value = resolveCharacterReference(value);
+
+							// experimental feature
+							if (IDEOGRAPH_CONVERSION_CONTENT) {
+								value = 新字体の漢字を舊字體に変換(value);
+							}
+						}
+
+						return value;
+					});
 				}
 				catch (e) {
 					doc = undefined;
 				}
+				timingLogger.endTag();
+
 				if (!doc) {
 					timingLogger.endTag(); // parsing json
-					reject(new Error('読み込んだ html からの DOM ツリー構築に失敗しました。'));
+					reject(new Error('読み込んだ JSON の解析に失敗しました。'));
 					return;
 				}
 			}
-			timingLogger.endTag();
 
 			resolve({
 				doc: doc,
@@ -8571,7 +8750,7 @@ function extractIncompleteFiles () {
 }
 
 function extractSiokaraThumbnails () {
-	var files = $qsa('.incomplete-siokara-thumbnail');
+	const files = $qsa(':not(q) > .incomplete-siokara-thumbnail');
 	if (files.length == 0) return;
 
 	function getHandler (node) {
@@ -8607,9 +8786,11 @@ function extractSiokaraThumbnails () {
 		}
 	}
 
-	for (var i = 0; i < files.length && i < 10; i++) {
-		var thumbHref = files[i].getAttribute('data-thumbnail-href');
-		if (thumbHref && files[i].parentNode.nodeName != 'Q') {
+	const log = [];
+	for (let i = 0; i < files.length && i < 10; i++) {
+		let thumbHref = files[i].getAttribute('data-thumbnail-href');
+		if (thumbHref) {
+			log.push(thumbHref);
 			sendToBackend(
 				'load-siokara-thumbnail',
 				{url: thumbHref},
@@ -8618,6 +8799,10 @@ function extractSiokaraThumbnails () {
 		files[i].classList.remove('incomplete-siokara-thumbnail');
 	}
 
+	if (log.length) {
+		log.unshift('*** extractSiokaraThumbnails ***');
+		console.log(log.join('\n'));
+	}
 	setTimeout(extractSiokaraThumbnails, 919);
 }
 
@@ -8713,6 +8898,9 @@ function detectNoticeModification (notice, noticeNew) {
 		const li = list.appendChild(document[CRE]('li'));
 		li.className = row.className;
 		li[IHTML] = row.markup;
+		if (row.className != 'equal') {
+			console.log(`${row.className}: "${row.markup}"`);
+		}
 	});
 }
 
@@ -8720,15 +8908,15 @@ function detectNoticeModification (notice, noticeNew) {
  * <<<1 functions for reload feature in reply mode
  */
 
-function showFetchedRepliesStatus (content, autoHide) {
-	var fetchStatus = $('fetch-status');
+function setReloaderStatus (content, persistent) {
+	const fetchStatus = $('fetch-status');
 	if (!fetchStatus) return;
 
 	if (content != undefined) {
 		fetchStatus.classList.remove('hide');
 		$t(fetchStatus, content);
-		if (autoHide) {
-			setTimeout(showFetchedRepliesStatus, RELOAD_LOCK_RELEASE_DELAY);
+		if (!persistent) {
+			setTimeout(setReloaderStatus, RELOAD_LOCK_RELEASE_DELAY);
 		}
 	}
 	else {
@@ -9032,16 +9220,15 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 			let container = getReplyContainer(index);
 			if (!container) return worked;
 
-			markStatistics.updatePostformView({
-				count: {
-					total: count,
-					mark: 0,
-					id: 0
-				},
-				delta: null
-			});
-
 			if (lowBoundNumber < 0) {
+				markStatistics.updatePostformView({
+					count: {
+						total: count,
+						mark: 0,
+						id: 0
+					},
+					delta: null
+				});
 				xsltProcessor.setParameter(null, 'render_mode', 'replies');
 			}
 			else {
@@ -9084,7 +9271,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 			if (pageModes[0] == 'reply' && lowBoundNumber >= 0) {
 				newStat = markStatistics.getStatistics();
 
-				if (newStat.delta.total) {
+				if (newStat.delta.total || newStat.delta.mark || newStat.delta.id) {
 					if ($qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)')) {
 						markStatistics.updatePanelView(newStat);
 					}
@@ -9131,11 +9318,17 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 
 function scrollToNewReplies (callback) {
 	const rule = getRule();
-	if (!rule) return;
+	if (!rule) {
+		callback && callback();
+		return;
+	}
 
 	const scrollTop = docScrollTop();
 	const distance = rule.nextSibling.getBoundingClientRect().top - Math.floor(viewportRect.height / 2);
-	if (distance <= 0) return;
+	if (distance <= 0) {
+		callback && callback();
+		return;
+	}
 
 	let startTime = null;
 
@@ -9703,7 +9896,7 @@ const commands = {
 
 		if (transport.isRunning(TRANSPORT_TYPE)) {
 			transport.abort(TRANSPORT_TYPE);
-			showFetchedRepliesStatus('中断しました', true);
+			setReloaderStatus('中断しました');
 			return Promise.resolve();
 		}
 
@@ -9719,6 +9912,8 @@ const commands = {
 		setBottomStatus('読み込み中...', true);
 		removeRule();
 		markStatistics.resetPostformView();
+		reloadStatus.lastRepliesCount = getRepliesCount();
+		dumpDebugText();
 
 		return reloadBase(TRANSPORT_TYPE)
 		.then(reloadResult => {
@@ -9728,7 +9923,7 @@ const commands = {
 
 			switch (status) {
 			case 404:
-				showFetchedRepliesStatus();
+				setReloaderStatus();
 				setBottomStatus('完了: 404 Not Found');
 				$t('expires-remains', '-');
 				$t('pf-expires-remains', '-');
@@ -9736,13 +9931,13 @@ const commands = {
 				timingLogger.forceEndTag();
 				return;
 			case 304:
-				showFetchedRepliesStatus('更新なし', true);
-				setBottomStatus('完了: Full Reload, 304 Not Modified');
+				setReloaderStatus('更新なし');
+				setBottomStatus('完了: フルリロード, 304 Not Modified');
 				timingLogger.forceEndTag();
 				return;
 			case /^5[0-9]{2}$/.test(status) && status:
-				showFetchedRepliesStatus(`サーバエラー`, true);
-				setBottomStatus(`完了: Full Reload, ${status} Server Error`);
+				setReloaderStatus(`サーバエラー`);
+				setBottomStatus(`完了: フルリロード, サーバエラー ${status}`);
 				timingLogger.forceEndTag();
 				return;
 			}
@@ -9794,14 +9989,19 @@ const commands = {
 					const message = newStat.delta.total ?
 						`新着 ${newStat.delta.total} レス` :
 						'新着レスなし';
+					setReloaderStatus(message);
 
-					showFetchedRepliesStatus(message, true);
-					setBottomStatus(`完了: Full Reload, Total ${getReadableSize(reloadStatus.receivedBytes)}`);
+					const bottomMessage = [
+						`完了: ${reloadStatus.size('lastReceivedCompressedBytes')} (フル)`,
+						`, 計 ${reloadStatus.size('totalReceivedCompressedBytes')}`
+					].join('');
+					setBottomStatus(bottomMessage);
+					//console.log(bottomMessage);
 				}
 			);
 		})
 		.catch(err => {
-			showFetchedRepliesStatus(err.message);
+			setReloaderStatus(err.message, true);
 			setBottomStatus(err.message);
 			timingLogger.forceEndTag();
 			console.error(`${APP_NAME}: reloadReplies failed: ${err.stack}`);
@@ -9841,7 +10041,7 @@ const commands = {
 
 		if (transport.isRunning(TRANSPORT_MAIN_TYPE)) {
 			transport.abort(TRANSPORT_MAIN_TYPE);
-			showFetchedRepliesStatus('中断しました', true);
+			setReloaderStatus('中断しました');
 			return Promise.resolve();
 		}
 
@@ -9857,6 +10057,8 @@ const commands = {
 		setBottomStatus('読み込み中...', true);
 		removeRule();
 		markStatistics.resetPostformView();
+		reloadStatus.lastRepliesCount = getRepliesCount();
+		dumpDebugText();
 
 		return reloadBase(TRANSPORT_MAIN_TYPE, {method: 'head'})
 		.then(reloadResult => {
@@ -9864,7 +10066,7 @@ const commands = {
 
 			switch (status) {
 			case 404:
-				showFetchedRepliesStatus();
+				setReloaderStatus();
 				setBottomStatus('完了: 404 Not Found');
 				$t('expires-remains', '-');
 				$t('pf-expires-remains', '-');
@@ -9872,13 +10074,13 @@ const commands = {
 				timingLogger.forceEndTag();
 				return;
 			case 304:
-				showFetchedRepliesStatus('更新なし', true);
-				setBottomStatus('完了: Delta Reload, 304 Not Modified');
+				setReloaderStatus('更新なし');
+				setBottomStatus('完了: 差分リロード, 304 Not Modified');
 				timingLogger.forceEndTag();
 				return;
 			case /^5[0-9]{2}$/.test(status) && status:
-				showFetchedRepliesStatus(`サーバエラー`, true);
-				setBottomStatus(`完了: Delta Reload, ${status} Server Error`);
+				setReloaderStatus(`サーバエラー`);
+				setBottomStatus(`完了: 差分リロード, サーバエラー ${status}`);
 				timingLogger.forceEndTag();
 				return;
 			}
@@ -9970,8 +10172,14 @@ const commands = {
 					markStatistics.updatePostformView(newStat);
 
 					const message = `新着 ${newStat.delta.total} レス`;
-					showFetchedRepliesStatus(message, true);
-					setBottomStatus(`完了: Delta Reload, Total ${getReadableSize(reloadStatus.receivedBytes)}`);
+					setReloaderStatus(message);
+
+					const bottomMessage = [
+						`完了: ${reloadStatus.size('lastReceivedCompressedBytes')} (差分)`,
+						`, 計 ${reloadStatus.size('totalReceivedCompressedBytes')}`
+					].join('');
+					setBottomStatus(bottomMessage);
+					//console.log(bottomMessage);
 
 					scrollToNewReplies(() => {
 						updateIdFrequency(newStat);
@@ -9986,15 +10194,21 @@ const commands = {
 				}
 				else {
 					const message = '新着レスなし';
-					showFetchedRepliesStatus(message, true);
-					setBottomStatus(`完了: Delta Reload, Total ${getReadableSize(reloadStatus.receivedBytes)}`);
+					setReloaderStatus(message);
+
+					const bottomMessage = [
+						`完了: ${reloadStatus.size('lastReceivedCompressedBytes')} (差分)`,
+						`, 計 ${reloadStatus.size('totalReceivedCompressedBytes')}`
+					].join('');
+					setBottomStatus(bottomMessage);
+					//console.log(bottomMessage);
 
 					timingLogger.forceEndTag();
 				}
 			});
 		})
 		.catch(err => {
-			showFetchedRepliesStatus(err.message);
+			setReloaderStatus(err.message, true);
 			setBottomStatus(err.message);
 			timingLogger.forceEndTag();
 			console.error(`${APP_NAME}: reloadRepliesViaAPI failed: ${err.stack}`);
@@ -11085,7 +11299,6 @@ const commands = {
 	activateStatisticsTab: function () {
 		if (!$qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)') && markStatistics.lastStatistics) {
 			markStatistics.updatePanelView(markStatistics.lastStatistics);
-			markStatistics.clearStatistics();
 		}
 		activatePanelTab($qs('.panel-tab[href="#mark"]'));
 		showPanel();
@@ -11200,11 +11413,45 @@ const commands = {
 	 */
 
 	reloadExtension: () => {
+		if (!devMode) return;
 		resources.clearCache();
 		sendToBackend('reload');
 	},
 	toggleLogging: (e, t) => {
+		if (!devMode) return;
 		timingLogger.locked = !t.value;
+	},
+	dumpStats: (e, t) => {
+		if (!devMode) return;
+		dumpDebugText(JSON.stringify(markStatistics.lastStatistics, null, '    '));
+	},
+	dumpReloadData: (e, t) => {
+		if (!devMode) return;
+		const data = Object.assign({}, reloadStatus);
+		delete data.lastReceivedText;
+		dumpDebugText(JSON.stringify(data, null, '    ') + '\n\n' + reloadStatus.lastReceivedText);
+	},
+	emptyReplies: (e, t) => {
+		if (!devMode) return;
+		empty($qs('.replies'));
+	},
+	noticeTest: (e, t) => {
+		if (!devMode) return;
+
+		let lines = siteInfo.notice.split('\n');
+
+		// delete
+		lines.splice(2, 2);
+
+		// replace
+		lines = lines.map(t => t.replace(/(最大)(\d+)(レス)/g, ($0, $1, $2, $3) => $1 + (parseInt($2, 10) * 2) + $3));
+
+		// add
+		lines.push(`Appended line #1: ${Math.random()}`);
+		lines.push(`Appended line #2: ${Math.random()}`);
+
+		siteInfo.notice = lines.join('\n');
+		setBottomStatus('notice modified for debug');
 	}
 };
 
@@ -11346,42 +11593,6 @@ Promise.all([
 	if (version != window.localStorage.getItem(`${APP_NAME}_version`)) {
 		resources.clearCache();
 		window.localStorage.setItem(`${APP_NAME}_version`, version);
-	}
-
-	if (!storageData.migrated) {
-		/*
-		 * TODO: THIS BLOCK IS TRANSIENT.
-		 * WHEN AKAHUKUPLUS THAT USES chrome.storage HAS FULLY DISTRIBUTED,
-		 * WE SHOULD DELETE THIS IF-BLOCK.
-		 */
-
-		const migratable = true;
-		const localKey = `${APP_NAME}_config`;
-		let migrateData = {migrated: true};
-
-		// migrate config data from localStorage
-		let localData = window.localStorage.getItem(localKey);
-		if (localData !== null) {
-			try {
-				localData = JSON.parse(localData);
-			}
-			catch (e) {
-				localData = null;
-			}
-		}
-		if (localData !== null) {
-			for (let i in storageData.config) {
-				if (i in localData) {
-					storageData.config[i] = localData[i];
-				}
-			}
-
-			migrateData.config = storageData.config;
-		}
-		if (migratable) {
-			storage.set(migrateData);
-			window.localStorage.removeItem(localKey);
-		}
 	}
 
 	siteInfo.notice = storageData.notices[`${siteInfo.server}/${siteInfo.board}`] || '';
