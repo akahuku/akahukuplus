@@ -10,7 +10,7 @@ if (document.querySelector('meta[name="generator"][content="akahukuplus"]')) {
 	console.log('akahukuplus: multiple execution of content script.');
 	window.location.reload();
 }
-else if (document.getElementById('cf-wrapper')) {
+else if (document.getElementById('cf-wrapper') || /503 Service Temporarily Unavailable/.test(document.title)) {
 	// Error page by CloudFlare. Do nothing.
 }
 else {
@@ -319,9 +319,8 @@ function transformWholeDocument (xsl) {
 
 	let head = $qs('head', fragment);
 	let body = $qs('body', fragment);
-	let removeHeadElements = function () {
-		Array.prototype.slice.call($qsa('head > *'))
-		.forEach(node => {
+	let removeHeadElements = () => {
+		$qsa('head > *').forEach(node => {
 			if (node.nodeName == 'BASE') return;
 			node.parentNode.removeChild(node);
 		});
@@ -349,10 +348,9 @@ function transformWholeDocument (xsl) {
 	});
 
 	// some tweaks: move some elements to its proper position
-	let headNodes = Array.prototype.slice.call(
-		$qsa('body style, body link'));
+	let headNodes = Array.from($qsa('body style, body link'));
 	while (headNodes.length) {
-		let node = headNodes.shift();
+		const node = headNodes.shift();
 		node.parentNode.removeChild(node);
 		document.head.appendChild(node);
 	}
@@ -582,18 +580,15 @@ function install (mode) {
 		.add('.catalog-order', (e, t) => {
 			let newActive;
 
-			Array.prototype.forEach.call(
-				$qsa('#catalog .catalog-options a'),
-				node => {
-					if (node == t) {
-						node.classList.add('active');
-						newActive = node;
-					}
-					else {
-						node.classList.remove('active');
-					}
+			$qsa('#catalog .catalog-options a').forEach(node => {
+				if (node == t) {
+					node.classList.add('active');
+					newActive = node;
 				}
-			);
+				else {
+					node.classList.remove('active');
+				}
+			});
 
 			if (!newActive) {
 				newActive = $qs('#catalog .catalog-options a');
@@ -602,17 +597,14 @@ function install (mode) {
 
 			let order = newActive.href.match(/\w+$/)[0];
 			let contentId = `catalog-threads-wrap-${order}`;
-			Array.prototype.forEach.call(
-				$qsa('#catalog .catalog-threads-wrap > div'),
-				node => {
-					if (node.id == contentId) {
-						node.classList.remove('hide');
-					}
-					else {
-						node.classList.add('hide');
-					}
+			$qsa('#catalog .catalog-threads-wrap > div').forEach(node => {
+				if (node.id == contentId) {
+					node.classList.remove('hide');
 				}
-			);
+				else {
+					node.classList.add('hide');
+				}
+			});
 
 			storage.runtime.catalog.sortOrder = order;
 			storage.saveRuntime();
@@ -632,7 +624,10 @@ function install (mode) {
 
 			e.preventDefault();
 			e.stopPropagation();
-			sendToBackend('open', {url:t.href, selfUrl:window.location.href});
+			sendToBackend('open', {
+				url: t.href,
+				selfUrl: window.location.href
+			});
 		})
 
 	/*
@@ -688,7 +683,7 @@ function install (mode) {
 
 	(function () {
 		function updateViewportRectGeometry () {
-			let vp = document.body.appendChild(document[CRE]('div'));
+			const vp = document.body.appendChild(document[CRE]('div'));
 			try {
 				vp.id = 'viewport-rect';
 				viewportRect = vp.getBoundingClientRect();
@@ -699,12 +694,12 @@ function install (mode) {
 		}
 
 		function updateMaxWidthOfComments (style) {
-			let text = $qs('article div.text');
+			const text = $qs('article div.text');
 			if (text) {
-				let isContentInvisible = $('content').classList.contains('hide');
+				const isContentInvisible = $('content').classList.contains('hide');
 				$('content').classList.remove('hide');
 				try {
-					let rect = text.getBoundingClientRect();
+					const rect = text.getBoundingClientRect();
 					style.appendChild(document.createTextNode([
 						'.reply-wrap > div:last-child {',
 						`  max-width:${Math.floor(rect.width * 0.9)}px;`,
@@ -730,8 +725,10 @@ function install (mode) {
 		}
 
 		function updateHeaderHeight (style) {
-			let headerHeight = $('header').offsetHeight + HEADER_MARGIN_BOTTOM;
+			const headerHeight = $('header').offsetHeight + HEADER_MARGIN_BOTTOM;
 			$('content').style.marginTop =
+			$('catalog').style.marginTop =
+			$('content-loading-indicator').style.marginTop =
 			$('ad-aside-wrap').style.top =
 			$('panel-aside-wrap').style.top = headerHeight + 'px';
 			style.appendChild(document.createTextNode([
@@ -742,7 +739,7 @@ function install (mode) {
 		}
 
 		function handler () {
-			let style = $('dynstyle-comment-maxwidth');
+			const style = $('dynstyle-comment-maxwidth');
 			if (!style) return;
 			empty(style);
 
@@ -1069,17 +1066,19 @@ function install (mode) {
  */
 
 function applyDataBindings (xml) {
-	let nodes = $qsa('*[data-binding]');
-	let result = null, re = null;
-	for (let i = 0, goal = nodes.length; i < goal; i++) {
-		let binding = nodes[i].getAttribute('data-binding');
+	for (const node of $qsa('*[data-binding]')) {
+		const binding = node.getAttribute('data-binding');
+		let re;
+
+		// xpath:<path/to/xml/element>
+		// xpath[<page-mode>]:<path/to/xml/element>
 		if ((re = /^xpath(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
 			if (typeof re[1] == 'string' && re[1] != pageModes[0]) continue;
 			try {
-				result = xml.evaluate(re[2], xml, null,
-					window.XPathResult.FIRST_ORDERED_NODE_TYPE, result);
+				const result = xml.evaluate(re[2], xml, null,
+					window.XPathResult.FIRST_ORDERED_NODE_TYPE, null);
 				if (!result || !result.singleNodeValue) continue;
-				$t(nodes[i],
+				$t(node,
 					result.singleNodeValue.value
 					|| result.singleNodeValue.textContent);
 			}
@@ -1089,13 +1088,16 @@ function applyDataBindings (xml) {
 					`\n${e.stack}`);
 			}
 		}
+
+		// xpath-class:<path/to/xml/element>
+		// xpath-class[<page-mode>]:<path/to/xml/element>
 		else if ((re = /^xpath-class(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
 			if (typeof re[1] == 'string' && re[1] != pageModes[0]) continue;
 			try {
-				result = xml.evaluate(re[2], xml, null,
-					window.XPathResult.STRING_TYPE, result);
+				const result = xml.evaluate(re[2], xml, null,
+					window.XPathResult.STRING_TYPE, null);
 				if (!result || !result.stringValue) continue;
-				nodes[i].className = result.stringValue;
+				node.className = result.stringValue;
 			}
 			catch (e) {
 				console.error(
@@ -1103,14 +1105,17 @@ function applyDataBindings (xml) {
 					`\n${e.stack}`);
 			}
 		}
+
+		// template:<template-name>
+		// template[<page-mode>]:<template-name>
 		else if ((re = /^template(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
 			if (typeof re[1] == 'string' && re[1] != pageModes[0]) continue;
 			try {
 				xsltProcessor.setParameter(null, 'render_mode', re[2]);
-				let f = fixFragment(xsltProcessor.transformToFragment(xml, document));
+				const f = fixFragment(xsltProcessor.transformToFragment(xml, document));
 				if (f.textContent.replace(/^\s+|\s+$/g, '') == '' && !$qs('[data-doe]', f)) continue;
-				empty(nodes[i]);
-				appendFragment(nodes[i], f);
+				empty(node);
+				appendFragment(node, f);
 			}
 			catch (e) {
 				console.error(
@@ -2844,7 +2849,7 @@ function createPersistentStorage () {
 			list:{
 				dropbox:'dropbox',
 				gdrive:'Google Drive',
-				msonedrive:'Microsoft OneDrive',
+				onedrive:'Microsoft OneDrive',
 				local:'local'
 			},
 			desc:`localストレージを使用できるのは現在Chromeのみです。
@@ -2936,7 +2941,7 @@ function createPersistentStorage () {
 
 		switch (data[name].type) {
 		case 'int':
-			value = parseInt(value);
+			value = parseInt(value, 10);
 			if (isNaN(value)) return;
 			if ('min' in data[name] && value < data[name].min) return;
 			if ('max' in data[name] && value > data[name].max) return;
@@ -3268,7 +3273,7 @@ function createKeyManager () {
 		const el = document.activeElement;
 		let focusedNodeName = el.nodeName.toLowerCase();
 		if (focusedNodeName == 'input') {
-			focusedNodeName += '.' + el.type.toLowerCase();
+			focusedNodeName += `.${el.type.toLowerCase()}`;
 		}
 		else if (el.contentEditable == 'true') {
 			focusedNodeName += '.contentEditable';
@@ -3309,7 +3314,7 @@ function createKeyManager () {
 				if (!(stroke instanceof Array)) {
 					stroke = [stroke];
 				}
-				stroke.forEach(function (s) {
+				stroke.forEach(s => {
 					delete strokes[mode][s];
 				});
 				if (Object.keys(strokes[mode]).length == 0) {
@@ -3329,7 +3334,7 @@ function createKeyManager () {
 		}
 
 		let m = [];
-		for (var i in strokes[mode]) {
+		for (let i in strokes[mode]) {
 			if (strokes[mode][i].isPrior) {
 				m.push(i);
 			}
@@ -4061,11 +4066,10 @@ function createCatalogPopup (container) {
 			thumbnail.className = 'catalog-popup hide';
 			thumbnail.setAttribute('data-url', target.href);
 			thumbnail.addEventListener('click', (e) => {
-				sendToBackend('open',
-					{
-						url: e.target.getAttribute('data-url'),
-						selfUrl: window.location.href
-					});
+				sendToBackend('open', {
+					url: e.target.getAttribute('data-url'),
+					selfUrl: window.location.href
+				});
 			}, false);
 			shrinkedRect = getRect(targetThumbnail);
 		}
@@ -4211,27 +4215,24 @@ function createCatalogPopup (container) {
 
 	function closeAll (except) {
 		_log(`closeAll: closing ${popups.length} popup(s)`);
-		let elms = Array.prototype.slice.call($qsa('body > .catalog-popup'));
+		const elms = Array.from($qsa('body > .catalog-popup'));
 		for (let i = 0; i < popups.length; i++) {
-			['thumbnail', 'text'].forEach(function (p) {
-				let index = elms.indexOf(popups[i][p]);
+			['thumbnail', 'text'].forEach(p => {
+				const index = elms.indexOf(popups[i][p]);
 				index >= 0 && elms.splice(index, 1);
 			});
 			if (popups[i].target == except) continue;
 			close(i);
 		}
-		elms.forEach(function (elm) {
+		elms.forEach(elm => {
 			elm.parentNode && elm.parentNode.removeChild(elm);
 		});
 	}
 
 	function deleteAll () {
-		Array.prototype.forEach.call(
-			$qsa('body > .catalog-popup'),
-			node => {
-				node.parentNode && node.parentNode.removeChild(node);
-			}
-		);
+		$qsa('body > .catalog-popup').forEach(node => {
+			node.parentNode && node.parentNode.removeChild(node);
+		});
 		popups.length = 0;
 		cursorPos.moved = false;
 	}
@@ -4522,14 +4523,12 @@ function createQuotePopup () {
 			}
 		}
 
-		Array.prototype.forEach.call(
-			$qsa('input[type="checkbox"], iframe, video, audio', div),
-			node => { node.parentNode.removeChild(node); }
-		);
-		Array.prototype.forEach.call(
-			$qsa('img.hide', div),
-			node => { node.classList.remove('hide'); }
-		);
+		$qsa('input[type="checkbox"], iframe, video, audio', div).forEach(node => {
+			node.parentNode.removeChild(node);
+		});
+		$qsa('img.hide', div).forEach(node => {
+			node.classList.remove('hide');
+		});
 
 		// positioning
 		div.style.visibility = 'hidden';
@@ -5157,13 +5156,10 @@ function setupParallax (selector) {
 		scrollManager.addEventListener(handleScroll);
 		handleScroll();
 		setTimeout(function () {
-			Array.prototype.forEach.call(
-				$qsa('iframe[data-src]'),
-				function (iframe) {
-					iframe.src = iframe.getAttribute('data-src');
-					iframe.removeAttribute('data-src');
-				}
-			);
+			$qsa('iframe[data-src]').forEach(iframe => {
+				iframe.src = iframe.getAttribute('data-src');
+				iframe.removeAttribute('data-src');
+			});
 		}, 1000 * 1);
 	}
 
@@ -5197,38 +5193,35 @@ function setupVideoViewer () {
 
 	function handleScroll () {
 		if (timer) return;
-		timer = setTimeout(function () {
+		timer = setTimeout(() => {
 			timer = null;
 			doit();
 		}, 1000);
 	}
 
 	function doit () {
-		var st = docScrollTop();
-		var vt = st - viewportRect.height;
-		var vb = st + viewportRect.height * 2;
-		Array.prototype.forEach.call(
-			$qsa('.inline-video'),
-			function (node) {
-				var rect = node.getBoundingClientRect();
-				if (rect.bottom + st < vt
-				||  rect.top + st > vb) {
-					// invisible
-					if (node.childNodes.length) {
-						setBottomStatus('解放: ' + node.parentNode.getElementsByTagName('a')[0].href);
-						empty(node);
-					}
-				}
-				else {
-					// visible
-					var markup = node.getAttribute('data-markup');
-					if (markup && node.childNodes.length == 0) {
-						setBottomStatus('読み込み中: ' + node.parentNode.getElementsByTagName('a')[0].href);
-						node[IAHTML]('beforeend', markup);
-					}
+		const st = docScrollTop();
+		const vt = st - viewportRect.height;
+		const vb = st + viewportRect.height * 2;
+		$qsa('.inline-video').forEach(node => {
+			const rect = node.getBoundingClientRect();
+			if (rect.bottom + st < vt
+			||  rect.top + st > vb) {
+				// invisible
+				if (node.childNodes.length) {
+					setBottomStatus(`解放: ${node.parentNode.getElementsByTagName('a')[0].href}`);
+					empty(node);
 				}
 			}
-		);
+			else {
+				// visible
+				const markup = node.getAttribute('data-markup');
+				if (markup && node.childNodes.length == 0) {
+					setBottomStatus(`読み込み中: ${node.parentNode.getElementsByTagName('a')[0].href}`);
+					node[IAHTML]('beforeend', markup);
+				}
+			}
+		});
 	}
 
 	init();
@@ -6006,29 +5999,23 @@ function lightbox (anchor) {
 	}
 
 	function updateModeLinks () {
-		Array.prototype.forEach.call(
-			$qsa('#lightbox-zoom-modes a'),
-			node => {
-				if (node.getAttribute('href') == '#lightbox-' + zoomMode) {
-					node.classList.add('selected');
-				}
-				else {
-					node.classList.remove('selected');
-				}
+		$qsa('#lightbox-zoom-modes a').forEach(node => {
+			if (node.getAttribute('href') == '#lightbox-' + zoomMode) {
+				node.classList.add('selected');
 			}
-		);
+			else {
+				node.classList.remove('selected');
+			}
+		});
 
-		Array.prototype.forEach.call(
-			$qsa('#lightbox-rotate-modes a'),
-			node => {
-				if (node.getAttribute('href') == '#lightbox-' + rotation) {
-					node.classList.add('selected');
-				}
-				else {
-					node.classList.remove('selected');
-				}
+		$qsa('#lightbox-rotate-modes a').forEach(node => {
+			if (node.getAttribute('href') == '#lightbox-' + rotation) {
+				node.classList.add('selected');
 			}
-		);
+			else {
+				node.classList.remove('selected');
+			}
+		});
 	}
 
 	function updateGeometoryInfo () {
@@ -6377,24 +6364,18 @@ function lightbox (anchor) {
 							e.preventDefault();
 							handleZoomModeClick(e, e.target);
 						};
-						Array.prototype.forEach.call(
-							$qsa('#lightbox-zoom-modes a'),
-							node => {
-								node.addEventListener('click', handler);
-							}
-						);
+						$qsa('#lightbox-zoom-modes a').forEach(node => {
+							node.addEventListener('click', handler);
+						});
 					}
 					if (false) {
 						let handler = e => {
 							e.preventDefault();
 							handleRotateModeClick(e, e.target);
 						};
-						Array.prototype.forEach.call(
-							$qsa('#lightbox-rotate-modes a'),
-							node => {
-								node.addEventListener('click', handler);
-							}
-						);
+						$qsa('#lightbox-rotate-modes a').forEach(node => {
+							node.addEventListener('click', handler);
+						});
 					}
 
 					clickDispatcher
@@ -6608,7 +6589,7 @@ function startDrawing (callback) {
 			.getAttribute('data-color');
 		Array.prototype.some.call(
 			$qsa('[name="draw-zoom"]', drawWrap),
-			function (node) {
+			node => {
 				if (node.checked) {
 					zoomFactor = node.value - 0;
 					return true;
@@ -7005,23 +6986,17 @@ function modalDialog (opts) {
 	}
 
 	function enableButtons () {
-		Array.prototype.forEach.call(
-			$qsa('.dialog-content-footer a', dialogWrap),
-			node => {
-				node.classList.remove('disabled');
-			}
-		);
+		$qsa('.dialog-content-footer a', dialogWrap).forEach(node => {
+			node.classList.remove('disabled');
+		});
 	}
 
 	function disableButtonsWithout (exceptId) {
-		Array.prototype.forEach.call(
-			$qsa('.dialog-content-footer a', dialogWrap),
-			node => {
-				if (exceptId && node.href.indexOf(`#${exceptId}-dialog`) < 0) {
-					node.classList.add('disabled');
-				}
+		$qsa('.dialog-content-footer a', dialogWrap).forEach(node => {
+			if (exceptId && node.href.indexOf(`#${exceptId}-dialog`) < 0) {
+				node.classList.add('disabled');
 			}
-		);
+		});
 	}
 
 	function isDisabled (node) {
@@ -7155,7 +7130,7 @@ function $qsa (selector, node) {
 function sendToBackend () { /*returns promise*/
 	if (!backend) return;
 
-	let args = Array.prototype.slice.call(arguments);
+	let args = Array.from(arguments);
 	let data, callback;
 
 	if (args.length > 1 && typeof args[args.length - 1] == 'function') {
@@ -7217,14 +7192,11 @@ function appendFragment (container, f) {
 	container = $(container);
 	if (!container) return;
 	if (f) container.appendChild(f);
-	Array.prototype.forEach.call(
-		$qsa('[data-doe]', container),
-		function (node) {
-			var doe = node.getAttribute('data-doe');
-			node.removeAttribute('data-doe');
-			node[IAHTML]('beforeend', doe);
-		}
-	);
+	$qsa('[data-doe]', container).forEach(node => {
+		const doe = node.getAttribute('data-doe');
+		node.removeAttribute('data-doe');
+		node[IAHTML]('beforeend', doe);
+	});
 	return container;
 }
 
@@ -7400,12 +7372,9 @@ function getImageName (href, targetNode) {
 				$qsa('.comment', p),
 				node => {
 					let node2 = node.cloneNode(true);
-					Array.prototype.forEach.call(
-						$qsa('div,iframe', node2),
-						div => {
-							div.parentNode.removeChild(div);
-						}
-					);
+					$qsa('div,iframe', node2).forEach(div => {
+						div.parentNode.removeChild(div);
+					});
 
 					let comment = node2.textContent;
 					if (/^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
@@ -7586,15 +7555,16 @@ function transitionendp (element, backupMsec) { /*returns promise*/
 
 function log () {
 	devMode && console.log(
-		Array.prototype.slice.call(arguments).join(' '));
+		Array.from(arguments).join(' '));
 }
 
 function getTextForCatalog (text, maxLength) {
-	var score = 0;
-	var result = '';
-	for (var i = 0, goal = text.length; i < goal; i++) {
-		var ch = text.charAt(i);
-		var s = /[\uff61-\uffdc\uffe8-\uffee]/.test(ch) ? .5 : 1;
+	let score = 0;
+	let result = '';
+	for (let ch of text) {
+		// assign 0.5 point for half width kana
+		const s = /[\uff61-\uffdc\uffe8-\uffee]/.test(ch) ? .5 : 1;
+
 		if (score >= maxLength || score + s > maxLength) break;
 		result += ch;
 		score += s;
@@ -7604,14 +7574,11 @@ function getTextForCatalog (text, maxLength) {
 
 function nodeToString (container) {
 	container = container.cloneNode(true);
-	Array.prototype.forEach.call(
-		$qsa('div.link-siokara', container),
-		node => {
-			node.parentNode.replaceChild(
-				document.createTextNode($qs('a', node).textContent),
-				node);
-		}
-	);
+	$qsa('div.link-siokara', container).forEach(node => {
+		node.parentNode.replaceChild(
+			document.createTextNode($qs('a', node).textContent),
+			node);
+	});
 
 	const iterator = document.createNodeIterator(
 		container,
@@ -7803,20 +7770,24 @@ function displayInlineVideo (anchor) {
 	}
 	// video file on futaba
 	else if (thumbnail) {
+		thumbnail.classList.add('hide');
 		anchor.parentNode.insertBefore(video, anchor);
+		video.style.width = '100%';
 
+		/*
 		let r = thumbnail.getBoundingClientRect();
 		thumbnail.classList.add('hide');
 
 		video.style.width = r.width + 'px';
 		video.style.height = r.height + 'px';
+		*/
 	}
 	// other
 	else {
 		let container = anchor.parentNode.insertBefore(
 			document[CRE]('div'), anchor.nextSibling);
 		container.appendChild(video);
-		video.style.width = '250px';
+		video.style.width = '100%';
 	}
 }
 
@@ -7975,7 +7946,7 @@ function populateTextFormItems (form, callback, populateAll) {
 		'select'
 	].join(','), form);
 
-	Array.prototype.forEach.call(inputNodes, node => {
+	inputNodes.forEach(node => {
 		if (node.name == '') return;
 		if (node.disabled) return;
 		callback(node);
@@ -7987,7 +7958,7 @@ function populateFileFormItems (form, callback) {
 		'input[type="file"]'
 	].join(','), form);
 
-	Array.prototype.forEach.call(inputNodes, node => {
+	inputNodes.forEach(node => {
 		if (node.name == '') return;
 		if (node.disabled) return;
 		if (node.files.length == 0) return;
@@ -8259,51 +8230,45 @@ function reloadBase (type, opts) { /*returns promise*/
 
 	function detectionTest (doc) {
 		// for mark detection test
-		Array.prototype.forEach.call(
-			$qsa('blockquote:nth-child(-n+4)', doc),
-			function (node, i) {
-				switch (i) {
-				case 0:
-					// marked
-					node[IAHTML](
-						'afterbegin',
-						'<font color="#ff0000">marked post</font><br>');
-					break;
-				case 1:
-					// marked with bracked
-					node[IAHTML](
-						'afterbegin',
-						'[<font color="#ff0000">marked post</font>]<br>');
-					break;
-				case 2:
-					// deleted with mark
-					node[IAHTML](
-						'afterbegin',
-						'<font color="#ff0000">marked post</font><br>');
-					for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
-					n && n.classList.add('deleted');
-					break;
-				case 3:
-					// deleted with mark
-					node[IAHTML](
-						'afterbegin',
-						'[<font color="#ff0000">marked post</font>]<br>');
-					for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
-					n && n.classList.add('deleted');
-					break;
-				}
-			}
-		);
-		// for expiration warning test
-		Array.prototype.forEach.call(
-			$qsa('small + blockquote', doc),
-			function (node, i) {
+		$qsa('blockquote:nth-child(-n+4)', doc).forEach((node, i) => {
+			switch (i) {
+			case 0:
+				// marked
 				node[IAHTML](
-					'afterend',
-					'<font color="#f00000"><b>このスレは古いので、もうすぐ消えます。</b></font><br>'
-				);
+					'afterbegin',
+					'<font color="#ff0000">marked post</font><br>');
+				break;
+			case 1:
+				// marked with bracked
+				node[IAHTML](
+					'afterbegin',
+					'[<font color="#ff0000">marked post</font>]<br>');
+				break;
+			case 2:
+				// deleted with mark
+				node[IAHTML](
+					'afterbegin',
+					'<font color="#ff0000">marked post</font><br>');
+				for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
+				n && n.classList.add('deleted');
+				break;
+			case 3:
+				// deleted with mark
+				node[IAHTML](
+					'afterbegin',
+					'[<font color="#ff0000">marked post</font>]<br>');
+				for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
+				n && n.classList.add('deleted');
+				break;
 			}
-		);
+		});
+		// for expiration warning test
+		$qsa('small + blockquote', doc).forEach((node, i) => {
+			node[IAHTML](
+				'afterend',
+				'<font color="#f00000"><b>このスレは古いので、もうすぐ消えます。</b></font><br>'
+			);
+		});
 	}
 
 	opts || (opts = {});
@@ -9510,25 +9475,19 @@ function activatePanelTab (tab) {
 	if (!tabId) return;
 	tabId = tabId[1];
 
-	Array.prototype.forEach.call(
-		$qsa('.panel-tab-wrap .panel-tab', 'panel-aside-wrap'),
-		function (node) {
-			node.classList.remove('active');
-			if (node.getAttribute('href') == `#${tabId}`) {
-				node.classList.add('active');
-			}
+	$qsa('.panel-tab-wrap .panel-tab', 'panel-aside-wrap').forEach(node => {
+		node.classList.remove('active');
+		if (node.getAttribute('href') == `#${tabId}`) {
+			node.classList.add('active');
 		}
-	);
+	});
 
-	Array.prototype.forEach.call(
-		$qsa('.panel-content-wrap', 'panel-aside-wrap'),
-		function (node) {
-			node.classList.add('hide');
-			if (node.id == `panel-content-${tabId}`) {
-				node.classList.remove('hide');
-			}
+	$qsa('.panel-content-wrap', 'panel-aside-wrap').forEach(node => {
+		node.classList.add('hide');
+		if (node.id == `panel-content-${tabId}`) {
+			node.classList.remove('hide');
 		}
-	);
+	});
 }
 
 /*
@@ -9559,14 +9518,11 @@ function searchBase (opts) {
 
 	nodes.forEach(node => {
 		let text = [];
-		Array.prototype.forEach.call(
-			$qsa(opts.targetElementSelector, node),
-			subNode => {
-				let t = opts.getTextContent(subNode);
-				t = t.replace(/^\s+|\s+$/g, '');
-				text.push(t);
-			}
-		);
+		$qsa(opts.targetElementSelector, node).forEach(subNode => {
+			let t = opts.getTextContent(subNode);
+			t = t.replace(/^\s+|\s+$/g, '');
+			text.push(t);
+		});
 		text = getLegalizedStringForSearch(text.join('\t'));
 
 		if (tester.test(text)) {
@@ -9699,7 +9655,7 @@ const commands = {
 		}
 		else if (storage.config.hook_space_key.value) {
 			window.scrollBy(
-				0, parseInt(viewportRect.height / 2) * (e.shift ? -1 : 1));
+				0, Math.floor(viewportRect.height / 2) * (e.shift ? -1 : 1));
 		}
 		else {
 			return keyManager.PASS_THROUGH;
@@ -10331,99 +10287,96 @@ const commands = {
 			 * traverse all anchors in new catalog
 			 */
 
-			Array.prototype.forEach.call(
-				$qsa('table[align="center"] td a', doc),
-				node => {
-					let threadNumber = /(\d+)\.htm/.exec(node.getAttribute('href'));
-					if (!threadNumber) return;
+			$qsa('table[align="center"] td a', doc).forEach(node => {
+				let threadNumber = /(\d+)\.htm/.exec(node.getAttribute('href'));
+				if (!threadNumber) return;
 
-					let repliesCount = 0, from, to;
+				let repliesCount = 0, from, to;
 
-					threadNumber = threadNumber[1] - 0;
+				threadNumber = threadNumber[1] - 0;
 
-					// number of replies
-					from = $qs('font', node.parentNode);
-					if (from) {
-						repliesCount = from.textContent - 0;
-					}
-
-					// find anchor already exists
-					let anchor = $(`c-${sortType.key}-${threadNumber}`);
-					if (anchor) {
-						// found. reuse it
-						if (anchor == insertee) {
-							insertee = insertee.nextSibling;
-						}
-						anchor.parentNode.insertBefore(anchor, insertee);
-
-						// update reply number and class name
-						let info = $qs('.info', anchor);
-						let oldRepliesCount = info.firstChild.textContent - 0;
-						info.firstChild.textContent = repliesCount;
-						if (repliesCount != oldRepliesCount) {
-							anchor.className = repliesCount > CATALOG_LONG_CLASS_THRESHOLD ? 'long' : '';
-							info.lastChild.textContent =
-								(repliesCount > oldRepliesCount ? '+' : '') +
-								(repliesCount - oldRepliesCount);
-						}
-						else {
-							anchor.className = '';
-							info.lastChild.textContent = '';
-						}
-
-						return;
-					}
-
-					// not found. create new one
-					anchor = wrap.insertBefore(document[CRE]('a'), insertee);
-					anchor.id = `c-${sortType.key}-${threadNumber}`;
-					anchor.setAttribute('data-number', `${threadNumber},0`);
-					anchor.style.width = anchorWidth + 'px';
-					anchor.className = newClass;
-
-					// image
-					let imageWrap = anchor.appendChild(document[CRE]('div'));
-					imageWrap.className = 'image';
-					imageWrap.style.height = cellImageHeight + 'px';
-
-					// attribute conversion #1
-					for (let atr in attributeConverter1) {
-						let value = node.getAttribute(atr);
-						if (value == null) continue;
-						attributeConverter1[atr](anchor, atr, value);
-					}
-
-					from = $qs('img', node);
-					if (from) {
-						to = imageWrap.appendChild(document[CRE]('img'));
-
-						// attribute conversion #2
-						for (let atr in attributeConverter2) {
-							let value = from.getAttribute(atr);
-							if (value == null) continue;
-							attributeConverter2[atr](to, imageWrap, atr, value);
-						}
-
-						let imageNumber = /(\d+)s\.jpg/.exec(to.src)[1];
-						anchor.setAttribute('data-number', `${threadNumber},${imageNumber}`);
-					}
-
-					// text
-					from = $qs('small', node.parentNode);
-					if (from) {
-						to = anchor.appendChild(document[CRE]('div'));
-						to.className = 'text';
-						to.textContent = getTextForCatalog(
-							from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!'), 4);
-						to.setAttribute('data-text', from.textContent);
-					}
-
-					to = anchor.appendChild(document[CRE]('div'));
-					to.className = 'info';
-					to.appendChild(document[CRE]('span')).textContent = repliesCount;
-					to.appendChild(document[CRE]('span')).textContent = newIndicator;
+				// number of replies
+				from = $qs('font', node.parentNode);
+				if (from) {
+					repliesCount = from.textContent - 0;
 				}
-			);
+
+				// find anchor already exists
+				let anchor = $(`c-${sortType.key}-${threadNumber}`);
+				if (anchor) {
+					// found. reuse it
+					if (anchor == insertee) {
+						insertee = insertee.nextSibling;
+					}
+					anchor.parentNode.insertBefore(anchor, insertee);
+
+					// update reply number and class name
+					let info = $qs('.info', anchor);
+					let oldRepliesCount = info.firstChild.textContent - 0;
+					info.firstChild.textContent = repliesCount;
+					if (repliesCount != oldRepliesCount) {
+						anchor.className = repliesCount > CATALOG_LONG_CLASS_THRESHOLD ? 'long' : '';
+						info.lastChild.textContent =
+							(repliesCount > oldRepliesCount ? '+' : '') +
+							(repliesCount - oldRepliesCount);
+					}
+					else {
+						anchor.className = '';
+						info.lastChild.textContent = '';
+					}
+
+					return;
+				}
+
+				// not found. create new one
+				anchor = wrap.insertBefore(document[CRE]('a'), insertee);
+				anchor.id = `c-${sortType.key}-${threadNumber}`;
+				anchor.setAttribute('data-number', `${threadNumber},0`);
+				anchor.style.width = anchorWidth + 'px';
+				anchor.className = newClass;
+
+				// image
+				let imageWrap = anchor.appendChild(document[CRE]('div'));
+				imageWrap.className = 'image';
+				imageWrap.style.height = cellImageHeight + 'px';
+
+				// attribute conversion #1
+				for (let atr in attributeConverter1) {
+					let value = node.getAttribute(atr);
+					if (value == null) continue;
+					attributeConverter1[atr](anchor, atr, value);
+				}
+
+				from = $qs('img', node);
+				if (from) {
+					to = imageWrap.appendChild(document[CRE]('img'));
+
+					// attribute conversion #2
+					for (let atr in attributeConverter2) {
+						let value = from.getAttribute(atr);
+						if (value == null) continue;
+						attributeConverter2[atr](to, imageWrap, atr, value);
+					}
+
+					let imageNumber = /(\d+)s\.jpg/.exec(to.src)[1];
+					anchor.setAttribute('data-number', `${threadNumber},${imageNumber}`);
+				}
+
+				// text
+				from = $qs('small', node.parentNode);
+				if (from) {
+					to = anchor.appendChild(document[CRE]('div'));
+					to.className = 'text';
+					to.textContent = getTextForCatalog(
+						from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!'), 4);
+					to.setAttribute('data-text', from.textContent);
+				}
+
+				to = anchor.appendChild(document[CRE]('div'));
+				to.className = 'info';
+				to.appendChild(document[CRE]('span')).textContent = repliesCount;
+				to.appendChild(document[CRE]('span')).textContent = newIndicator;
+			});
 
 			// find latest post number
 			if (summaryReloadResult.status >= 200 && summaryReloadResult.status <= 299) {
@@ -10635,26 +10588,35 @@ const commands = {
 		let xhr = transport.create();
 		xhr.open('GET', url);
 		xhr.onload = () => {
-			setTimeout(() => {
-				let n = parseInt(xhr.responseText, 10) || 0;
-				if (n) {
-					t.textContent = `そうだね × ${n}`;
+			setTimeout(newSodaneValue => {
+				let oldSodaneValue = 0;
+				let re = /(\d+)$/.exec(t.textContent);
+				if (re) {
+					oldSodaneValue = re[1] - 0;
+				}
+
+				if (newSodaneValue && newSodaneValue > oldSodaneValue) {
+					$t(t, `そうだね × ${newSodaneValue}`);
 					t.classList.remove('sodane-null');
 					t.classList.add('sodane');
 				}
+
 				t.removeAttribute('data-busy');
 				t.removeAttribute('data-text');
-				t = xhr = xhr.onload = xhr.onerror = null;
-			}, WAIT_AFTER_POST);
+				t = null;
+			}, WAIT_AFTER_POST, parseInt(xhr.responseText, 10) || 0);
 		};
 		xhr.onerror = () => {
-			t.textContent = 'なんかエラー';
+			$t(t, 'なんかエラー');
 			setTimeout(() => {
-				t.textContent = t.getAttribute('data-text');
+				$t(t, t.getAttribute('data-text'));
 				t.removeAttribute('data-busy');
 				t.removeAttribute('data-text');
-				t = xhr = xhr.onload = xhr.onerror = null;
+				t = null;
 			}, WAIT_AFTER_POST);
+		};
+		xhr.onloadend = () => {
+			xhr = null;
 		};
 		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 		xhr.send();
@@ -10681,7 +10643,7 @@ const commands = {
 
 		return sendToBackend('save-image', {
 			url: href,
-			path: storage.config.storage.value.replace('msonedrive', 'onedrive') + ':' + f,
+			path: storage.config.storage.value + ':' + f,
 			mimeType: getImageMimeType(href),
 			anchorId: id
 		});
@@ -10698,13 +10660,9 @@ const commands = {
 			oninit: dialog => {
 				let xml = document.implementation.createDocument(null, 'dialog', null);
 				let checksNode = xml.documentElement.appendChild(xml[CRE]('checks'));
-				Array.prototype.forEach.call(
-					$qsa('article input[type="checkbox"]:checked'),
-					node => {
-						checksNode.appendChild(xml[CRE]('check')).textContent =
-							getPostNumber(node);
-					}
-				);
+				$qsa('article input[type="checkbox"]:checked').forEach(node => {
+					checksNode.appendChild(xml[CRE]('check')).textContent = getPostNumber(node);
+				});
 				xml.documentElement.appendChild(xml[CRE]('delete-key')).textContent =
 					getCookie('pwdc')
 				dialog.initFromXML(xml, 'delete-dialog');
@@ -10751,12 +10709,9 @@ const commands = {
 
 					$t(status, 'リクエストに成功しました');
 
-					Array.prototype.forEach.call(
-						$qsa('article input[type="checkbox"]:checked'),
-						node => {
-							node.checked = false;
-						}
-					);
+					$qsa('article input[type="checkbox"]:checked').forEach(node => {
+						node.checked = false;
+					});
 
 					return delay(WAIT_AFTER_POST).then(() => {
 						dialog.isPending = false;
@@ -10882,14 +10837,11 @@ const commands = {
 						if (wrapElement) {
 							wrapElement = wrapElement.cloneNode(true);
 							// replace anchors to text
-							Array.prototype.forEach.call(
-								$qsa('a', wrapElement),
-								node => {
-									node.parentNode.replaceChild(
-										document.createTextNode(node.textContent),
-										node);
-								}
-							);
+							$qsa('a', wrapElement).forEach(node => {
+								node.parentNode.replaceChild(
+									document.createTextNode(node.textContent),
+									node);
+							});
 							// TODO: strip external contents such as youtube, tweet
 							moderateTarget.appendChild(wrapElement);
 						}
@@ -10902,32 +10854,23 @@ const commands = {
 
 						form.action = resolveRelativePath(form.getAttribute('action'), baseUrl);
 						// strip submit buttons
-						Array.prototype.forEach.call(
-							$qsa('input[type="submit"]', form),
-							node => {
-								node.parentNode.removeChild(node);
-							}
-						);
+						$qsa('input[type="submit"]', form).forEach(node => {
+							node.parentNode.removeChild(node);
+						});
 
 						// strip tab borders
-						Array.prototype.forEach.call(
-							$qsa('table[border]', form),
-							node => {
-								node.removeAttribute('border');
-							}
-						);
+						$qsa('table[border]', form).forEach(node => {
+							node.removeAttribute('border');
+						});
 
 						// make reason-text clickable
-						Array.prototype.forEach.call(
-							$qsa('input[type="radio"][name="reason"]', form),
-							node => {
-								let r = node.ownerDocument.createRange();
-								let label = node.ownerDocument[CRE]('label');
-								r.setStartBefore(node);
-								r.setEndAfter(node.nextSibling);
-								r.surroundContents(label);
-							}
-						);
+						$qsa('input[type="radio"][name="reason"]', form).forEach(node => {
+							let r = node.ownerDocument.createRange();
+							let label = node.ownerDocument[CRE]('label');
+							r.setStartBefore(node);
+							r.setEndAfter(node.nextSibling);
+							r.surroundContents(label);
+						});
 
 						// select last used reason, if available
 						if (storage.runtime.del.lastReason) {
@@ -10972,14 +10915,11 @@ const commands = {
 
 						$t(status, '登録されました');
 
-						Array.prototype.forEach.call(
-							$qsa('input[type="radio"]:checked', form),
-							node => {
-								storage.runtime.del.lastReason = node.value;
-								storage.saveRuntime();
-								node.checked = false;
-							}
-						);
+						$qsa('input[type="radio"]:checked', form).forEach(node => {
+							storage.runtime.del.lastReason = node.value;
+							storage.saveRuntime();
+							node.checked = false;
+						});
 
 						return delay(WAIT_AFTER_POST).then(() => {
 							dialog.isPending = false;

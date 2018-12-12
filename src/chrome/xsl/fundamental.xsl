@@ -165,8 +165,6 @@ twitter-widget {
 
 #header {
 	position:fixed;
-	display:flex;
-	align-items:center;
 	left:0;
 	right:0;
 	top:0;
@@ -177,27 +175,39 @@ twitter-widget {
 	background-color:#faf4e6;/*ffffee + f0e0d6 * 0.33*/
 	box-shadow:0 1px 2px 2px #8002;
 	z-index:100;
-}
-
-#header > div {
 	font-size:small;
 	text-align:left;
+	line-height:1;
 }
 
-#header > div:nth-child(1) {
-	padding:8px 12px 8px 8px;
+@media screen and (min-width:1024px) {
+	#header {
+		display:flex;
+		align-items:center;
+	}
+}
+
+#header > #header-lead {
+	padding:8px;
 	white-space:nowrap;
 }
 
-#header > div:nth-child(2) {
+#header > #header-trail {
 	padding:4px 0 4px 0;
 	flex-grow:1;
+	display:flex;
+	align-items:center;
 }
 
-#header > div:nth-child(3) {
-	padding:4px 8px 4px 8px;
+#header > #header-trail div:nth-child(1) {
+	padding:0 0 0 8px;
+}
+
+#header > #header-trail div:nth-child(2) {
+	padding:0 8px 0 0;
 	text-align:right;
 	white-space:nowrap;
+	flex-grow:1;
 }
 
 #header h1 {
@@ -206,7 +216,7 @@ twitter-widget {
 	font-family:"Arial","Helvetica";
 	font-size:x-large;
 	font-weight:bold;
-	line-height:1;
+	text-align:center;
 }
 
 #header h1 a {
@@ -233,7 +243,7 @@ twitter-widget {
 #content-loading-indicator {
 	position:fixed;
 	left:8px;
-	top:64pt;
+	top:0;
 	padding:4px;
 	color:#682;
 	border:2px solid #682;
@@ -273,17 +283,27 @@ twitter-widget {
 }
 
 #content > article > .image {
+	box-sizing:content-box;
+	width:25%;
 	max-width:250px;
-	padding:0 12px 0 0;
+	margin:0 0 0 4px;
+	padding:0;
 }
 
 #content > article > .text {
 	flex-grow:1;
-	padding:0 12px 0 0;
+	padding:0 0 0 12px;
 }
 
 #content > article > .aside {
-	width:24%;
+	display:none;
+}
+
+@media screen and (min-width:1024px) {
+	#content > article > .aside {
+		display:block;
+		width:25%;
+	}
 }
 
 .page-mode-header {
@@ -492,8 +512,9 @@ twitter-widget {
 }
 
 #content > article > .image img {
-	margin:0 0 .5em 0;
+	margin:0;
 	border:none;
+	width:100%;
 	transition-property:box-shadow;
 	transition-duration:.4s;
 	transition-timing-function:ease;
@@ -584,7 +605,6 @@ article.summary .replies {
 	margin:0 0 1em 0;
 	padding:0;
 	font-size:small;
-	white-space:nowrap;
 	line-height:1;
 }
 
@@ -709,11 +729,6 @@ article.summary .replies {
  * aside
  */
 
-#content > article > div:last-child {
-	width:250px;
-	padding:0;
-}
-
 /*
  * footer
  */
@@ -765,8 +780,11 @@ article.summary .replies {
 
 #postform-wrap {
 	position:fixed;
-	left:25%;
-	right:25%;
+	margin:0 auto 0 auto;
+	left:0;
+	right:0;
+	width:90%;
+	max-width:640px;
 	bottom:0;
 	font-size:small;
 	box-shadow:0 0 8px 2px rgba(0,0,0,.3);
@@ -1022,15 +1040,22 @@ article.summary .replies {
 
 #ad-aside-wrap {
 	position:fixed;
-	width:336px;
-	top:40pt;
-	right:-100px;
-	opacity:.1;
-	text-align:right;
-	transition-property:right,opacity;
-	transition-duration:.4s;
-	transition-timing-function:ease;
-	transition-delay:0s;
+	display:none;
+}
+
+@media screen and (min-width:1024px) {
+	#ad-aside-wrap {
+		display:block;
+		width:336px;
+		top:40pt;
+		right:-100px;
+		opacity:.1;
+		text-align:right;
+		transition-property:right,opacity;
+		transition-duration:.4s;
+		transition-timing-function:ease;
+		transition-delay:0s;
+	}
 }
 
 #ad-aside-wrap div {
@@ -1146,6 +1171,24 @@ article.summary .replies {
 #panel-aside-wrap .panel-tab-wrap > a:not(.active):hover {
 	background-color:#800;
 	text-decoration:none;
+}
+
+#panel-aside-wrap .panel-tab-wrap .short {
+	dislay:inline;
+}
+
+#panel-aside-wrap .panel-tab-wrap .long {
+	display:none;
+}
+
+@media screen and (min-width:1024px) {
+	#panel-aside-wrap .panel-tab-wrap .short {
+		display:none;
+	}
+
+	#panel-aside-wrap .panel-tab-wrap .long {
+		display:inline;
+	}
 }
 
 #panel-aside-wrap .panel-content-wrap {
@@ -1342,7 +1385,7 @@ article.summary .replies {
 	z-index:200;
 }
 
-/* dimmver */
+/* dimmer */
 .lightbox-wrap .dimmer {
 	background-color:rgba(0,0,0,0);
 	transition-property:background-color;
@@ -1418,10 +1461,16 @@ article.summary .replies {
 	align-items:stretch;
 	margin:0 1px 0 0;
 	color:#aaa;
-	font-size:small;
+	font-size:xx-small;
 	text-align:center;
 	text-shadow:0px 1px 1px #000;
 	line-height:1;
+}
+
+@media screen and (min-width:1024px) {
+	.lightbox-wrap .info > div {
+		font-size:small;
+	}
 }
 
 .lightbox-wrap .info > div:first-child {
@@ -2076,24 +2125,24 @@ div.catalog-popup span {
 	</head>
 	<body>
 		<header id="header">
-			<div>
+			<div id="header-lead">
 				<h1><a href="{meta/board_top}" data-binding="template:title"></a></h1>
 			</div>
-			<div>
-				現在<span id="viewers" data-binding="xpath:/futaba/meta/viewers">?</span>人くらいが見てます.
-				&#160; <a class="js" href="#toggle-catalog"><kbd>c</kbd><span>カタログ</span></a>
-				&#160; <a class="js" href="#delete-post">記事削除</a>
-				<xsl:if test="$page_mode='reply'">
-					&#160; <a class="js" href="#track">自動追尾</a>
-				</xsl:if>
-			</div>
-			<div>
-				<a href="{meta/home}" target="_top">ホーム</a>
-				<xsl:if test="meta/board_top"> &#160; <a href="{meta/board_top}">掲示板に戻る</a></xsl:if>
-				&#160; <a class="js" href="#toggle-panel"><kbd>p</kbd>パネル</a>
-				&#160; <a class="js" href="#config">設定</a>
-				&#160; <a class="js" href="#help"><kbd>?</kbd></a>
-				&#160; <span data-binding="template:storage"></span>
+			<div id="header-trail">
+				<div>
+					<a class="js" href="#toggle-catalog"><kbd>c</kbd><span>カタログ</span></a>
+					&#160;<a class="js" href="#delete-post">記事削除</a>
+					<xsl:if test="$page_mode='reply'">&#160;<a class="js" href="#track">自動追尾</a></xsl:if>
+					&#160;現在<span id="viewers" data-binding="xpath:/futaba/meta/viewers">?</span>人くらいが見てます.
+				</div>
+				<div>
+					<a href="{meta/home}" target="_top">ホーム</a>
+					<xsl:if test="meta/board_top">&#160;<a href="{meta/board_top}">掲示板に戻る</a></xsl:if>
+					&#160;<a class="js" href="#toggle-panel"><kbd>p</kbd>パネル</a>
+					&#160;<a class="js" href="#config">設定</a>
+					&#160;<a class="js" href="#help"><kbd>?</kbd></a>
+					&#160;<span data-binding="template:storage"></span>
+				</div>
 			</div>
 		</header>
 		<div class="hide" id="content-loading-indicator"></div>
@@ -2183,9 +2232,9 @@ div.catalog-popup span {
 		<div id="panel-aside-wrap">
 			<div class="panel-header">パネル</div>
 			<div class="panel-tab-wrap">
-				<a class="panel-tab active" href="#mark"><kbd>s</kbd><span>集計</span></a>
-				<a class="panel-tab" href="#search"><kbd>/</kbd><span>レス検索</span></a>
-				<a class="panel-tab" href="#notice"><kbd>n</kbd><span>注意書き</span></a>
+				<a class="panel-tab active" href="#mark"><kbd>s</kbd><span class="short">集</span><span class="long">集計</span></a>
+				<a class="panel-tab" href="#search"><kbd>/</kbd><span class="short">検</span><span class="long">レス検索</span></a>
+				<a class="panel-tab" href="#notice"><kbd>n</kbd><span class="short">注</span><span class="long">注意書き</span></a>
 			</div>
 			<div id="panel-content-mark" class="panel-content-wrap">
 				<h2>マークの集計</h2>
@@ -2504,10 +2553,10 @@ div.catalog-popup span {
 </xsl:if>-->
 <article class="{$page_mode}">
 	<xsl:if test="topic/image">
-	<div class="image">
+	<div class="image" style="max-width:{topic/thumb/@width}px">
 		<div>
 			<a class="js lightbox" href="{topic/image}" target="_blank">
-				<img src="{topic/thumb}" width="{topic/thumb/@width}" height="{topic/thumb/@height}" title="{topic/comment}"/>
+				<img src="{topic/thumb}" title="{topic/comment}"/>
 				<br/>
 				<xsl:value-of select="topic/image/@base_name"/>
 			</a>
