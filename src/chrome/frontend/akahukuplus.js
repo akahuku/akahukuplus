@@ -7832,7 +7832,7 @@ function isSurrogate (ch) {
 }
 
 function resolveCharacterReference (s) {
-	return s.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, ($0, $1) => {
+	return s.replace(/&(?:amp;)?#(x[0-9a-f]+|[0-9]+);/gi, ($0, $1) => {
 		if ($1.charAt(0).toLowerCase() == 'x') {
 			$1 = parseInt($1.substring(1), 16);
 		}
@@ -8179,7 +8179,7 @@ function parseModerateResponse (response) {
 	return {error: re || 'なんか変です'};
 }
 
-function parsePostResponse (response) {
+function parsePostResponse (response, baseUrl) {
 	let re;
 
 	re = /<font[^>]*><b>(.*?)(?:<br\s*\/?>)+<a[^>]*>リロード<\/a>/i.exec(response);
@@ -8197,7 +8197,7 @@ function parsePostResponse (response) {
 	if (re && /http-equiv="refresh"/i.test(re[1])) {
 		re = /content="\d+;url=([^"]+)"/i.exec(re[1]);
 		if (re) {
-			refreshURL = resolveRelativePath(re[1]);
+			refreshURL = resolveRelativePath(re[1], baseUrl);
 		}
 	}
 	if (refreshURL != '') {
@@ -10524,7 +10524,8 @@ const commands = {
 					`warning in response: ${response.replace(/.{1,72}/g, '$&\n')}`);
 			}
 
-			let result = parsePostResponse(response);
+			const baseUrl = `${location.protocol}//${location.host}/${siteInfo.board}/`;
+			const result = parsePostResponse(response, baseUrl);
 
 			if (result.error) {
 				throw new Error(`サーバからの応答が変です (${result.error})`);
@@ -10538,12 +10539,12 @@ const commands = {
 					overrideUpfile = undefined;
 					setBottomStatus('投稿完了');
 
-					let pageMode = pageModes[0];
-					if (pageMode == 'reply' && $('post-switch-thread').checked) {
-						pageMode = 'summary';
+					let actualPageMode = pageModes[0];
+					if (actualPageMode == 'reply' && $('post-switch-thread').checked) {
+						actualPageMode = 'summary';
 					}
 
-					switch (pageMode) {
+					switch (actualPageMode) {
 					case 'summary':
 					case 'catalog':
 						if (result.redirect != '') {
@@ -10557,7 +10558,8 @@ const commands = {
 						}
 						break;
 					case 'reply':
-						commands.reload();
+						reloadStatus.lastReloaded = Date.now();
+						commands.reloadReplies();
 						break;
 					}
 				});

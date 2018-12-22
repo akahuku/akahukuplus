@@ -1054,7 +1054,7 @@ article.summary .replies {
 		transition-property:right,opacity;
 		transition-duration:.4s;
 		transition-timing-function:ease;
-		transition-delay:0s;
+		transition-delay:1s;
 	}
 }
 
@@ -1079,7 +1079,7 @@ article.summary .replies {
 	transition-property:left;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0s;
+	transition-delay:1s;
 }
 
 #ad-aside-wrap div.size-large:hover {
@@ -1093,7 +1093,7 @@ article.summary .replies {
 	transition-property:left;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0s;
+	transition-delay:1s;
 }
 
 #ad-aside-wrap div.size-skyscraper {
@@ -1102,7 +1102,7 @@ article.summary .replies {
 	transition-property:left;
 	transition-duration:.4s;
 	transition-timing-function:ease;
-	transition-delay:0s;
+	transition-delay:1s;
 }
 
 #ad-aside-wrap:hover div.size-mini,
