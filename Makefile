@@ -96,6 +96,8 @@ nex: $(BLINKOPERA_TARGET_PATH)
 
 xpi: $(FIREFOX_TARGET_PATH)
 
+binkeys: $(BINKEYS_PATH)
+
 clean:
 	rm -rf ./$(EMBRYO_DIR)
 
@@ -108,7 +110,7 @@ $(BINKEYS_PATH): $(CHROME_SRC_PATH)/$(CRYPT_KEY_FILE) $(CHROME_SRC_PATH)/$(CRYPT
 
 FORCE:
 
-.PHONY: all crx nex xpi \
+.PHONY: all crx nex xpi binkeys \
 	clean message \
 	debug-firefox version \
 	FORCE
@@ -306,6 +308,7 @@ debug-firefox: FORCE
 	cd $(FIREFOX_SRC_PATH) && web-ext run \
 		--firefox-profile $(abspath $(FIREFOX_TEST_PROFILE_PATH)) \
 		--keep-profile-changes \
+		--browser-console \
 		--start-url https://dat.2chan.net/b/futaba.htm
 
 version: FORCE

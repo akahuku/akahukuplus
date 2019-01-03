@@ -10,9 +10,6 @@ if (document.querySelector('meta[name="generator"][content="akahukuplus"]')) {
 	console.log('akahukuplus: multiple execution of content script.');
 	window.location.reload();
 }
-else if (document.getElementById('cf-wrapper') || /503 Service Temporarily Unavailable/.test(document.title)) {
-	// Error page by CloudFlare. Do nothing.
-}
 else {
 
 /*
@@ -22,6 +19,7 @@ else {
 const APP_NAME = 'akahukuplus';
 const FUTABA_CHARSET = 'Shift_JIS';
 const NOTFOUND_TITLE = /404\s+file\s+not\s+found/i;
+const UNAVAILABLE_TITLE = /503 Service Temporarily Unavailable/;
 const WAIT_AFTER_RELOAD = 500;
 const WAIT_AFTER_POST = 500;
 const LEAD_REPLIES_COUNT = 50;
@@ -271,7 +269,7 @@ function transformWholeDocument (xsl) {
 
 	let generateResult = xmlGenerator.run(
 		bootVars.bodyHTML + bootVars.iframeSources,
-		pageModes[0] == 'reply' ? LEAD_REPLIES_COUNT : null);
+		pageModes[0].mode == 'reply' ? LEAD_REPLIES_COUNT : null);
 
 	try {
 		timingLogger.startTag('parsing xsl');
@@ -284,7 +282,7 @@ function transformWholeDocument (xsl) {
 		timingLogger.endTag();
 	}
 	catch (e) {
-		console.error(`${APP_NAME}: transformWholeDocument: ${err.stack}`);
+		console.error(`${APP_NAME}: transformWholeDocument: ${e.stack}`);
 		throw new Error(
 			`${APP_NAME}: XSL ファイルの DOM ツリー構築に失敗しました。中止します。`);
 	}
@@ -296,7 +294,7 @@ function transformWholeDocument (xsl) {
 		timingLogger.endTag();
 	}
 	catch (e) {
-		console.error(`${APP_NAME}: transformWholeDocument: ${err.stack}`);
+		console.error(`${APP_NAME}: transformWholeDocument: ${e.stack}`);
 		throw new Error(
 			`${APP_NAME}: XSL ファイルの評価に失敗しました。中止します。`);
 	}
@@ -306,7 +304,7 @@ function transformWholeDocument (xsl) {
 	document.body[IHTML] = '';
 	xsltProcessor.setParameter(null, 'app_name', APP_NAME);
 	xsltProcessor.setParameter(null, 'dev_mode', devMode ? '1' : '0');
-	xsltProcessor.setParameter(null, 'page_mode', pageModes[0]);
+	xsltProcessor.setParameter(null, 'page_mode', pageModes[0].mode);
 	xsltProcessor.setParameter(null, 'render_mode', 'full');
 	xsltProcessor.setParameter(null, 'platform', WasaviExtensionWrapper.IS_GECKO ? 'moz' : 'chrome');
 	xsltProcessor.setParameter(null, 'sort_order', storage.runtime.catalog.sortOrder);
@@ -376,7 +374,7 @@ function transformWholeDocument (xsl) {
 	$('content').classList.remove('init');
 
 	timingLogger.startTag('install');
-	install(pageModes[0]);
+	install(pageModes[0].mode);
 	timingLogger.forceEndTag();
 	timingLogger.locked = true;
 
@@ -765,24 +763,24 @@ function install (mode) {
 	historyStateWrapper = createHistoryStateWrapper(() => {
 		/*
 		console.log([
-			`  previous page mode: ${pageModes[0]}`,
+			`  previous page mode: ${pageModes[0].mode}`,
 			`current page address: ${location.href}`
 		].join('\n'));
 		*/
 
 		let isCatalog = window.location.hash == '#mode=cat';
 
-		if (pageModes[0] == 'catalog' && !isCatalog
-		||  pageModes[0] != 'catalog' && isCatalog) {
+		if (pageModes[0].mode == 'catalog' && !isCatalog
+		||  pageModes[0].mode != 'catalog' && isCatalog) {
 			commands.toggleCatalogVisibility();
 		}
 
-		if (pageModes[0] == 'summary') {
+		if (pageModes[0].mode == 'summary') {
 			let re = /(\d+)\.htm$/.exec(window.location.pathname);
 			siteInfo.summaryIndex = re ? re[1] : 0;
 			commands.reload();
 		}
-		else if (pageModes[0] == 'catalog' && pageModes[1] == 'summary') {
+		else if (pageModes[0].mode == 'catalog' && pageModes[1].mode == 'summary') {
 			let re = /(\d+)\.htm$/.exec(window.location.pathname);
 			let summaryIndex = siteInfo.summaryIndex = re ? re[1] : 0;
 
@@ -890,11 +888,11 @@ function install (mode) {
 	// allow tegaki link, if baseform element exists or the page is summary
 	(drawButtonWrap => {
 		if (!drawButtonWrap) return;
-		if (document.getElementsByName('baseform').length == 0 && pageModes[0] != 'summary') return;
+		if (document.getElementsByName('baseform').length == 0 && pageModes[0].mode != 'summary') return;
 
 		drawButtonWrap.classList.remove('hide');
 
-		if (pageModes[0] == 'summary') {
+		if (pageModes[0].mode == 'summary') {
 			let canvas = $qs('.draw-canvas');
 			if (!canvas) return;
 			canvas.width = 640;
@@ -1073,7 +1071,7 @@ function applyDataBindings (xml) {
 		// xpath:<path/to/xml/element>
 		// xpath[<page-mode>]:<path/to/xml/element>
 		if ((re = /^xpath(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
-			if (typeof re[1] == 'string' && re[1] != pageModes[0]) continue;
+			if (typeof re[1] == 'string' && re[1] != pageModes[0].mode) continue;
 			try {
 				const result = xml.evaluate(re[2], xml, null,
 					window.XPathResult.FIRST_ORDERED_NODE_TYPE, null);
@@ -1092,7 +1090,7 @@ function applyDataBindings (xml) {
 		// xpath-class:<path/to/xml/element>
 		// xpath-class[<page-mode>]:<path/to/xml/element>
 		else if ((re = /^xpath-class(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
-			if (typeof re[1] == 'string' && re[1] != pageModes[0]) continue;
+			if (typeof re[1] == 'string' && re[1] != pageModes[0].mode) continue;
 			try {
 				const result = xml.evaluate(re[2], xml, null,
 					window.XPathResult.STRING_TYPE, null);
@@ -1109,7 +1107,7 @@ function applyDataBindings (xml) {
 		// template:<template-name>
 		// template[<page-mode>]:<template-name>
 		else if ((re = /^template(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
-			if (typeof re[1] == 'string' && re[1] != pageModes[0]) continue;
+			if (typeof re[1] == 'string' && re[1] != pageModes[0].mode) continue;
 			try {
 				xsltProcessor.setParameter(null, 'render_mode', re[2]);
 				const f = fixFragment(xsltProcessor.transformToFragment(xml, document));
@@ -1820,7 +1818,7 @@ function createXMLGenerator () {
 		const url = window.location.href;
 		const xml = document.implementation.createDocument(null, 'futaba', null);
 		const text = textFactory(xml);
-		const isReplyMode = pageModes[0] == 'reply';
+		const isReplyMode = pageModes[0].mode == 'reply';
 		const baseUrl = url;
 		const remainingRepliesContext = [];
 		const enclosureNode = xml.documentElement;
@@ -2113,7 +2111,7 @@ function createXMLGenerator () {
 		 * split content into threads
 		 */
 
-		const threadRegex = /(<div\s+class="thre"[^>]*>\s*)(.+?<a[^>]+><img[^>]+><\/a>)?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
+		const threadRegex = /(<div\s+class="thre"[^>]*>\s*)(?:画像ファイル名：.+?(<a[^>]+><img[^>]+><\/a>))?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
 		const postTimeRegex = getPostTimeRegex();
 		let threadIndex = 0;
 
@@ -2362,7 +2360,7 @@ function createXMLGenerator () {
 			 */
 
 			// if summary mode, store lastest number
-			if (pageModes[0] == 'summary' && threadIndex == 0) {
+			if (pageModes[0].mode == 'summary' && threadIndex == 0) {
 				if (result.repliesNode.childElementCount) {
 					siteInfo.latestNumber = $qs('number', result.repliesNode.lastElementChild).textContent - 0;
 				}
@@ -2921,6 +2919,11 @@ function createPersistentStorage () {
 			value:2,
 			name:'フルリロードする間隔(分)',
 			min:0, max:60
+		},
+		full_reload_after_post: {
+			type:'bool',
+			value:false,
+			name:'レス送信後にフルリロード'
 		}
 	};
 	let runtime = {
@@ -3531,7 +3534,7 @@ function createMarkStatistics () {
 	}
 
 	function updatePanelView (statistics) {
-		if (pageModes[0] != 'reply') return;
+		if (pageModes[0].mode != 'reply') return;
 
 		function setListItemVisibility (node, value) {
 			while (node && node.nodeName != 'LI') {
@@ -4260,7 +4263,7 @@ function createQuotePopup () {
 	var lastQuoteElement;
 
 	function init () {
-		if (pageModes[0] != 'reply') return;
+		if (pageModes[0].mode != 'reply') return;
 
 		document.body.addEventListener(MMOVE_EVENT_NAME, mmove, false);
 		clickDispatcher.add('#jumpto-quote-origin', function (e, t) {
@@ -4931,7 +4934,7 @@ function createFavicon () {
 		let link = $(FAVICON_ID);
 		if (link) return;
 
-		switch (pageModes[0]) {
+		switch (pageModes[0].mode) {
 		case 'summary':
 		case 'catalog':
 			isLoading = true;
@@ -5619,7 +5622,7 @@ function setupWheelReload () {
 		if (wheelDelta < 0 || st < sh - viewportRect.height) {
 			lastWheeled = now;
 			accum = 0;
-			setBottomStatus();
+			setWheelStatus();
 			return;
 		}
 
@@ -5633,20 +5636,20 @@ function setupWheelReload () {
 		if (now - lastWheeled >= 500) {
 			lastWheeled = now;
 			accum = 0;
-			setBottomStatus();
+			setWheelStatus();
 		}
 
 		accum += Math.abs(wheelDelta);
 
 		if (accum < threshold) {
-			setBottomStatus(`リロードぢから：${Math.min(Math.floor(accum / threshold * 100), 99)}%`);
+			setWheelStatus(`リロードぢから：${Math.min(Math.floor(accum / threshold * 100), 99)}%`);
 			return;
 		}
 
 		lastWheeled = now;
 		accum = 0;
 		e.preventDefault();
-		setBottomStatus();
+		setWheelStatus();
 		commands.reload();
 	}
 
@@ -5654,29 +5657,83 @@ function setupWheelReload () {
 }
 
 function setupCustomEventHandler () {
-	let statusHideTimer;
-	document.addEventListener(`${APP_NAME}.bottomStatus`, function (e) {
-		let ws = $('wheel-status');
-		if (!ws) return;
+	const wheelHideIntervalMsecs = 1000 * 3;
+	const navHideIntervalMsecs = 1000 * 5;
+
+	let wheelStatusHideTimer;
+	let navStatusHideTimer;
+	let shrinkChars;
+
+	document.addEventListener(`${APP_NAME}.wheelStatus`, function (e) {
 		if ($qs('#dialog-wrap:not(.hide)')) return;
 
-		let s = e.detail.message;
+		const ws = $('wheel-status');
+		if (!ws) return;
+
+		const s = e.detail.message;
 		if (!s || s == '') {
 			ws.classList.add('hide');
 		}
 		else {
 			ws.classList.remove('hide');
 			$t($qs('.wheel-status-text', ws), s);
-			if (statusHideTimer) {
-				clearTimeout(statusHideTimer);
-				statusHideTimer = null;
+			if (wheelStatusHideTimer) {
+				clearTimeout(wheelStatusHideTimer);
+				wheelStatusHideTimer = null;
 			}
-			if (!e.detail.persistent) {
-				statusHideTimer = setTimeout(() => {
-					statusHideTimer = null;
-					ws.classList.add('hide');
-				}, 1000 * 5);
-			}
+			wheelStatusHideTimer = setTimeout(() => {
+				wheelStatusHideTimer = null;
+				ws.classList.add('hide');
+			}, wheelHideIntervalMsecs);
+		}
+	}, false);
+
+	document.addEventListener(`${APP_NAME}.bottomStatus`, function (e) {
+		if ($qs('#dialog-wrap:not(.hide)')) return;
+
+		const nav = $('nav-normal');
+		const ns = $('nav-status');
+		if (!nav || !ns) return;
+
+		let s = e.detail.message || '';
+		let persistent = !!e.detail.persistent;
+		let interval = navHideIntervalMsecs;
+
+		if (navStatusHideTimer) {
+			clearTimeout(navStatusHideTimer);
+			navStatusHideTimer = null;
+		}
+
+		if (s == '') {
+			shrinkChars = Array.from($qs('.wheel-status-text', ns).textContent);
+			persistent = false;
+			interval = 0;
+		}
+		else {
+			shrinkChars = Array.from(s);
+		}
+
+		nav.classList.add('hide');
+		ns.classList.remove('hide');
+		$t($qs('.wheel-status-text', ns), shrinkChars.join(''));
+
+		if (!persistent) {
+			navStatusHideTimer = setTimeout(() => {
+				navStatusHideTimer = null;
+
+				window.requestAnimationFrame(function handleShrink () {
+					if (!ns.classList.contains('hide') && shrinkChars && shrinkChars.length) {
+						shrinkChars.pop();
+						$t($qs('.wheel-status-text', ns), shrinkChars.join(''));
+						window.requestAnimationFrame(handleShrink);
+					}
+					else {
+						nav.classList.remove('hide');
+						ns.classList.add('hide');
+						shrinkChars = null;
+					}
+				});
+			}, interval);
 		}
 	}, false);
 }
@@ -7276,12 +7333,23 @@ function getCatalogSettings () {
 }
 
 function setBottomStatus (s, persistent) {
-	let ev = new CustomEvent(`${APP_NAME}.bottomStatus`, {
+	const ev = new CustomEvent(`${APP_NAME}.bottomStatus`, {
 		bubbles: true,
 		cancelable: true,
 		detail: {
 			message: s || '',
 			persistent: !!persistent
+		}
+	});
+	document.dispatchEvent(ev);
+}
+
+function setWheelStatus (s) {
+	const ev = new CustomEvent(`${APP_NAME}.wheelStatus`, {
+		bubbles: true,
+		cancelable: true,
+		detail: {
+			message: s || ''
 		}
 	});
 	document.dispatchEvent(ev);
@@ -7699,14 +7767,14 @@ function getContentsFromEditable (el) {
 		// Insert newlines around block elements.
 		// This code may be a little heuristic.
 		let html = el.innerHTML;
-		html = html.replace(/(?:\n|<br[^>]*>)(<div)/gi, '$1');
-		html = html.replace(/(<\/div[^>]*>)([^<]+)$/i, '$1\n$2');
-		html = html.replace(/<div[^>]*>(.*?)<\/div[^>]*>/gi, '\n$1');
-		html = html.replace(/<br[^>]*>/g, '\n');
+		html = html.replace(/<br[^>\/]*\/?>(<\/div[^>]*>)/gi, '$1');
+		html = html.replace(/^<div[^>]*>/, '');
+		html = html.replace(/<\/div[^>]*>/gi, '');
+		html = html.replace(/<div[^>]*>/gi, '\n');
 		div.innerHTML = html;
 
 		// innerText is important to preserve newline.
-		// On the other hande, textContent drops all newlines.
+		// On the other hand, textContent drops all newlines.
 		value = div.innerText;
 
 		// Trim all leading spaces
@@ -7714,9 +7782,12 @@ function getContentsFromEditable (el) {
 
 		if (devMode && $qs('[data-href="#toggle-comment-log"]').checked) {
 			console.log([
-				`original: "${el.innerHTML}"`,
-				`modified: "${html}"`,
-				`  result: "${value}"`
+				`*** original ***`,
+				`"${el.innerHTML}"`,
+				`*** modified ***`,
+				`"${html}"`,
+				`*** result ***`,
+				`"${value}"`
 			].join('\n'));
 		}
 	}
@@ -7832,14 +7903,33 @@ function isSurrogate (ch) {
 }
 
 function resolveCharacterReference (s) {
-	return s.replace(/&(?:amp;)?#(x[0-9a-f]+|[0-9]+);/gi, ($0, $1) => {
-		if ($1.charAt(0).toLowerCase() == 'x') {
-			$1 = parseInt($1.substring(1), 16);
+	return s.replace(/&(?:amp;)?(?:#(x[0-9a-f]+|[0-9]+)|([0-9a-z]+));?/gi, ($0, $1, $2) => {
+		if ($1 != undefined) {
+			if ($1.charAt(0).toLowerCase() == 'x') {
+				$1 = parseInt($1.substring(1), 16);
+			}
+			else {
+				$1 = parseInt($1, 10);
+			}
+			return String.fromCodePoint($1);
 		}
-		else {
-			$1 = parseInt($1, 10);
+		else if ($2 != undefined) {
+			const source = `&${$2};`;
+			let converter = $('charref-converter');
+			if (converter) {
+				converter.innerHTML = source;
+				return converter.textContent;
+			}
+
+			try {
+				converter = document.body.appendChild(document[CRE]('div'));
+				converter.innerHTML = source;
+				return converter.textContent;
+			}
+			finally {
+				converter.parentNode.removeChild(converter);
+			}
 		}
-		return String.fromCodePoint($1);
 	});
 }
 
@@ -8398,6 +8488,41 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 	reloadStatus.lastReloadType = 'delta';
 	reloadStatus.lastReceivedBytes = reloadStatus.lastReceivedCompressedBytes = 0;
 
+	/* official request sample:
+mode: regist
+MAX_FILE_SIZE: 2048000
+pthb: 
+pthc: 1546482177153
+pthd: 
+ptua: 1341647872
+flrv: 319741762
+flvv: 4161803809
+scsz: 1600x900x24
+js: on
+chrenc: 文字
+resto: 559251924
+email: 
+com: それはCGはアニメの中でCGだけ滑らかという刷り込みのせいな気がする
+pwd: 
+responsemode: ajax
+	 */
+	/* request sample:
+mode: regist
+MAX_FILE_SIZE: 2048000
+pthb: 
+pthc: 
+pthd: 
+ptua: 209825519327
+flrv: 
+flvv: 
+scsz: 1600x900x24
+js: on
+chrenc: <Shift_JIS encoded '文字'>
+resto: 559251924
+email: 
+com: <Shift_JIS encoded comment>
+pwd: 25760501
+	 */
 	return new Promise((resolve, reject) => {
 		const now = Date.now();
 		const url = [
@@ -9233,7 +9358,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 			timingLogger.startTag('statistics update');
 
 			// reload on reply mode
-			if (pageModes[0] == 'reply' && lowBoundNumber >= 0) {
+			if (pageModes[0].mode == 'reply' && lowBoundNumber >= 0) {
 				newStat = markStatistics.getStatistics();
 
 				if (newStat.delta.total || newStat.delta.mark || newStat.delta.id) {
@@ -9429,7 +9554,7 @@ function showPanel (callback) {
 	$('ad-aside-wrap').classList.add('hide');
 
 	// if catalog mode, ensure right margin
-	if (pageModes[0] == 'catalog') {
+	if (pageModes[0].mode == 'catalog') {
 		Array.from($qsa('#catalog .catalog-threads-wrap > div'))
 			.forEach(div => {div.style.marginRight = '24%';});
 	}
@@ -9453,7 +9578,7 @@ function hidePanel (callback) {
 		setTimeout(() => {panel.classList.remove('run')}, 0);
 		transitionend(panel, e => {
 			// if catalog mode, restore right margin
-			if (pageModes[0] == 'catalog') {
+			if (pageModes[0].mode == 'catalog') {
 				Array.from($qsa('#catalog .catalog-threads-wrap > div'))
 					.forEach(div => {div.style.marginRight = '';});
 			}
@@ -9690,29 +9815,29 @@ const commands = {
 	 * reload/post
 	 */
 
-	reload: function () { /*returns promise*/
-		switch (pageModes[0]) {
+	reload: function (...args) { /*returns promise*/
+		switch (pageModes[0].mode) {
 		case 'summary':
-			return commands.reloadSummary();
+			return commands.reloadSummary.apply(commands, args);
 		case 'reply':
 			{
 				const now = Date.now();
 				if (now - reloadStatus.lastReloaded < storage.config.full_reload_interval.value * 1000 * 60) {
-					return commands.reloadRepliesViaAPI();
+					return commands.reloadRepliesViaAPI.apply(commands, args);
 				}
 				else {
 					reloadStatus.lastReloaded = now;
-					return commands.reloadReplies();
+					return commands.reloadReplies.apply(commands, args);
 				}
 			}
 		case 'catalog':
-			return commands.reloadCatalog();
+			return commands.reloadCatalog.apply(commands, args);
 		default:
-			throw new Error(`Unknown page mode: ${pageModes[0]}`);
+			throw new Error(`Unknown page mode: ${pageModes[0].mode}`);
 		}
 	},
 	reloadFull: function () {
-		if (pageModes[0] == 'reply') {
+		if (pageModes[0].mode == 'reply') {
 			return commands.reloadReplies();
 		}
 		else {
@@ -9720,7 +9845,7 @@ const commands = {
 		}
 	},
 	reloadDelta: function () {
-		if (pageModes[0] == 'reply') {
+		if (pageModes[0].mode == 'reply') {
 			return commands.reloadRepliesViaAPI();
 		}
 		else {
@@ -9745,7 +9870,7 @@ const commands = {
 			return Promise.resolve();
 		}
 
-		if (pageModes[0] != 'summary') {
+		if (pageModes[0].mode != 'summary') {
 			return Promise.resolve();
 		}
 
@@ -9860,7 +9985,7 @@ const commands = {
 			return Promise.resolve();
 		}
 
-		if (pageModes[0] != 'reply') {
+		if (pageModes[0].mode != 'reply') {
 			return Promise.resolve();
 		}
 
@@ -9991,7 +10116,7 @@ const commands = {
 			}
 		});
 	},
-	reloadRepliesViaAPI: function () {
+	reloadRepliesViaAPI: function (skipHead) {
 		const TRANSPORT_MAIN_TYPE = 'reload-replies';
 		const TRANSPORT_SUB_TYPE = 'reload-replies-api';
 
@@ -10005,7 +10130,7 @@ const commands = {
 			return Promise.resolve();
 		}
 
-		if (pageModes[0] != 'reply') {
+		if (pageModes[0].mode != 'reply') {
 			return Promise.resolve();
 		}
 
@@ -10016,8 +10141,19 @@ const commands = {
 		reloadStatus.lastRepliesCount = getRepliesCount();
 		dumpDebugText();
 
-		return reloadBase(TRANSPORT_MAIN_TYPE, {method: 'head'})
-		.then(reloadResult => {
+		let p;
+		if (skipHead) {
+			p = Promise.resolve({
+				doc: null,
+				now: Date.now(),
+				status: 200
+			});
+		}
+		else {
+			p = reloadBase(TRANSPORT_MAIN_TYPE, {method: 'head'});
+		}
+
+		return p.then(reloadResult => {
 			const {doc, now, status} = reloadResult;
 
 			switch (status) {
@@ -10204,7 +10340,7 @@ const commands = {
 			return Promise.resolve();
 		}
 
-		if (pageModes[0] != 'catalog') {
+		if (pageModes[0].mode != 'catalog') {
 			return Promise.resolve();
 		}
 
@@ -10539,7 +10675,7 @@ const commands = {
 					overrideUpfile = undefined;
 					setBottomStatus('投稿完了');
 
-					let actualPageMode = pageModes[0];
+					let actualPageMode = pageModes[0].mode;
 					if (actualPageMode == 'reply' && $('post-switch-thread').checked) {
 						actualPageMode = 'summary';
 					}
@@ -10558,9 +10694,13 @@ const commands = {
 						}
 						break;
 					case 'reply':
-						reloadStatus.lastReloaded = Date.now();
-						commands.reloadReplies();
-						break;
+						if (storage.config.full_reload_after_post.value) {
+							reloadStatus.lastReloaded = Date.now();
+							return commands.reloadReplies();
+						}
+						else {
+							return commands.reload(true);
+						}
 					}
 				});
 			}
@@ -10971,7 +11111,7 @@ const commands = {
 			getImageFrom(dataURL).then(img => {
 				let result;
 				if (img) {
-					if (pageModes[0] == 'summary' || pageModes[0] == 'catalog') {
+					if (pageModes[0].mode == 'summary' || pageModes[0].mode == 'catalog') {
 						result = getBlobFrom(dataURL).then(blob => {
 							overrideUpfile = {
 								name: 'tegaki.png',
@@ -11148,17 +11288,19 @@ const commands = {
 	 */
 
 	toggleCatalogVisibility: function (e, t) {
-		let threads = $('content');
-		let catalog = $('catalog');
-		let ad = $('ad-aside-wrap');
-		let panel = $('panel-aside-wrap');
+		const threads = $('content');
+		const catalog = $('catalog');
+		const ad = $('ad-aside-wrap');
+		const panel = $('panel-aside-wrap');
+
+		let scrollTop = 0;
 
 		// activate catalog
 		if (pageModes.length == 1) {
+			pageModes.unshift({mode: 'catalog', scrollTop: docScrollTop()});
 			threads.classList.add('hide');
 			catalog.classList.remove('hide');
 			ad.classList.add('hide');
-			pageModes.unshift('catalog');
 			$t($qs('#header a[href="#toggle-catalog"] span'), siteInfo.resno ? 'スレッド' : 'サマリー');
 
 			if (panel.classList.contains('run')) {
@@ -11166,7 +11308,7 @@ const commands = {
 					.forEach(div => {div.style.marginRight = '24%';});
 			}
 
-			let active = $qs(
+			const active = $qs(
 				'#catalog .catalog-threads-wrap > div:not([class*="hide"])');
 			if (active && active.childNodes.length == 0) {
 				commands.reloadCatalog();
@@ -11177,16 +11319,18 @@ const commands = {
 
 		// deactivate catalog
 		else {
+			scrollTop = pageModes.shift().scrollTop;
 			threads.classList.remove('hide');
 			catalog.classList.add('hide');
 			ad.classList.remove('hide');
 			$t($qs('#header a[href="#toggle-catalog"] span'), 'カタログ');
 			catalogPopup.deleteAll();
-			pageModes.shift();
 			historyStateWrapper.updateHash('');
 		}
 
-		window.scrollTo(0, 0);
+		setTimeout(() => {
+			window.scrollTo(0, scrollTop);
+		}, 0);
 	},
 	updateCatalogSettings: function (settings) {
 		let cs = getCatalogSettings();
@@ -11248,8 +11392,8 @@ const commands = {
 	activateSearchTab: function () {
 		let searchTab = $qs('.panel-tab[href="#search"]');
 		activatePanelTab(searchTab);
-		$t($qs('span', searchTab),
-			(pageModes[0] == 'catalog' ? 'スレ' : 'レス') + '検索');
+		$t($qs('span.long', searchTab),
+			(pageModes[0].mode == 'catalog' ? 'スレ' : 'レス') + '検索');
 		showPanel(panel => {
 			$('search-text').focus();
 		});
@@ -11264,7 +11408,7 @@ const commands = {
 	 */
 
 	search: function () {
-		if (pageModes[0] == 'catalog') {
+		if (pageModes[0].mode == 'catalog') {
 			commands.searchCatalog();
 		}
 		else {
@@ -11428,13 +11572,13 @@ if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/res\
 	siteInfo.server = RegExp.$1;
 	siteInfo.board = RegExp.$2;
 	siteInfo.resno = RegExp.$3 - 0;
-	pageModes.unshift('reply');
+	pageModes.unshift({mode: 'reply', scrollTop: 0});
 }
 else if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/(?:([^.]+)\.htm)?/)) {
 	siteInfo.server = RegExp.$1;
 	siteInfo.board = RegExp.$2;
 	siteInfo.summaryIndex = RegExp.$3 - 0 || 0;
-	pageModes.unshift('summary');
+	pageModes.unshift({mode: 'summary', scrollTop: 0});
 }
 
 initialStyle(true);
@@ -11474,15 +11618,17 @@ Promise.all([
 			scriptWatcher.disconnect();
 			scriptWatcher = undefined;
 			initialStyle(false);
-			if (!NOTFOUND_TITLE.test(document.title)) {
+			if (NOTFOUND_TITLE.test(document.title)
+			||  UNAVAILABLE_TITLE.test(document.title)
+			||  $('cf-wrapper')) {
+				resolve(false);
+			}
+			else {
 				bootVars.bodyHTML = document.documentElement[IHTML];
 				document.body[IHTML] =
 					`${APP_NAME}: ` +
 					`ページを再構成しています。ちょっと待ってね。`;
 				resolve(true);
-			}
-			else {
-				resolve(false);
 			}
 		}
 

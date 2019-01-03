@@ -29,22 +29,36 @@
 	}
 
 	function openTabWithUrl (url, selfUrl, callback) {
-		var that = this;
-		var selfHost = this.getBaseUrl(selfUrl);
-		chrome.tabs.query({windowId:chrome.windows.WINDOW_ID_CURRENT}, function (tabs) {
-			var state = 0;
-			var existsTabId = -1;
-			var rightTabIndex = -1;
-			tabs.some(function (tab, i) {
+		const that = this;
+		const selfHost = this.getBaseUrl(selfUrl);
+		chrome.tabs.query({windowId:chrome.windows.WINDOW_ID_CURRENT}, tabs => {
+			// First, find the tab already exists
+			let existsTabId = -1;
+			tabs.some(tab => {
 				if (tab.url == url) {
 					existsTabId = tab.id;
 					return true;
 				}
-				else if (typeof tab.url == 'string') {
+			});
+
+			// Activate the existing tab and exit
+			if (existsTabId >= 0) {
+				chrome.tabs.update(existsTabId, {active:true});
+				that.emit(callback, existsTabId, url);
+				return;
+			}
+
+			// Second, find the rightmost tab in the same domain as active tab
+			let state = 0;
+			let rightTabIndex = -1;
+			let selfTabId = -1;
+			tabs.some(tab => {
+				if (typeof tab.url == 'string') {
 					switch (state) {
 					case 0:
 						if (tab.url == selfUrl) {
 							state = 1;
+							selfTabId = tab.id;
 						}
 						break;
 					case 1:
@@ -56,19 +70,18 @@
 					}
 				}
 			});
-			if (existsTabId >= 0) {
-				chrome.tabs.update(existsTabId, {active:true});
-				that.emit(callback, existsTabId, url);
+
+			// Create new tab with some options
+			const p = {url:url};
+			if (rightTabIndex >= 0) {
+				p.index = rightTabIndex;
 			}
-			else {
-				var p = {url:url};
-				if (rightTabIndex >= 0) {
-					p.index = rightTabIndex;
-				}
-				chrome.tabs.create(p, function (tab) {
-					that.emit(callback, tab.id, url);
-				});
+			if (selfTabId >= 0) {
+				p.openerTabId = selfTabId;
 			}
+			chrome.tabs.create(p, tab => {
+				that.emit(callback, tab.id, url);
+			});
 		});
 	}
 

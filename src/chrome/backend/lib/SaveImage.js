@@ -8,108 +8,183 @@
 	'use strict';
 
 	const LFO_ID_RELEASE = 'dkbdmkncpnepdbaneikhbbeiboehjnol';
-    const LFO_ID_DEVELOP = 'igbjeepbgpdcjmpcjgkkfgelekeigbhc';
+	const LFO_ID_DEVELOP = 'igbjeepbgpdcjmpcjgkkfgelekeigbhc';
 
-	function SaveImage () {
-		if (!(this instanceof SaveImage)) {
-			return new SaveImage();
-		}
-		this.ext = require('./kosian/Kosian').Kosian();
-	}
+	function SaveImage (cryptKeyPath) {
+		const ext = require('./kosian/Kosian').Kosian();
 
-	SaveImage.prototype.run = function run (imageUrl, localPath, mimeType, anchorId, sender) {
-		let ext = this.ext;
-		let drive = /^([^:]+):/.exec(localPath)[1];
+		let fs;
 
-		if (drive == 'local') {
-			localPath = localPath.replace(/^([^:]+):\/?/, '');
-		}
+		/*
+		 * private methods
+		 */
 
-		function saveToOnlineStorage (imageBlob, status) {
-			ext.fileSystem.write(localPath, sender, imageBlob, {
-				mimeType: 'application/octet-stream',
-				mkdir: 'auto',
-				onresponse: data => {
-					if (!data) return;
-					data.anchorId = anchorId;
-					ext.postMessage(sender, data);
-				}
+		function loadConsumerKey () {
+			return new Promise(resolve => {
+				ext.resource('consumer_keys.bin', binkeys => {
+					if (binkeys === false) {
+						loadConsumerKeyJson().then(resolve);
+					}
+					else {
+						resolve(binkeys);
+					}
+				}, {
+					noCache: true,
+					mimeType: 'text/plain;charset=x-user-defined',
+				});
 			});
 		}
 
-		function saveToLocalFileSystem (imageBlob, status) {
-			function ls (path) {
-				return new Promise((resolve, reject) => {
-					let re = /(.*[\\\/])([^\\\/]+)$/.exec(path);
-					if (!re) {
-						reject({error: 'basename not found'});
-						return;
+		function loadConsumerKeyJson () {
+			return new Promise(resolve => {
+				ext.resource('consumer_keys.json', textkeys => {
+					if (textkeys === false) {
+						throw new Error('!ERROR: Failed to load consumer_keys.json');
+					}
+					else {
+						resolve(textkeys);
+					}
+				}, {noCache: true});
+			});
+		}
+
+		function decrypt (consumerKeys) {
+			return new Promise(resolve => {
+				ext.resource(cryptKeyPath, cryptKey => {
+					if (cryptKey === false) {
+						throw new Error(`!ERROR: Failed to load crypt key file from ${cryptKeyPath}`);
 					}
 
-					let directory = re[1];
-					let basename = re[2];
+					const Blowfish = require('./kosian/Blowfish').Blowfish;
+					const SHA1 = require('./kosian/SHA1').SHA1;
 
-					chrome.runtime.sendMessage(
-						LFO_ID_RELEASE,
-						{
-							command: 'ls',
-							path: directory
-						},
-						response => {
-							if (chrome.runtime.lastError) {
-								reject({error: chrome.runtime.lastError});
-							}
-							else if (response.entries) {
-								resolve(response.entries.some(entry => entry.name == basename));
-							}
-							else {
-								resolve(false);
-							}
+					const cryptKeyHash = SHA1.calc(cryptKey);
+					const bf = new Blowfish(cryptKeyHash.substring(0, 16));
+
+					if (consumerKeys.charAt(0) == '{') {
+						/*
+						ext.isDev && ext.log(
+							'!INFO: crypted code:>>>>' +
+							bf.encrypt64(consumerKeys) +
+							'<<<<');
+						 */
+					}
+					else{
+						consumerKeys = bf.decrypt64(consumerKeys);
+					}
+
+					resolve(consumerKeys);
+				});
+			});
+		}
+
+		function getFileSystem () {
+			if (fs) {
+				return Promise.resolve(fs);
+			}
+
+			return loadConsumerKey()
+				.then(consumerKeys => decrypt(consumerKeys))
+				.then(consumerKeys => {
+					consumerKeys = ext.utils.parseJson(consumerKeys, false);
+					if (consumerKeys === false) {
+						throw new Error('!ERROR: cannot restore consumer keys.');
+					}
+
+					const FileSystem = require('./AbstractFileSystem');
+					const newfs = new FileSystem;
+
+					for (const scheme in consumerKeys) {
+						const data = consumerKeys[scheme];
+						newfs.registerDriver(scheme, {
+							clientId: data.key,
+							clientSecret: data.secret,
+							redirectURI: data.callback,
+							root: data.root
+						});
+					}
+
+					return fs = newfs;
+				})
+		}
+
+		function ls (path) {
+			return new Promise((resolve, reject) => {
+				let re = /(.*[\\\/])([^\\\/]+)$/.exec(path);
+				if (!re) {
+					reject({error: 'basename not found'});
+					return;
+				}
+
+				let directory = re[1];
+				let basename = re[2];
+
+				chrome.runtime.sendMessage(
+					LFO_ID_RELEASE,
+					{
+						command: 'ls',
+						path: directory
+					},
+					response => {
+						if (chrome.runtime.lastError) {
+							reject({error: chrome.runtime.lastError});
 						}
-					);
-				});
-			}
-
-			function blobToDataURL (imageBlob) {
-				return new Promise((resolve, reject) => {
-					let r = new FileReader;
-					r.onload = () => {
-						resolve(r.result);
-						r = null;
-					};
-					r.onerror = () => {
-						reject({error: 'failed to read the blob'});
-						r = null;
-					};
-					r.readAsDataURL(imageBlob);
-				});
-			}
-
-			function writep (path, dataURL) {
-				return new Promise((resolve, reject) => {
-					chrome.runtime.sendMessage(
-						LFO_ID_RELEASE,
-						{
-							command: 'writep',
-							path: path,
-							content: dataURL,
-							type: 'url'
-						},
-						response => {
-							if (chrome.runtime.lastError) {
-								reject({error: chrome.runtime.lastError});
-							}
-							else if (response.error) {
-								reject(response);
-							}
-							else {
-								resolve(response);
-							}
+						else if (response.entries) {
+							resolve(response.entries.some(entry => entry.name == basename));
 						}
-					);
-				});
-			}
+						else {
+							resolve(false);
+						}
+					}
+				);
+			});
+		}
 
+		function blobToDataURL (imageBlob) {
+			return new Promise((resolve, reject) => {
+				let r = new FileReader;
+				r.onload = () => {
+					resolve(r.result);
+					r = null;
+				};
+				r.onerror = () => {
+					reject({error: 'failed to read the blob'});
+					r = null;
+				};
+				r.readAsDataURL(imageBlob);
+			});
+		}
+
+		function writep (path, dataURL) {
+			return new Promise((resolve, reject) => {
+				chrome.runtime.sendMessage(
+					LFO_ID_RELEASE,
+					{
+						command: 'writep',
+						path: path,
+						content: dataURL,
+						type: 'url'
+					},
+					response => {
+						if (chrome.runtime.lastError) {
+							reject({error: chrome.runtime.lastError});
+						}
+						else if (response.error) {
+							reject(response);
+						}
+						else {
+							resolve(response);
+						}
+					}
+				);
+			});
+		}
+
+		/*
+		 * public methods
+		 */
+
+		function run (imageUrl, localPath, mimeType, anchorId, sender) {
 			function terminate (obj) {
 				let payload = {
 					anchorId: anchorId,
@@ -124,116 +199,115 @@
 				ext.postMessage(sender, payload);
 			}
 
-			return ls(localPath)
-				.then(isExist => {
-					if (isExist) {
+			function saveToOnlineStorage (imageBlob) {
+				return getFileSystem()
+					.then(fs => {
+						return fs.save(localPath, imageBlob);
+					})
+					.then(data => {
+						if (!data) {
+							throw new Error(`SaveImage#saveToOnlineStorage: data is unavailable`);
+						}
+						if ('error' in data) {
+							throw new Error(`SaveImage#saveToOnlineStorage: ${data.error}`);
+						}
+
 						terminate({
-							status: 304,
+							status: 200,
 							state: 'complete'
 						});
-						return;
-					}
-
-					return blobToDataURL(imageBlob)
-						.then(dataURL => writep(localPath, dataURL))
-						.then(response => {
-							terminate({
-								status: 200,
-								state: 'complete',
-							});
-						});
-				})
-				.catch(err => {
-					let payload = {
-						status: 400,
-						state: 'error'
-					};
-
-					if (err instanceof Error) {
-						payload.error = err.message;
-					}
-					else {
-						payload.error = err.error || 'unknown error';
-					}
-
-					console.error(payload.error);
-					terminate(payload);
-				});
-		}
-
-		function saveToLocalFileSystem_ (imageBlob, status) {
-			let r = new FileReader;
-			r.onload = () => {
-				chrome.runtime.sendMessage(
-					LFO_ID_RELEASE,
-					{
-						command: 'writep',
-						path: localPath,
-						content: r.result,
-						type: 'url'
-					},
-					response => {
+					})
+					.catch(err => {
 						let payload = {
-							anchorId: anchorId,
-							type: 'fileio-write-response',
 							status: 400,
 							state: 'error'
 						};
 
-						if (chrome.runtime.lastError) {
-							payload.error = chrome.runtime.lastError.message;
-						}
-						else if (response) {
-							if (response.error) {
-								payload.error = response.error;
-							}
-							else {
-								payload.status = 200;
-								payload.state = 'complete';
-							}
+						if (err instanceof Error) {
+							payload.error = err.message;
 						}
 						else {
-							payload.error = 'unknown error';
+							payload.error = err.error || 'unknown error';
 						}
 
-						ext.postMessage(sender, payload);
-						r = null;
+						console.error(payload.error);
+						terminate(payload);
+					});
+			}
+
+			function saveToLocalFileSystem (imageBlob) {
+				return ls(localPath)
+					.then(isExist => {
+						if (isExist) {
+							terminate({
+								status: 304,
+								state: 'complete'
+							});
+							return;
+						}
+
+						return blobToDataURL(imageBlob)
+							.then(dataURL => writep(localPath, dataURL))
+							.then(response => {
+								terminate({
+									status: 200,
+									state: 'complete',
+								});
+							});
+					})
+					.catch(err => {
+						let payload = {
+							status: 400,
+							state: 'error'
+						};
+
+						if (err instanceof Error) {
+							payload.error = err.message;
+						}
+						else {
+							payload.error = err.error || 'unknown error';
+						}
+
+						console.error(payload.error);
+						terminate(payload);
+					});
+			}
+
+			ext.request(
+				imageUrl,
+				{responseType: 'blob'},
+				(imageBlob, status) => {
+					const drive = /^([^:]+):/.exec(localPath)[1];
+
+					if (drive == 'local') {
+						localPath = localPath.replace(/^([^:]+):\/?/, '');
+						saveToLocalFileSystem(imageBlob);
 					}
-				);
-			};
-			r.onerror = () => {
-				let payload = {
-					anchorId: anchorId,
-					type: 'fileio-write-response',
-					status: 400,
-					state: 'error'
-				};
-				ext.postMessage(sender, payload);
-				r = null;
-			};
-			r.readAsDataURL(imageBlob);
+					else {
+						saveToOnlineStorage(imageBlob);
+					}
+				},
+				(data, status) => {
+					terminate({
+						status: 400,
+						state: 'error',
+						error: `Cannot load image (${status})`,
+					});
+				}
+			);
 		}
 
-		function handleRequestError (data, status) {
-			ext.postMessage(sender, {
-				type: 'fileio-write-response',
-				error: `Cannot load image (${status})`,
-				anchorId: anchorId
-			});
+		/*
+		 * constructor
+		 */
+
+		if (!(this instanceof SaveImage)) {
+			return new SaveImage(cryptKeyPath);
 		}
-
-		switch (drive) {
-		case 'local':
-			ext.request(
-				imageUrl, {responseType: 'blob'},
-				saveToLocalFileSystem, handleRequestError);
-			break;
-
-		default:
-			ext.request(
-				imageUrl, {responseType: 'blob'},
-				saveToOnlineStorage, handleRequestError);
-			break;
+		else {
+			return {
+				run: run
+			};
 		}
 	}
 

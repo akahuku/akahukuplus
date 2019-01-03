@@ -77,7 +77,7 @@
 			}
 			this.ext.resource(this.ext.cryptKeyPath, function (cryptKey) {
 				if (cryptKey === false) {
-					this.ext.log('!ERROR: cannot load crypt key.');
+					this.ext.log(`!ERROR: cannot load crypt key from "${this.ext.cryptKeyPath}".`);
 					return;
 				}
 
@@ -102,6 +102,8 @@
 				initFileSystemCore.call(this, consumerKeys);
 			}, {noCache:true, bind:this});
 		}
+
+		if (this.ext.cryptKeyPath == '') return;
 
 		this.ext.resource('consumer_keys.bin', function (binkeys) {
 			if (binkeys !== false) {

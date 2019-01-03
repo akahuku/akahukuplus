@@ -14,7 +14,6 @@
 	const ext = require('./kosian/Kosian').Kosian(global, {
 		appName: 'akahukuplus',
 		openBaseUrlPattern: /^https?:\/\/[^.]+\.2chan\.net(?::\d+)?\/[^\/]+\//,
-		cryptKeyPath: 'LICENSE',
 		writeDelaySecs: 1,
 		fstab: {
 			dropbox: {
@@ -33,7 +32,7 @@
 	const sjisUtils = require('./SjisUtils').SjisUtils;
 	const fetchTweets = require('./FetchTweets').FetchTweets();
 	const completeUpfiles = require('./CompleteUpfiles').CompleteUpfiles();
-	const saveImage = require('./SaveImage').SaveImage();
+	const saveImage = require('./SaveImage').SaveImage('LICENSE');
 	const initializingTabIds = {};
 
 	/* <<<1 functions */

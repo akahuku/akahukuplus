@@ -159,6 +159,10 @@ twitter-widget {
 	clear:both;
 }
 
+.blink-cursor {
+	font-size:75%;
+	animation:blink .5s step-end infinite;
+}
 /*
  * header
  */
@@ -292,6 +296,7 @@ twitter-widget {
 
 #content > article > .text {
 	flex-grow:1;
+	width:50%;
 	padding:0 0 0 12px;
 }
 
@@ -303,6 +308,7 @@ twitter-widget {
 	#content > article > .aside {
 		display:block;
 		width:25%;
+		max-width:250px;
 	}
 }
 
@@ -963,17 +969,24 @@ article.summary .replies {
 	width:8em;
 }
 
-#postform-wrap .nav {
-	display:table;
+#postform-wrap .nav > div {
+	display:flex;
 	width:100%;
-	box-sizing:border-box;
-	background-color:#ffe;
+}
+
+#postform-wrap .nav > div > div {
+	padding:4px;
 	line-height:1;
 }
 
-#postform-wrap .nav > div {
-	display:table-cell;
-	padding:4px;
+#postform-wrap .nav > div > div:last-child {
+	text-align:right;
+}
+
+#postform-wrap .nav > div > div:first-child {
+	flex-grow:1;
+	text-align:left;
+	text-overflow:ellipsis;
 }
 
 #postform-wrap .nav-links a,
@@ -996,10 +1009,6 @@ article.summary .replies {
 	background-color:#ea8;
 	color:#800;
 	font-weight:bold;
-}
-
-#postform-wrap .nav > div:last-child {
-	text-align:right;
 }
 
 #postform-wrap .post-image-thumbnail-wrap {
@@ -1285,6 +1294,7 @@ article.summary .replies {
 	flex:1;
 	box-sizing:border-box;
 	margin:0;
+	width:10%;
 }
 
 #panel-content-search #search-guide {
@@ -1836,11 +1846,6 @@ article.summary .replies {
 	font-size:small;
 }
 
-.wheel-status .blink-cursor {
-	font-size:75%;
-	animation:blink .5s step-end infinite;
-}
-
 /*
  * catalog
  */
@@ -2119,6 +2124,12 @@ div.catalog-popup span {
 	height:100px;
 	border:none;
 }
+
+#charref-converter {
+	position:fixed;
+	left:100%;
+	top:0;
+}
 		</style>
 		<link rel="stylesheet" href="{$platform}-extension://{meta/extension_id}/styles/extra-{$platform}.css"/>
 		<style id="dynstyle-comment-maxwidth"></style>
@@ -2342,27 +2353,32 @@ div.catalog-popup span {
 			</div>
 			</xsl:if>
 			<div class="nav">
-				<xsl:if test="$page_mode!='reply'">
-				<div class="nav-links" data-binding="template:navigator"></div>
-				<div class="tips">
-					<a class="js" href="#prev-summary"><kbd>z</kbd>前</a>
-					&#160; <a class="js" href="#next-summary"><kbd>.</kbd>次</a>
-					&#160; <a class="js" href="#reload"><kbd>r</kbd>リロード</a>
-					<kbd>i</kbd>フォームを開く
+				<div class="nav-normal" id="nav-normal">
+					<xsl:if test="$page_mode!='reply'">
+					<div class="nav-links" data-binding="template:navigator"></div>
+					<div class="tips">
+						<a class="js" href="#prev-summary"><kbd>z</kbd>前</a>
+						&#160; <a class="js" href="#next-summary"><kbd>.</kbd>次</a>
+						&#160; <a class="js" href="#reload"><kbd>r</kbd>リロード</a>
+						<kbd>i</kbd>フォームを開く
+					</div>
+					</xsl:if>
+					<xsl:if test="$page_mode='reply'">
+					<div class="status">
+						<span id="pf-replies-total">-</span><small> レス</small>,
+						<span id="pf-replies-mark">-</span><small> マーク</small>,
+						<span id="pf-replies-id">-</span><small> ID</small>
+						/ <span id="pf-expires" data-binding="xpath:/futaba/thread[1]/topic/expires"></span>
+						<small>(<span id="pf-expires-remains" data-binding="xpath:/futaba/thread[1]/topic/expires/@remains"></span>)</small>
+					</div>
+					<div class="tips">
+						<kbd>i</kbd>フォームを開く
+					</div>
+					</xsl:if>
 				</div>
-				</xsl:if>
-				<xsl:if test="$page_mode='reply'">
-				<div class="status">
-					<span id="pf-replies-total">-</span><small> レス</small>,
-					<span id="pf-replies-mark">-</span><small> マーク</small>,
-					<span id="pf-replies-id">-</span><small> ID</small>
-					/ <span id="pf-expires" data-binding="xpath:/futaba/thread[1]/topic/expires"></span>
-					<small>(<span id="pf-expires-remains" data-binding="xpath:/futaba/thread[1]/topic/expires/@remains"></span>)</small>
+				<div class="nav-status hide" id="nav-status">
+					<div><kbd>&#x25b6;</kbd><span class="wheel-status-text"></span><span class="blink-cursor">&#x2582;</span></div>
 				</div>
-				<div class="tips">
-					<kbd>i</kbd>フォームを開く
-				</div>
-				</xsl:if>
 			</div>
 			<div class="post-image-thumbnail-wrap hide" id="post-image-thumbnail-wrap">
 				<div class="post-image-thumbnail-outer" id="post-image-thumbnail-outer">
@@ -2477,6 +2493,7 @@ div.catalog-popup span {
 				</div>
 			</div>
 		</div>
+		<div id="charref-converter"></div>
 		<iframe id="internal-submit-target"
 			name="internal-submit-target"
 			src="about:blank"></iframe>
