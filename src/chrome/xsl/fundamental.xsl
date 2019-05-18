@@ -217,7 +217,7 @@ twitter-widget {
 #header h1 {
 	margin:0;
 	padding:0;
-	font-family:"Arial","Helvetica";
+	font-family:"Noto Sans CJK JP","Arial","Helvetica";
 	font-size:x-large;
 	font-weight:bold;
 	text-align:center;
@@ -614,6 +614,11 @@ article.summary .replies {
 	line-height:1;
 }
 
+/* comment header with image */
+.reply-wrap > div:last-child > div:first-child.image_true {
+	padding-right:250px;
+}
+
 /* comment body */
 .reply-wrap > div:last-child > div.comment {
 	margin:0 1em 1em 2em;
@@ -908,6 +913,7 @@ article.summary .replies {
 	color:#800;
 	resize:none;
 	line-height:1.2;
+	word-break:break-all;
 }
 
 #postform #com:empty:before {
@@ -1461,6 +1467,12 @@ article.summary .replies {
 	align-items:stretch;
 	margin:0 auto 0 auto;
 	border-radius:0 0 4px 4px;
+	position:relative;
+	top:-100px;
+	transition-property:top;
+	transition-duration:.4s;
+	transition-timing-function:ease;
+	transition-delay:0s;
 }
 
 .lightbox-wrap .info > div {
@@ -1543,6 +1555,9 @@ article.summary .replies {
 /*
  * drawings
  */
+
+.draw-wrap {
+}
 
 .draw-box-outer {
 	display:flex;
@@ -1967,6 +1982,10 @@ article.summary .replies {
 	white-space:nowrap;
 }
 
+#catalog .catalog-threads-wrap .quote {
+	color:#789922;
+}
+
 #catalog .catalog-threads-wrap .info {
 	padding:1px;
 	color:#789922;
@@ -1979,13 +1998,16 @@ article.summary .replies {
 
 img.catalog-popup {
 	position:absolute;
-	box-shadow:0 0 4px 4px rgba(0,0,0,.25);
 	cursor:pointer;
-	transition-property:left,top,width,height;
+	transition-property:left,top,width,height,box-shadow;
 	transition-duration:.25s;
 	transition-timing-function:ease-out;
 	transition-delay:0s;
 	z-index:100;
+}
+
+img.catalog-popup.run {
+	box-shadow:0 0 4px 4px rgba(0,0,0,.25);
 }
 
 div.catalog-popup {
@@ -1994,13 +2016,12 @@ div.catalog-popup {
 	background-color:#ffe;
 	border:1px solid #ea8;
 	border-radius:4px;
-	box-shadow:0 0 4px 4px rgba(0,0,0,.25);
 	box-sizing:border-box;
 	font-size:x-small;
 	overflow-wrap:break-word;
 	overflow:hidden;
 	text-overflow:ellipsis;
-	transition-property:opacity;
+	transition-property:opacity,box-shadow;
 	transition-duration:.5s;
 	transition-timing-function:ease-out;
 	transition-delay:0s;
@@ -2010,6 +2031,7 @@ div.catalog-popup {
 
 div.catalog-popup.run {
 	opacity:1;
+	box-shadow:0 0 4px 4px rgba(0,0,0,.25);
 }
 
 div.catalog-popup span {
@@ -2336,8 +2358,9 @@ div.catalog-popup span {
 									<th>添付File</th>
 									<td>
 										<div class="flex">
-											<input type="file" id="upfile" name="upfile" disabled="disabled" data-origin="js"/>
-											<div class="bracket"><label>[<input type="checkbox" id="textonly" name="textonly" value="on" disabled="disabled" data-href="#clear-upfile"/>画像なし]</label></div>
+											<input type="file" id="upfile" name="upfile" data-origin="js"/>
+											<div class="draw-button-wrap bracket hide">[<a href="#draw">手書き</a>]</div>
+											<div class="bracket"><label>[<input type="checkbox" id="textonly" name="textonly" value="on" data-href="#clear-upfile"/>画像なし]</label></div>
 										</div>
 									</td>
 								</tr>
@@ -2409,7 +2432,7 @@ div.catalog-popup span {
 			<div class="menu-rule"/>
 			<a class="selmenu l" href="#ss-cancel" title="やめて">やめて</a>
 		</div>
-		<div id="draw-wrap" class="draw-wrap hide">
+		<div id="draw-wrap" class="draw-wrap lightbox-wrap hide">
 			<div class="dimmer"></div>
 			<div class="draw-box-outer hide">
 				<div class="draw-box-inner">
@@ -2436,8 +2459,13 @@ div.catalog-popup span {
 							</div>
 						</div>
 						<div class="draw-clear-wrap">
-							<button data-href="#draw-clear">消去...</button>
-							<button data-href="#draw-undo">アンドゥ</button>
+							<div>
+								<button data-href="#draw-undo">アンドゥ</button>
+							</div>
+							<div>
+								<button data-href="#draw-clear">消去...</button>
+								<button data-href="#draw-resize">リサイズ...</button>
+							</div>
 						</div>
 					</div>
 					<div class="draw-shortcut-describes"><span>X</span>色交換<span>[</span>細く<span>]</span>太く<span>1</span><span class="mini">2</span><span class="mini">3</span><span class="mini">4</span>表示倍率<span>u</span>アンドゥ<span>esc</span>キャンセル</div>
@@ -2456,7 +2484,7 @@ div.catalog-popup span {
 				<div><img src="{$platform}-extension://{meta/extension_id}/images/icon128.png"/><p></p></div>
 			</div>
 			<div class="receiver">
-				<div class="info hide">
+				<div class="info">
 					<div class="single">
 						<a id="lightbox-link" href="#" target="_blank"></a>
 						(<span id="lightbox-ratio"></span>)
@@ -2548,7 +2576,7 @@ div.catalog-popup span {
 	<body>
 	<xsl:choose>
 	<xsl:when test="meta/configurations/param[@name='storage']/@value='dropbox'"><a href="https://www.dropbox.com/" target="_blank"><span class="storage-image dropbox-image" title="保存先: dropbox">-</span></a></xsl:when>
-	<xsl:when test="meta/configurations/param[@name='storage']/@value='gdrive'"><a href="http://www.google.com/drive/about.html" target="_blank"><span class="storage-image gdrive-image" title="保存先: Google Drive">-</span></a></xsl:when>
+	<xsl:when test="meta/configurations/param[@name='storage']/@value='googledrive'"><a href="http://www.google.com/drive/about.html" target="_blank"><span class="storage-image gdrive-image" title="保存先: Google Drive">-</span></a></xsl:when>
 	<xsl:when test="meta/configurations/param[@name='storage']/@value='onedrive'"><a href="https://onedrive.live.com/" target="_blank"><span class="storage-image onedrive-image" title="保存先: Microsoft OneDrive">-</span></a></xsl:when>
 	<xsl:when test="meta/configurations/param[@name='storage']/@value='local'"><span class="storage-image local-image" title="保存先: ローカル ドライブ">-</span></xsl:when>
 	</xsl:choose>
@@ -2637,7 +2665,7 @@ div.catalog-popup span {
 <div class="reply-wrap">
 	<div>…</div>
 	<div class="{substring('deleted',1,count(deleted)*7)}" data-number="{number}">
-		<div>
+		<div class="image_{image!=''}" >
 			<span class="no"><xsl:value-of select="offset"/></span>
 			<input type="checkbox"/>
 			<xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span><span class="sep">|</span></xsl:if>

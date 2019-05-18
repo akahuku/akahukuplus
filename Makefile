@@ -309,7 +309,7 @@ debug-firefox: FORCE
 		--firefox-profile $(abspath $(FIREFOX_TEST_PROFILE_PATH)) \
 		--keep-profile-changes \
 		--browser-console \
-		--start-url https://dat.2chan.net/b/futaba.htm
+		--start-url https://img.2chan.net/b/futaba.htm
 
 version: FORCE
 	@echo $(VERSION)

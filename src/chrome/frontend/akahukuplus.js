@@ -51,6 +51,8 @@ const IDEOGRAPH_CONVERSION_UI = false;
 const FALLBACK_LAST_MODIFIED = 'Fri, 01 Jan 2010 00:00:00 GMT';
 const HEADER_MARGIN_BOTTOM = 16;
 const FALLBACK_JPEG_QUALITY = 0.8;
+const TEGAKI_CANVAS_WIDTH = 344;// original size: 344
+const TEGAKI_CANVAS_HEIGHT = 135;// original size: 135
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
@@ -461,20 +463,21 @@ function install (mode) {
 	clickDispatcher
 		.add('#void', () => {})
 
-		.add('#delete-post',    commands.openDeleteDialog)
-		.add('#config',         commands.openConfigDialog)
-		.add('#help',           commands.openHelpDialog)
-		.add('#draw',           commands.openDrawDialog)
-		.add('#toggle-panel',   commands.togglePanelVisibility)
-		.add('#reload',         commands.reload)
-		.add('#sage',           commands.toggleSage)
-		.add('#search-start',   commands.search)
-		.add('#clear-upfile',   commands.clearUpfile)
-		.add('#toggle-catalog', commands.toggleCatalogVisibility)
-		.add('#track',          commands.registerTrack)
-		.add('#reload-ext',     commands.reloadExtension)
-		.add('#prev-summary',   commands.summaryBack)
-		.add('#next-summary',   commands.summaryNext)
+		.add('#delete-post',       commands.openDeleteDialog)
+		.add('#config',            commands.openConfigDialog)
+		.add('#help',              commands.openHelpDialog)
+		.add('#draw',              commands.openDrawDialog)
+		.add('#toggle-panel',      commands.togglePanelVisibility)
+		.add('#reload',            commands.reload)
+		.add('#sage',              commands.toggleSage)
+		.add('#search-start',      commands.search)
+		.add('#clear-upfile',      commands.clearUpfile)
+		.add('#toggle-catalog',    commands.toggleCatalogVisibility)
+		.add('#track',             commands.registerTrack)
+		.add('#reload-ext',        commands.reloadExtension)
+		.add('#prev-summary',      commands.summaryBack)
+		.add('#next-summary',      commands.summaryNext)
+		.add('#clear-credentials', commands.clearCredentials)
 
 		.add('#reload-full',       commands.reloadFull)
 		.add('#reload-delta',      commands.reloadDelta)
@@ -868,50 +871,40 @@ function install (mode) {
 			elms[i].addEventListener('click', handler, false);
 		}
 	})(document.getElementsByName('post-switch'), e => {
-		let upfile = $('upfile');
-		let textonly = $('textonly');
-		let resto = document.getElementsByName('resto')[0];
+		const resto = document.getElementsByName('resto')[0];
 
 		switch (e.target.value) {
 		case 'reply':
-			upfile.disabled = textonly.disabled = upfile.getAttribute('data-origin') == 'js';
 			resto.disabled = false;
 			break;
 
 		case 'thread':
-			upfile.disabled = textonly.disabled = false;
 			resto.disabled = true;
 			break;
 		}
 	});
 
-	// allow tegaki link, if baseform element exists or the page is summary
+	// allow tegaki link, if baseform element exists
 	(drawButtonWrap => {
 		if (!drawButtonWrap) return;
-		if (document.getElementsByName('baseform').length == 0 && pageModes[0].mode != 'summary') return;
 
-		drawButtonWrap.classList.remove('hide');
+		if (document.getElementsByName('baseform').length == 0) {
+			// baseform not exists. disable tegaki link
+			drawButtonWrap.classList.add('hide');
 
-		if (pageModes[0].mode == 'summary') {
-			let canvas = $qs('.draw-canvas');
-			if (!canvas) return;
-			canvas.width = 640;
-			canvas.height = 480;
+			// additionally in reply mode, disable upload feature
+			if (pageModes[0].mode == 'reply') {
+				const upfile = $('upfile');
+				const textonly = $('textonly');
+				upfile.disabled = textonly.disabled = true;
+			}
 		}
-	})($qs('.draw-button-wrap'));
+		else {
+			// allow tegaki link
+			drawButtonWrap.classList.remove('hide');
+		}
 
-	// file element change listener
-	(file => {
-		if (!file) return;
-		file.addEventListener('change', e => {
-			setBottomStatus('サムネイルを生成しています...', true);
-			resetForm('baseform', 'textonly');
-			overrideUpfile = undefined;
-			setPostThumbnail(e.target.files[0]).finally(() => {
-				setBottomStatus();
-			});
-		}, false);
-	})($('upfile'));
+	})($qs('.draw-button-wrap'));
 
 	// handle behavior of text fields
 	setupPostFormItemEvent([
@@ -1017,12 +1010,16 @@ function install (mode) {
 	{
 		// uuacount: unique user in short time period?
 		const p = [getImageFrom(`/bin/uuacount.php?${Math.floor(Math.random() * 1000)}`)];
+
+		// We found that this code was removed from base4ajax.js on Jan.22
+		/*
 		const uuc = getCookie('uuc');
 		if (uuc != '1') {
 			// uucount: unique user per hour?
 			p.push(getImageFrom(`//dec.2chan.net/bin/uucount.php?${Math.random()}`));
 			document.cookie = 'uuc=1; max-age=3600; path=/;';
 		}
+		*/
 
 		Promise.all(p);
 	}
@@ -1739,7 +1736,7 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-up',
-			'\\b((?:h?t?t?p?://)?(?:dec\\.2chan\\.net/up/src/)?(f\\d{4,})(\\.\\w+)?)',
+			'\\b((?:h?t?t?p?s?://)?(?:dec\\.2chan\\.net/up/src/)?(f\\d{4,})(\\.\\w+)?)',
 			function (re, anchor) {
 				anchor.setAttribute('title', 'あぷ');
 				return this.upProc(re, anchor, 'http://dec.2chan.net/up/');
@@ -1747,7 +1744,7 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-up-small',
-			'\\b((?:h?t?t?p?://)?(?:dec\\.2chan\\.net/up/src/)?(fu\\d{4,})(\\.\\w+)?)',
+			'\\b((?:h?t?t?p?s?://)?(?:dec\\.2chan\\.net/up/src/)?(fu\\d{4,})(\\.\\w+)?)',
 			function (re, anchor) {
 				anchor.setAttribute('title', 'あぷ小');
 				return this.upProc(re, anchor, 'http://dec.2chan.net/up2/');
@@ -1767,10 +1764,10 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-nico2',
-			'\\b((?:h?t?t?p?:s?//)?([^.]+\\.nicovideo\\.jp/watch/(sm\\w+)\\S*))',
+			'\\b((?:h?t?t?p?s?://)?(([^.]+\\.)?nicovideo\\.jp/watch/(sm\\w+)\\S*))',
 			function (re, anchor) {
 				anchor.setAttribute('nico2-key', re[2]);
-				return `http://${re[1]}`;
+				return `https://${re[1]}`;
 			}
 		),
 		new LinkTarget(
@@ -1839,8 +1836,10 @@ function createXMLGenerator () {
 		element(metaNode, 'extension_id')
 			.appendChild(text(getExtensionId()));
 
-		// strip control characters, include LF and CR
-		content = content.replace(/[\u0000-\u001f]/g, ' ');
+		// strip all control characters and newline characters:
+		// LF(U+000A), VT(U+000B), FF(U+000C), CR(U+000D),
+		// NEL(U+0085), LS(U+2028) and PS(U+2029)
+		content = content.replace(/[\u0000-\u001f\u0085\u2028\u2029]/g, ' ');
 
 		// strip bidi control character references
 		content = content.replace(/[\u200e-\u200f\u202a-\u202e]/g, '');
@@ -2243,10 +2242,13 @@ function createXMLGenerator () {
 				}
 			}
 
-			// そうだね (that's right）
+			// そうだね (that's right)
 			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
 			if (re) {
 				let sodaneNode = element(topicNode, 'sodane');
+				if (/x0$/.test(re[1])) {
+					re[1] = '+';
+				}
 				sodaneNode.appendChild(text(re[1]
 					.replace('x', ' × ')
 					.replace('+', '＋')
@@ -2449,10 +2451,13 @@ function createXMLGenerator () {
 				markStatistics.notifyMark(number, re[2]);
 			}
 
-			// そうだね (that's right）
+			// そうだね (that's right)
 			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(info);
 			if (re) {
 				let sodaneNode = element(replyNode, 'sodane');
+				if (/x0$/.test(re[1])) {
+					re[1] = '+';
+				}
 				sodaneNode.appendChild(text(re[1]
 					.replace('x', ' × ')
 					.replace('+', '＋')
@@ -2626,7 +2631,17 @@ function createXMLGenerator () {
 
 			// deletion flag, mark
 			{
-				let re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(reply.com);
+				let re;
+				if (reply.host) {
+					re = [
+						`[<font color="#ff0000">${reply.host}</font>]`,
+						`[<font color="#ff0000">${reply.host}</font>]`,
+						reply.host
+					];
+				}
+				else {
+					re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(reply.com);
+				}
 				if (re && (!re[1] || re[1].substr(-1) != '=')) {
 					if (!$qs('deleted', replyNode)) {
 						element(replyNode, 'deleted');
@@ -2645,9 +2660,15 @@ function createXMLGenerator () {
 			// ID
 			if (reply.id != '') {
 				const id = reply.id.replace(/^id:\s*/i, '');
-				let idNode = element(replyNode, 'user_id');
-				idNode.appendChild(text(id));
-				markStatistics.notifyId(replyNumber, id);
+				if (/^ip:\s*/i.test(id)) {
+					let ipNode = element(replyNode, 'ip');
+					ipNode.appendChild(text(id.replace(/^ip:\s*/i, '')));
+				}
+				else {
+					let idNode = element(replyNode, 'user_id');
+					idNode.appendChild(text(id));
+					markStatistics.notifyId(replyNumber, id);
+				}
 			}
 
 			// sodane
@@ -2846,12 +2867,13 @@ function createPersistentStorage () {
 			name:'使用するストレージ',
 			list:{
 				dropbox:'dropbox',
-				gdrive:'Google Drive',
+				googledrive:'Google Drive',
 				onedrive:'Microsoft OneDrive',
 				local:'local'
 			},
 			desc:`localストレージを使用できるのは現在Chromeのみです。
-詳細は <a href="https://akahuku.github.io/akahukuplus/how-to-save-image-with-chrome.html" target="_blank">ドキュメント</a> を参照してください。`
+詳細は <a href="https://akahuku.github.io/akahukuplus/how-to-save-image-with-chrome.html" target="_blank">ドキュメント</a> を参照してください。
+<div><button data-href="#clear-credentials">オンラインストレージの認証を解除する</button></div>`
 		},
 		save_image_name_template: {
 			type:'string',
@@ -2924,6 +2946,18 @@ function createPersistentStorage () {
 			type:'bool',
 			value:false,
 			name:'レス送信後にフルリロード'
+		},
+		tegaki_max_width: {
+			type:'int',
+			value:400,
+			name:'手書きキャンバスの最大の幅',
+			min:1,max:1000
+		},
+		tegaki_max_height: {
+			type:'int',
+			value:400,
+			name:'手書きキャンバスの最大の高さ',
+			min:1,max:1000
 		}
 	};
 	let runtime = {
@@ -4148,7 +4182,10 @@ function createCatalogPopup (container) {
 			}
 			setGeometory(item.thumbnail, item.shrinkedRect);
 			item.thumbnail.classList.remove('hide');
-			setTimeout(() => {setGeometory(item.thumbnail, item.zoomedRect)}, 0);
+			setTimeout(() => {
+				item.thumbnail.classList.add('run');
+				setGeometory(item.thumbnail, item.zoomedRect);
+			}, 0);
 		}
 		if (item.text) {
 			let rect = getRect(item.target);
@@ -4162,7 +4199,9 @@ function createCatalogPopup (container) {
 			item.text.style.top = rect.top + 'px';
 			item.text.style.width = rect.width + 'px';
 			item.text.classList.remove('hide');
-			setTimeout(() => {item.text.classList.add('run')}, 0);
+			setTimeout(() => {
+				item.text.classList.add('run');
+			}, 0);
 		}
 		item.state = 'running';
 		_log('exit open');
@@ -4199,6 +4238,7 @@ function createCatalogPopup (container) {
 		if (item.thumbnail) {
 			transitionend(item.thumbnail, handleTransitionend);
 			setGeometory(item.thumbnail, item.shrinkedRect);
+			item.thumbnail.classList.remove('run');
 			count++;
 		}
 		if (item.text) {
@@ -5387,7 +5427,14 @@ function setupPostFormItemEvent (items) {
 		const upfile = $('upfile');
 		if (!upfile) return false;
 		if (upfile.disabled) return false;
+		if (upfile.getAttribute('data-origin') == 'js') return;
 		if (upfile.getAttribute('data-pasting')) return;
+		return true;
+	}
+
+	function isTegakiElementReady () {
+		const baseform = document.getElementsByName('baseform')[0];
+		if (!baseform) return false;
 		return true;
 	}
 
@@ -5442,19 +5489,84 @@ function setupPostFormItemEvent (items) {
 
 	function pasteFile (e, file) {
 		if (!file) return;
-		if (!isFileElementReady()) return;
+
+		const canUpload = isFileElementReady();
+		const canTegaki = isTegakiElementReady();
+		if (!canUpload && !canTegaki) return;
 
 		const upfile = $('upfile');
-		upfile.setAttribute('data-pasting', '1');
-		setBottomStatus('画像を貼り付けています...', true);
-		resetForm('baseform', 'upfile', 'textonly');
+
+		switch (e.type) {
+		case 'paste':
+			upfile.setAttribute('data-pasting', '1');
+			setBottomStatus('画像を貼り付けています...', true);
+			break;
+
+		default: // change, drop, ...
+			setBottomStatus('サムネイルを生成しています...', true);
+			break;
+		}
+
 		overrideUpfile = {
 			name: file.name,
 			data: file
 		};
+		let resetItems = ['textonly'];
+
+		/*
+		 * IMPORTANT: WHICH ELEMENTS SHOULD BE RESET?
+		 *
+		 * from change event, and...
+		 *   pseudo reply image: upfile, (overrideUpfile)
+		 *      too large image: upfile, baseform
+		 *               others: baseform, (overrideUpfile)
+		 *
+		 * from drop event, and...
+		 *   pseudo reply image: upfile, (overrideUpfile)
+		 *      too large image: upfile, baseform
+		 *               others: upfile, baseform
+		 *
+		 * from paste event, and...
+		 *   pseudo reply image: upfile, (overrideUpfile)
+		 *      too large image: upfile, baseform
+		 *               others: upfile, baseform
+		 */
 
 		let p;
-		if (siteInfo.maxAttachSize && file.size > siteInfo.maxAttachSize) {
+		// pseudo reply image
+		if (!canUpload && canTegaki) {
+			p = getImageFrom(file).then(img => {
+				if (!img) return;
+
+				let canvas = $qs('#draw-wrap .draw-canvas');
+				let size = getThumbnailSize(
+					img.naturalWidth, img.naturalHeight,
+					storage.config.tegaki_max_width.value,
+					storage.config.tegaki_max_height.value);
+				canvas.width = size.width;
+				canvas.height = size.height;
+
+				let c = canvas.getContext('2d');
+				c.fillStyle = '#000000';
+				c.fillRect(0, 0, canvas.width, canvas.height);
+				c.drawImage(
+					img,
+					0, 0, img.naturalWidth, img.naturalHeight,
+					0, 0, canvas.width, canvas.height);
+
+				let baseform = document.getElementsByName('baseform')[0];
+				baseform.value = canvas.toDataURL().replace(/^[^,]+,/, '');
+				$('draw-wrap').setAttribute('data-persists', 'canvas-initialized');
+
+				resetItems.push('upfile');
+				overrideUpfile = undefined;
+
+				return setPostThumbnail(canvas, '疑似画像レス');
+			});
+		}
+
+		// too large file size: re-encode to jpeg
+		else if (siteInfo.maxAttachSize && file.size > siteInfo.maxAttachSize) {
 			p = getImageFrom(file).then(img => {
 				if (!img) return;
 
@@ -5467,21 +5579,34 @@ function setupPostFormItemEvent (items) {
 				c.fillRect(0, 0, canvas.width, canvas.height);
 				c.drawImage(img, 0, 0);
 
+				resetItems.push('upfile', 'baseform');
+
 				return Promise.all([
-					setPostThumbnail(canvas),
+					setPostThumbnail(canvas, '再エンコードJPEG'),
 					getBlobFrom(canvas.toDataURL('image/jpeg', FALLBACK_JPEG_QUALITY)).then(blob => {
 						overrideUpfile.data = blob;
 					})
 				]);
 			});
 		}
+
+		// normal upload
 		else {
 			p = setPostThumbnail(file);
+			if (e.type == 'change') {
+				resetItems.push('baseform');
+				overrideUpfile = undefined;
+			}
+			else {
+				resetItems.push('upfile', 'baseform');
+			}
 		}
 
 		p = p.finally(() => {
 			setBottomStatus();
+			resetForm.apply(null, resetItems);
 			upfile.removeAttribute('data-pasting');
+			p = null;
 		});
 	}
 
@@ -5490,7 +5615,6 @@ function setupPostFormItemEvent (items) {
 	 */
 
 	function handleDragOver (e) {
-		if (!isFileElementReady()) return;
 		if (!e.dataTransfer || !e.dataTransfer.items) return;
 		if (!findAcceptableFile(e.dataTransfer.items)) return;
 
@@ -5507,15 +5631,11 @@ function setupPostFormItemEvent (items) {
 	}
 
 	function handleDragEnter (e) {
-		if (!isFileElementReady()) return;
-
 		e.preventDefault();
 		//dumpElement('    dragenter', e.target);
 	}
 
 	function handleDragLeave (e) {
-		if (!isFileElementReady()) return;
-
 		//dumpElement('    dragleave', e.target);
 
 		let isDocument = e.target == document
@@ -5531,8 +5651,6 @@ function setupPostFormItemEvent (items) {
 	}
 
 	function handleDrop (e) {
-		if (!isFileElementReady()) return;
-
 		e.preventDefault();
 		$('postform-drop-indicator').classList.add('hide');
 		handleTextAreaPaste(e);
@@ -5592,24 +5710,44 @@ function setupPostFormItemEvent (items) {
 	document.addEventListener('dragleave', handleDragLeave, true);
 	document.addEventListener('drop', handleDrop);
 
-	let com = $('com');
-	if (com) {
+	(com => {
+		if (!com) return;
 		updateInfo();
-	}
+	})($('com'));
+
+	(upfile => {
+		if (!upfile) return;
+		upfile.addEventListener('change', e => {
+			pasteFile(e, e.target.files[0]);
+		});
+	})($('upfile'));
 }
 
 function setupWheelReload () {
 	let accum = 0;
 	let lastWheeled = 0;
 
+	function preventDefault (e) {
+		/*
+		 * From Chrome 73, document level wheel event will be treated as passive:
+		 * https://www.chromestatus.com/features/6662647093133312
+		 */
+		try {
+			e.preventDefault();
+		}
+		catch (ex) {
+			;
+		}
+	}
+
 	function handler (e) {
 		if (transport.isRunning()) {
-			e.preventDefault();
+			preventDefault(e);
 			return;
 		}
 
 		if (e.target.classList.contains('dialog-content-wrap')) {
-			e.preventDefault();
+			preventDefault(e);
 			return;
 		}
 
@@ -5648,7 +5786,7 @@ function setupWheelReload () {
 
 		lastWheeled = now;
 		accum = 0;
-		e.preventDefault();
+		preventDefault(e);
 		setWheelStatus();
 		commands.reload();
 	}
@@ -6006,7 +6144,7 @@ function lightbox (anchor) {
 		isInTransition = true;
 		return result.then(() => {
 			// show info panel
-			$qs('.info', lightboxWrap).classList.remove('hide');
+			$qs('.info', lightboxWrap).style.top = '0';
 
 			// update mode links
 			updateModeLinks();
@@ -6091,6 +6229,7 @@ function lightbox (anchor) {
 
 	function handlePointerDown (e) {
 		if (isInTransition) return;
+		if (e.target != receiver) return;
 
 		receiver.setPointerCapture(e.pointerId);
 
@@ -6461,7 +6600,7 @@ function lightbox (anchor) {
 				}),
 			delay(1000)
 				.then(() => {
-					if (!image) {
+					if (!image && loaderWrap.classList.contains('hide')) {
 						loaderWrap.classList.remove('hide');
 						$t($qs('p', loaderWrap), '読み込み中...');
 					}
@@ -6470,8 +6609,10 @@ function lightbox (anchor) {
 	}
 
 	function leave () {
-		$qs('.info', lightboxWrap).classList.add('hide');
-		image.style.opacity = '';
+		$qs('.info', lightboxWrap).style.top = '';
+		if (image) {
+			image.style.opacity = '';
+		}
 		imageWrap.classList.add('hide');
 		loaderWrap.classList.add('hide');
 		empty(imageWrap);
@@ -6522,23 +6663,23 @@ function lightbox (anchor) {
 function startDrawing (callback) {
 	const PERSIST_KEY = 'data-persists';
 
-	var drawWrap;
-	var drawBoxOuter;
-	var drawBoxInner;
-	var drawCanvas;
-	var ctx;
-	var ctxPenSample;
-	var undoImage;
-	var mousedownPos = {x: null, y: null};
+	let drawWrap;
+	let drawBoxOuter;
+	let drawBoxInner;
+	let drawCanvas;
+	let ctx;
+	let ctxPenSample;
+	let undoImage;
+	let mousedownPos = {x: null, y: null};
 
-	var foregroundColor = '#800000';
-	var backgroundColor = '#f0e0d6';
-	var penSize = 3;
-	var zoomFactor = 1;
+	let foregroundColor = '#800000';
+	let backgroundColor = '#f0e0d6';
+	let penSize = 3;
+	let zoomFactor = 1;
 
 	function displayPenSample (size) {
-		var w = ctxPenSample.canvas.width;
-		var h = ctxPenSample.canvas.height;
+		let w = ctxPenSample.canvas.width;
+		let h = ctxPenSample.canvas.height;
 		ctxPenSample.clearRect(0, 0, w, h);
 		ctxPenSample.beginPath();
 		ctxPenSample.arc(w / 2, h / 2, size / 2, 0, 2 * Math.PI);
@@ -6559,9 +6700,14 @@ function startDrawing (callback) {
 		mousedownPos.x = x;
 		mousedownPos.y = y;
 
+		ctx.strokeStyle = ctx.fillStyle = foregroundColor;
+
+		ctx.arc(x, y, ctx.lineWidth / 2, 0, 2 * Math.PI);
+		ctx.closePath();
+		ctx.fill();
+
 		ctx.beginPath();
 		ctx.moveTo(x, y);
-		ctx.strokeStyle = ctx.fillStyle = foregroundColor;
 	}
 
 	function canvasMousemove (x, y) {
@@ -6572,35 +6718,28 @@ function startDrawing (callback) {
 	}
 
 	function canvasMouseup (x, y) {
-		if (x == mousedownPos.x && y == mousedownPos.y) {
-			ctx.arc(x, y, ctx.lineWidth / 2, 0, 2 * Math.PI);
-			ctx.closePath();
-			ctx.fill();
-		}
-		else {
-			ctx.lineTo(x, y);
-			ctx.stroke();
-		}
+		ctx.lineTo(x, y);
+		ctx.stroke();
 
 		mousedownPos.x = mousedownPos.y = null;
 	}
 
 	function dispatch (e, handler) {
-		var x, y;
+		let x, y;
 
 		if (e.target == drawCanvas) {
 			x = e.offsetX;
 			y = e.offsetY;
 		}
 		else if (e.target == drawBoxInner) {
-			var r1 = drawBoxInner.getBoundingClientRect();
-			var r2 = drawCanvas.getBoundingClientRect();
+			let r1 = drawBoxInner.getBoundingClientRect();
+			let r2 = drawCanvas.getBoundingClientRect();
 			x = r1.left - r2.left + e.offsetX;
 			y = r1.top  - r2.top  + e.offsetY;
 		}
 		else if (e.target == drawBoxOuter) {
-			var r1 = drawBoxOuter.getBoundingClientRect();
-			var r2 = drawCanvas.getBoundingClientRect();
+			let r1 = drawBoxOuter.getBoundingClientRect();
+			let r2 = drawCanvas.getBoundingClientRect();
 			x = r1.left - r2.left + e.offsetX;
 			y = r1.top  - r2.top  + e.offsetY;
 		}
@@ -6614,45 +6753,51 @@ function startDrawing (callback) {
 		}
 	}
 
+	function initOnFirstRun (key) {
+		let node;
 
-	function initOnFirstRun () {
 		// background color indicator
-		var node = $qs('.draw-bg', drawWrap);
+		node = $qs('.draw-bg', drawWrap);
 		node.setAttribute('data-color', backgroundColor);
 
 		// foreground color indicator
-		var node = $qs('.draw-fg', drawWrap);
+		node = $qs('.draw-fg', drawWrap);
 		node.setAttribute('data-color', foregroundColor);
 
 		// init canvas
-		ctx.fillStyle = backgroundColor;
-		ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-		handleZoomFactor({target: {value: zoomFactor}});
-
-		// display pen sample
-		handlePenRangeInput({target: $qs('.draw-pen-range', drawWrap)});
-
-		drawWrap.setAttribute(PERSIST_KEY, '1');
+		if (key != 'canvas-initialized') {
+			drawCanvas.width = TEGAKI_CANVAS_WIDTH;
+			drawCanvas.height = TEGAKI_CANVAS_HEIGHT;
+			const c = drawCanvas.getContext('2d');
+			c.fillStyle = backgroundColor;
+			c.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+		}
 	}
 
-	function initOnSecondRun () {
+	function initOnSecondRun (key) {
 		foregroundColor =
 			$qs('.draw-color-wrap', drawWrap)
 			.lastElementChild
 			.getAttribute('data-color');
+
 		backgroundColor =
 			$qs('.draw-color-wrap', drawWrap)
 			.firstElementChild
 			.getAttribute('data-color');
-		Array.prototype.some.call(
-			$qsa('[name="draw-zoom"]', drawWrap),
-			node => {
-				if (node.checked) {
-					zoomFactor = node.value - 0;
-					return true;
-				}
+
+		$qsa('[name="draw-zoom"]', drawWrap).forEach(node => {
+			if (node.checked) {
+				zoomFactor = node.value - 0;
 			}
-		);
+		});
+	}
+
+	function initContext () {
+		ctx = drawCanvas.getContext('2d');
+		ctx.lineCap = 'round';
+		ctx.lineJoin = 'round';
+
+		ctxPenSample = $qs('.draw-pen-sample', drawWrap).getContext('2d');
 	}
 
 	function init () {
@@ -6662,20 +6807,34 @@ function startDrawing (callback) {
 		drawBoxInner = $qs('.draw-box-inner', drawWrap);
 		drawCanvas = $qs('.draw-canvas', drawWrap);
 
-		// retrieve canvas contexts
-		ctx = drawCanvas.getContext('2d');
-		ctx.lineCap = 'round';
-		ctx.lineJoin = 'round';
-
-		ctxPenSample = $qs('.draw-pen-sample', drawWrap).getContext('2d');
-
 		// start new state
 		appStates.unshift('draw');
 
-		// initialize when first run
-		!drawWrap.hasAttribute(PERSIST_KEY) ?
-			initOnFirstRun() :
-			initOnSecondRun();
+		// pre initialize when first run or other...
+		const persistKey = drawWrap.getAttribute(PERSIST_KEY);
+		if (persistKey == 'completed') {
+			initOnSecondRun(persistKey);
+		}
+		else {
+			initOnFirstRun(persistKey);
+		}
+
+		// retrieve canvas contexts
+		initContext();
+
+		// post initialize
+		if (persistKey == 'completed') {
+			//
+		}
+		else {
+			// init zoom state
+			handleZoomFactor({target: {value: zoomFactor}});
+
+			// display pen sample
+			handlePenRangeInput({target: $qs('.draw-pen-range', drawWrap)});
+
+			drawWrap.setAttribute(PERSIST_KEY, 'completed');
+		}
 
 		// register some native events
 		drawBoxOuter.addEventListener(
@@ -6693,6 +6852,7 @@ function startDrawing (callback) {
 			.add('#draw-zoom-factor', handleZoomFactor)
 			.add('#draw-clear', handleClear)
 			.add('#draw-undo', handleUndo)
+			.add('#draw-resize', handleResize)
 			.add('#draw-complete', handleComplete)
 			.add('#draw-cancel', handleCancel);
 
@@ -6712,7 +6872,7 @@ function startDrawing (callback) {
 		// start transition
 		drawWrap.classList.remove('hide');
 		drawBoxOuter.classList.remove('hide');
-		setTimeout(function () {
+		setTimeout(() => {
 			$qs('.dimmer', drawWrap).classList.add('run');
 		}, 0);
 	}
@@ -6731,6 +6891,8 @@ function startDrawing (callback) {
 			.remove('#draw-color-switch')
 			.remove('#draw-zoom-factor')
 			.remove('#draw-clear')
+			.remove('#draw-undo')
+			.remove('#draw-paste')
 			.remove('#draw-complete')
 			.remove('#draw-cancel');
 
@@ -6739,21 +6901,23 @@ function startDrawing (callback) {
 
 		selectionMenu.enabled = true;
 
-		var dimmer = $qs('.dimmer', drawWrap);
+		let dimmer = $qs('.dimmer', drawWrap);
 		drawBoxOuter.classList.add('hide');
 		transitionend(dimmer, function () {
 			drawWrap.classList.add('hide');
-			drawWrap = drawCanvas = dimmer = ctx = null;
+			dimmer = drawWrap = drawBoxOuter = drawBoxInner =
+			drawCanvas = ctx = ctxPenSample = undoImage = mousedownPos = null;
 			appStates.shift();
 			keyManager.updateManifest();
 		});
 
-		setTimeout(function () {
+		setTimeout(() => {
 			dimmer.classList.remove('run');
 		}, 0);
 	}
 
 	function handleMousedown (e) {
+		if (e.button != 0) return;
 		if (dispatch(e, canvasMousedown)) {
 			drawBoxOuter.addEventListener(MMOVE_EVENT_NAME, handleMousemove, false);
 			drawBoxOuter.addEventListener('mouseup', handleMouseup, false);
@@ -6774,10 +6938,10 @@ function startDrawing (callback) {
 		e.target.setAttribute('data-color-saved', e.target.getAttribute('data-color'));
 		Akahuku.startColorPicker(e.target, {
 			initialColor: e.target.getAttribute('data-color'),
-			change: function (color) {
+			change: color => {
 				e.target.style.backgroundColor = color.text;
 			},
-			ok: function (color) {
+			ok: color => {
 				e.target.style.backgroundColor = color.text;
 				e.target.setAttribute('data-color', color.text);
 				e.target.removeAttribute('data-color-saved');
@@ -6788,7 +6952,7 @@ function startDrawing (callback) {
 					foregroundColor = color.text;
 				}
 			},
-			cancel: function () {
+			cancel: () => {
 				e.target.style.backgroundColor = e.target.getAttribute('data-color-saved');
 				e.target.removeAttribute('data-color-saved');
 			}
@@ -6796,11 +6960,11 @@ function startDrawing (callback) {
 	}
 
 	function handleColorSwitch () {
-		var container = $qs('.draw-color-wrap', drawWrap);
+		const container = $qs('.draw-color-wrap', drawWrap);
 		container.appendChild(
 			container.removeChild(container.firstElementChild));
 
-		var tmp = foregroundColor;
+		let tmp = foregroundColor;
 		foregroundColor = backgroundColor;
 		backgroundColor = tmp;
 	}
@@ -6808,7 +6972,7 @@ function startDrawing (callback) {
 	function handlePenRangeInput (e) {
 		$('draw-pen-indicator').textContent = e.target.value;
 		displayPenSample(e.target.value);
-		ctx.lineWidth = e.target.value;
+		ctx.lineWidth = e.target.value - 0;
 	}
 
 	function handleZoomFactor (e) {
@@ -6816,14 +6980,14 @@ function startDrawing (callback) {
 	}
 
 	function handleZoomFactorKey (e) {
-		var node = $qs(`[name="draw-zoom"][value="${e.key}"]`, drawWrap);
+		const node = $qs(`[name="draw-zoom"][value="${e.key}"]`, drawWrap);
 		if (node) {
 			node.click();
 		}
 	}
 
 	function handleThinerPen () {
-		var range = $qs('.draw-pen-range', drawWrap);
+		const range = $qs('.draw-pen-range', drawWrap);
 		if (range) {
 			range.value = Math.max(range.min, range.value - 1);
 			handlePenRangeInput({target: range});
@@ -6831,7 +6995,7 @@ function startDrawing (callback) {
 	}
 
 	function handleThickerPen () {
-		var range = $qs('.draw-pen-range', drawWrap);
+		const range = $qs('.draw-pen-range', drawWrap);
 		if (range) {
 			range.value = Math.min(range.max, (range.value - 0) + 1);
 			handlePenRangeInput({target: range});
@@ -6845,11 +7009,44 @@ function startDrawing (callback) {
 		}
 	}
 
+	function handleResize () {
+		function minmax (value, min, max) {
+			return Math.max(min, Math.min(value, max));
+		}
+
+		const result = window.prompt(
+			'新しいキャンバスの幅と高さを空白で区切って入力してください。',
+			`${drawCanvas.width} ${drawCanvas.height}`);
+		const re = /(\d+)\s+(\d+)/.exec(result);
+
+		if (re) {
+			const width = minmax(
+				re[1] - 0,
+				storage.config.tegaki_max_width.min,
+				storage.config.tegaki_max_width.max);
+			const height = minmax(
+				re[2] - 0,
+				storage.config.tegaki_max_height.min,
+				storage.config.tegaki_max_height.max);
+
+			drawCanvas.width = width;
+			drawCanvas.height = height;
+			initContext();
+			ctx.fillStyle = backgroundColor;
+			ctx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+			undoImage = null;
+			handleZoomFactor({target: {value: zoomFactor}});
+			handlePenRangeInput({target: $qs('.draw-pen-range', drawWrap)});
+		}
+	}
+
 	function handleClear () {
 		if (window.confirm('消去していいですか？')) {
 			undoImage = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-			ctx.fillStyle = '#f0e0d6'; //backgroundColor;
+			ctx.save();
+			ctx.fillStyle = backgroundColor;
 			ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+			ctx.restore();
 		}
 	}
 
@@ -7903,7 +8100,8 @@ function isSurrogate (ch) {
 }
 
 function resolveCharacterReference (s) {
-	return s.replace(/&(?:amp;)?(?:#(x[0-9a-f]+|[0-9]+)|([0-9a-z]+));?/gi, ($0, $1, $2) => {
+	// resolve character reference
+	s = s.replace(/&(?:#(x[0-9a-f]+|[0-9]+)|([0-9a-z]+));?/gi, ($0, $1, $2) => {
 		if ($1 != undefined) {
 			if ($1.charAt(0).toLowerCase() == 'x') {
 				$1 = parseInt($1.substring(1), 16);
@@ -7931,6 +8129,12 @@ function resolveCharacterReference (s) {
 			}
 		}
 	});
+
+	// fold continuous Nonspacing Marks
+	// Firefox does not support following regexp!
+	//s = s.replace(/(\p{gc=Mn})\1+/ug, '$1');
+
+	return s;
 }
 
 function dumpDebugText (text) {
@@ -7945,6 +8149,7 @@ function dumpDebugText (text) {
 			node.id = ID;
 			node.style.fontFamily = 'Consolas,monospace';
 			node.style.whiteSpace = 'pre-wrap';
+			node.style.wordBreak = 'break-all';
 		}
 		empty(node);
 		node.appendChild(document.createTextNode(text));
@@ -8044,7 +8249,7 @@ function populateTextFormItems (form, callback, populateAll) {
 }
 
 function populateFileFormItems (form, callback) {
-	let inputNodes = $qsa([
+	const inputNodes = $qsa([
 		'input[type="file"]'
 	].join(','), form);
 
@@ -8876,11 +9081,9 @@ function extractSiokaraThumbnails () {
 		}
 	}
 
-	const log = [];
 	for (let i = 0; i < files.length && i < 10; i++) {
 		let thumbHref = files[i].getAttribute('data-thumbnail-href');
 		if (thumbHref) {
-			log.push(thumbHref);
 			sendToBackend(
 				'load-siokara-thumbnail',
 				{url: thumbHref},
@@ -8889,10 +9092,6 @@ function extractSiokaraThumbnails () {
 		files[i].classList.remove('incomplete-siokara-thumbnail');
 	}
 
-	if (log.length) {
-		log.unshift('*** extractSiokaraThumbnails ***');
-		console.log(log.join('\n'));
-	}
 	setTimeout(extractSiokaraThumbnails, 919);
 }
 
@@ -9041,23 +9240,26 @@ function updateMarkedTopic (xml, container) {
 }
 
 function updateTopicID (xml, container) {
-	var result = false;
-	var ids = $qsa('topic > user_id', xml);
-	for (var i = 0, goal = ids.length; i < goal; i++) {
-		var number = $qs('number', ids[i].parentNode).textContent;
+	let result = false;
+	const ids = $qsa('topic > user_id', xml);
+	for (let i = 0, goal = ids.length; i < goal; i++) {
+		const number = $qs('number', ids[i].parentNode).textContent;
 
-		var node = $qs(`.topic-wrap[data-number="${number}"]`, container);
+		const node = $qs(`.topic-wrap[data-number="${number}"]`, container);
 		if (!node || $qs('.user-id', node)) continue;
 
-		var postno = $qs('.postno', node);
+		const postno = $qs('.postno', node);
 		if (!postno) continue;
 
-		var span = postno.parentNode.insertBefore((document[CRE]('span')), postno);
-		span.className = 'user-id';
-		span.textContent = 'ID:' + ids[i].textContent;
-		span.setAttribute('data-id', ids[i].textContent);
+		const id = postno.parentNode.insertBefore((document[CRE]('span')), postno);
+		id.className = 'user-id';
+		id.textContent = `ID:${ids[i].textContent}`;
+		id.setAttribute('data-id', ids[i].textContent);
 		postno.parentNode.insertBefore(document[CRE]('span'), postno);
-		postno.parentNode.insertBefore(document.createTextNode(' |'), postno);
+
+		const sep = postno.parentNode.insertBefore(document[CRE]('span'), postno);
+		sep.className = 'sep';
+		sep.textContent = '|';
 
 		result = true;
 	}
@@ -9221,6 +9423,41 @@ function updateIdFrequency (stat) {
 		}
 	}
 	timingLogger.endTag();
+}
+
+function updateSodanesViaAPI (data) {
+	if (!data) return;
+
+	for (let number in data) {
+		const selector = [
+			`article .topic-wrap[data-number="${number}"]`,
+			`article .reply-wrap > [data-number="${number}"]`
+		].join(',');
+		const sodaneValue = data[number] - 0;
+
+		for (const node of $qsa(selector)) {
+			const sodaneNode = $qs('.sodane, .sodane-null', node);
+			if (!sodaneNode) {
+				continue;
+			}
+
+			const re = /\d+$/.exec(sodaneNode.textContent);
+			if (re && re[0] - 0 == sodaneValue) {
+				continue;
+			}
+
+			if (sodaneValue) {
+				$t(sodaneNode, `そうだね × ${sodaneValue}`);
+				sodaneNode.classList.remove('sodane-null');
+				sodaneNode.classList.add('sodane');
+			}
+			else {
+				$t(sodaneNode, '＋');
+				sodaneNode.classList.add('sodane-null');
+				sodaneNode.classList.remove('sodane');
+			}
+		}
+	}
 }
 
 function getReplyContainer (index) {
@@ -9517,7 +9754,7 @@ function doDisplayThumbnail (thumbWrap, thumb, img) { /*returns promise*/
 	return delay(0).then(() => commands.activatePostForm());
 }
 
-function setPostThumbnail (file) { /*returns promise*/
+function setPostThumbnail (file, caption) { /*returns promise*/
 	let thumbWrap = $('post-image-thumbnail-wrap');
 	let thumb = $('post-image-thumbnail');
 
@@ -9528,7 +9765,10 @@ function setPostThumbnail (file) { /*returns promise*/
 		return setPostThumbnailVisibility(false);
 	}
 
-	if (file instanceof HTMLCanvasElement) {
+	if (file instanceof HTMLCanvasElement
+	||  file instanceof HTMLImageElement
+	||  file instanceof HTMLVideoElement) {
+		$t('post-image-thumbnail-info', caption || `(on demand content)`);
 		return doDisplayThumbnail(thumbWrap, thumb, file);
 	}
 
@@ -9798,17 +10038,30 @@ const commands = {
 		resetForm('upfile');
 		return setPostThumbnail();
 	},
-	summaryBack: function () { /*returns promise*/
+	summaryBack: function () {
 		let current = $qs('.nav .nav-links .current');
 		if (!current || !current.previousSibling) return;
 		if (transport.isRapidAccess('reload-summary')) return;
 		historyStateWrapper.pushState(current.previousSibling.href);
 	},
-	summaryNext: function () { /*returns promise*/
+	summaryNext: function () {
 		let current = $qs('.nav .nav-links .current');
 		if (!current || !current.nextSibling) return;
 		if (transport.isRapidAccess('reload-summary')) return;
 		historyStateWrapper.pushState(current.nextSibling.href);
+	},
+	clearCredentials: function (e, t) { /*returns promise*/
+		const content = t.textContent;
+		t.disabled = true;
+		$t(t, '処理中...');
+		return sendToBackend('clear-credentials', {
+			schemes: ['dropbox', 'googledrive', 'onedrive']
+		})
+			.then(() => delay(1000))
+			.then(() => {
+				$t(t, content);
+				t.disabled = false;
+			});
 	},
 
 	/*
@@ -10275,6 +10528,7 @@ const commands = {
 
 					scrollToNewReplies(() => {
 						updateIdFrequency(newStat);
+						updateSodanesViaAPI(doc.sd);
 
 						extractTweets();
 						extractSiokaraThumbnails();
@@ -10506,6 +10760,9 @@ const commands = {
 					to.textContent = getTextForCatalog(
 						from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!'), 4);
 					to.setAttribute('data-text', from.textContent);
+					if (/^>/.test(from.textContent)) {
+						to.classList.add('quote');
+					}
 				}
 
 				to = anchor.appendChild(document[CRE]('div'));
@@ -10731,16 +10988,15 @@ const commands = {
 		xhr.open('GET', url);
 		xhr.onload = () => {
 			setTimeout(newSodaneValue => {
-				let oldSodaneValue = 0;
-				let re = /(\d+)$/.exec(t.textContent);
-				if (re) {
-					oldSodaneValue = re[1] - 0;
-				}
-
-				if (newSodaneValue && newSodaneValue > oldSodaneValue) {
+				if (newSodaneValue - 0) {
 					$t(t, `そうだね × ${newSodaneValue}`);
 					t.classList.remove('sodane-null');
 					t.classList.add('sodane');
+				}
+				else {
+					$t(t, '＋');
+					t.classList.add('sodane-null');
+					t.classList.remove('sodane');
 				}
 
 				t.removeAttribute('data-busy');
@@ -10906,8 +11162,8 @@ const commands = {
 				}
 				dialog.initFromXML(xml, 'config-dialog');
 
-				// special element for mouse wheel unit
 				setTimeout(() => {
+					// special element for mouse wheel unit
 					let wheelUnit = $qs('input[name="config-item.wheel_reload_unit_size"]');
 					if (wheelUnit) {
 						let span = wheelUnit.parentNode.insertBefore(
@@ -11104,10 +11360,6 @@ const commands = {
 		startDrawing(dataURL => {
 			if (!dataURL) return;
 
-			let thumbWrap = $('post-image-thumbnail-wrap');
-			let thumb = $('post-image-thumbnail');
-			if (!thumbWrap || !thumb) return;
-
 			getImageFrom(dataURL).then(img => {
 				let result;
 				if (img) {
@@ -11126,9 +11378,8 @@ const commands = {
 						}
 					}
 					resetForm('upfile', 'textonly');
-					doDisplayThumbnail(thumbWrap, thumb, img);
+					setPostThumbnail(img, '手書き');
 				}
-				thumbWrap = thumb = null;
 				return result;
 			});
 		});

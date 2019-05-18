@@ -293,6 +293,10 @@
 			case 'reload':
 				lateResponse = handleReloadExtension();
 				break;
+			case 'clear-credentials':
+				saveImage.clearCredentials(data.schemes).then(res);
+				lateResponse = true;
+				break;
 			}
 		}
 		finally {

@@ -421,6 +421,10 @@ function OAuth2BasedOnlineStorage (opts) {
 	function clearCredentials () {
 		accessToken = refreshToken = userId = undefined;
 		tries = 0;
+
+		localStorage.removeItem(`${opts.name}.accessToken`);
+		localStorage.removeItem(`${opts.name}.refreshToken`);
+		localStorage.removeItem(`${opts.name}.userId`);
 	}
 
 	loadTokens();

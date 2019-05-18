@@ -297,6 +297,15 @@
 			);
 		}
 
+		function clearCredentials (schemes) {
+			return getFileSystem()
+				.then(fs => {
+					schemes.forEach(scheme => {
+						fs.clearCredentials(`${scheme}:`);
+					});
+				});
+		}
+
 		/*
 		 * constructor
 		 */
@@ -306,7 +315,8 @@
 		}
 		else {
 			return {
-				run: run
+				run: run,
+				clearCredentials: clearCredentials
 			};
 		}
 	}

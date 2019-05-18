@@ -16,6 +16,18 @@ Akahuku.startColorPicker = function startColorPicker (target, options) {
 		svCursor, hueCursor, upArrow, currentColor;
 
 	// utility functions
+	function docScrollTop () {
+		return Math.max(
+			document.documentElement.scrollTop,
+			document.body.scrollTop);
+	}
+
+	function docScrollLeft () {
+		return Math.max(
+			document.documentElement.scrollLeft,
+			document.body.scrollLeft);
+	}
+
 	function style (elm, s) {
 		for (var i in s) if (i in elm.style) elm.style[i] = '' + s[i];
 		return elm;
