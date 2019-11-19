@@ -137,6 +137,7 @@ let version = '0.0.1';
 let devMode = false;
 let viewportRect;
 let overrideUpfile;
+let moderatePromise = Promise.resolve();
 
 /*
  * <<<1 bootstrap functions
@@ -560,7 +561,7 @@ function install (mode) {
 				}, 1000 * 1, e, t);
 			}
 			if (storage.config.lightbox_enabled.value) {
-				if (/\.(?:jpg|gif|png)$/.test(t.href)) {
+				if (/\.(?:jpg|gif|png|webp)$/.test(t.href)) {
 					let ignoreThumbnail =
 						t.classList.contains('link-siokara')
 						|| t.classList.contains('siokara-thumbnail');
@@ -799,7 +800,7 @@ function install (mode) {
 
 			// page navigator sync
 			let navElement = $qs('#postform-wrap .nav-links');
-			let pageCount = navElement.childElementCount;
+			let pageCount = Math.min(11, navElement.childElementCount);
 			empty(navElement);
 			for (let i = 0; i < pageCount; i++) {
 				if (i == summaryIndex) {
@@ -1658,7 +1659,7 @@ function createXMLGenerator () {
 	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(re[2])) {
+			if (/\.(?:jpg|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
 				anchor.setAttribute('class', `${this.className} incomplete-siokara-thumbnail lightbox`);
 				anchor.setAttribute('thumbnail', `${baseUrl}misc/${re[1]}.thumb.jpg`);
 			}
@@ -1673,7 +1674,7 @@ function createXMLGenerator () {
 	LinkTarget.prototype.upProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(re[2])) {
+			if (/\.(?:jpg|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
 				anchor.setAttribute('class', `${this.className} lightbox`);
 			}
 			return `${baseUrl}src/${re[1]}${re[2]}`;
@@ -1772,13 +1773,13 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-futaba lightbox',
-			'\\b((?:h?t?t?p?s?://)?[^.]+\\.2chan\\.net/[^/]+/src/\\d+\\.(?:jpg|gif|png|webm|mp4)\\S*)',
+			'\\b((?:h?t?t?p?s?://)?[^.]+\\.2chan\\.net/[^/]+/src/\\d+\\.(?:jpg|gif|png|webp|webm|mp4)\\S*)',
 			function (re, anchor) {
 				anchor.setAttribute(
 					'thumbnail',
 					re[0]
 						.replace('/src/', '/thumb/')
-						.replace(/\.(?:jpg|gif|png|webm|mp4)/, 's.jpg'));
+						.replace(/\.(?:jpg|gif|png|webp|webm|mp4)/, 's.jpg'));
 				return re[0];
 			}
 		),
@@ -1950,7 +1951,7 @@ function createXMLGenerator () {
 
 			buffer.sort((a, b) => a[0] - b[0]);
 			let navsNode = element(metaNode, 'navs');
-			for (let i = 0, goal = buffer.length; i < goal; i++) {
+			for (let i = 0, goal = Math.min(11, buffer.length); i < goal; i++) {
 				let navNode = element(navsNode, 'nav');
 
 				navNode.appendChild(text(buffer[i][0]));
@@ -2110,7 +2111,7 @@ function createXMLGenerator () {
 		 * split content into threads
 		 */
 
-		const threadRegex = /(<div\s+class="thre"[^>]*>\s*)(?:画像ファイル名：.+?(<a[^>]+><img[^>]+><\/a>))?<input[^>]+value="?delete"?[^>]*>.*?<hr>/g;
+		const threadRegex = /(<div\s+class="thre"[^>]*>\s*)(?:画像ファイル名：.+?(<a[^>]+><img[^>]+><\/a>))?(?:<input[^>]+value="?delete"?[^>]*>|<span\s+id="delcheck\d+"[^>]*>).*?<hr>/g;
 		const postTimeRegex = getPostTimeRegex();
 		let threadIndex = 0;
 
@@ -2214,7 +2215,7 @@ function createXMLGenerator () {
 			}
 
 			// subject
-			re = /<input[^>]+type="checkbox"[^>]*>(?:<[^a][^>]*>)+([^<]+)/i.exec(topicInfo);
+			re = /<span\s+class="[^"]*csb[^"]*"[^>]*>(.+?)<\/span>/i.exec(topicInfo);
 			if (re) {
 				re[1] = re[1].replace(/^\s+|\s+$/g, '');
 				element(topicNode, 'sub').appendChild(text(re[1]));
@@ -2222,7 +2223,7 @@ function createXMLGenerator () {
 			}
 
 			// name
-			re = /Name\s*<font[^>]*>(.+?)<\/font>/i.exec(topicInfo);
+			re = /<span\s+class="[^"]*cnm[^"]*"[^>]*>(.+?)<\/span>/i.exec(topicInfo);
 			if (re) {
 				re[1] = re[1]
 					.replace(/<[^>]*>/g, '')
@@ -2243,7 +2244,7 @@ function createXMLGenerator () {
 			}
 
 			// そうだね (that's right)
-			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
+			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
 			if (re) {
 				let sodaneNode = element(topicNode, 'sodane');
 				if (/x0$/.test(re[1])) {
@@ -2257,7 +2258,7 @@ function createXMLGenerator () {
 			}
 
 			// ID
-			re = /ID:([^ ]+)/.exec(topicInfoText);
+			re = /<span\s+class="[^"]*cnw[^"]*"[^>]*>.*?ID:(.+?)<\/span>/i.exec(topicInfo) || /ID:([^ <]+)/.exec(topicInfoText);
 			if (re) {
 				let idNode = element(topicNode, 'user_id');
 				idNode.appendChild(text(stripTags(re[1])));
@@ -2318,7 +2319,7 @@ function createXMLGenerator () {
 			}
 
 			// communist sign :-)
-			re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(topic);
+			re = /(\[|dice\d+d\d+(?:[-+]\d+)?=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(topic);
 			if (re && (!re[1] || re[1].substr(-1) != '=')) {
 				let markNode = element(topicNode, 'mark');
 				re[0].charAt(0) == '['
@@ -2342,7 +2343,7 @@ function createXMLGenerator () {
 
 			let result = fetchReplies(
 				threadRest,
-				/<table[^>]*>.*?<input[^>]*>.*?<\/td>/g,
+				/<table[^>]*>.*?(?:<input[^>]*>|<span\s+id="delcheck\d+"[^>]*>).*?<\/td>/g,
 				hiddenRepliesCount, maxReplies, -1, threadNode,
 				siteInfo.subHash, siteInfo.nameHash, baseUrl);
 
@@ -2421,7 +2422,7 @@ function createXMLGenerator () {
 			}
 
 			// ID
-			re = /ID:([^ "]+)/.exec(infoText);
+			re = /<span\s+class="[^"]*cnw[^"]*"[^>]*>.*?ID:(.+?)<\/span>/i.exec(info) || /ID:([^ "<]+)/.exec(infoText);
 			if (re) {
 				let idNode = element(replyNode, 'user_id');
 				idNode.appendChild(text(stripTags(re[1])));
@@ -2436,7 +2437,7 @@ function createXMLGenerator () {
 			}
 
 			// mark
-			re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(comment);
+			re = /(\[|dice\d+d\d+(?:[-+]\d+)?=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(comment);
 			if (re && (!re[1] || re[1].substr(-1) != '=')) {
 				if (!$qs('deleted', replyNode)) {
 					element(replyNode, 'deleted');
@@ -2452,7 +2453,7 @@ function createXMLGenerator () {
 			}
 
 			// そうだね (that's right)
-			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(info);
+			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(info);
 			if (re) {
 				let sodaneNode = element(replyNode, 'sodane');
 				if (/x0$/.test(re[1])) {
@@ -2491,7 +2492,7 @@ function createXMLGenerator () {
 			}
 
 			// subject
-			re = /<input[^>]+type="checkbox"[^>]*>(?:<[^a][^>]*>)+([^<]+)/i.exec(info);
+			re = /<span\s+class="[^"]*csb[^"]*"[^>]*>(.+?)<\/span>/i.exec(info);
 			if (re) {
 				re[1] = re[1].replace(/^\s+|\s+$/g, '');
 				element(replyNode, 'sub').appendChild(text(re[1]));
@@ -2499,7 +2500,7 @@ function createXMLGenerator () {
 			}
 
 			// name
-			re = /Name\s*<font[^>]*>(.+?)<\/font>/i.exec(info);
+			re = /<span\s+class="[^"]*cnm[^"]*"[^>]*>(.+?)<\/span>/i.exec(info);
 			if (re) {
 				re[1] = re[1]
 					.replace(/<[^>]*>/g, '')
@@ -5443,6 +5444,7 @@ function setupPostFormItemEvent (items) {
 			'image/jpg', 'image/jpeg',
 			'image/png',
 			'image/gif',
+			'image/webp',
 			'video/webm',
 			'video/mp4'
 		];
@@ -5547,8 +5549,9 @@ function setupPostFormItemEvent (items) {
 				canvas.height = size.height;
 
 				let c = canvas.getContext('2d');
-				c.fillStyle = '#000000';
-				c.fillRect(0, 0, canvas.width, canvas.height);
+				//c.fillStyle = '#000000';
+				//c.fillRect(0, 0, canvas.width, canvas.height);
+				c.clearRect(0, 0, canvas.width, canvas.height);
 				c.drawImage(
 					img,
 					0, 0, img.naturalWidth, img.naturalHeight,
@@ -5791,7 +5794,7 @@ function setupWheelReload () {
 		commands.reload();
 	}
 
-	window.addEventListener('wheel', handler, false);
+	window.addEventListener('wheel', handler, {passive: false});
 }
 
 function setupCustomEventHandler () {
@@ -6657,421 +6660,6 @@ function lightbox (anchor) {
 }
 
 /*
- * <<<1 drawer functions
- */
-
-function startDrawing (callback) {
-	const PERSIST_KEY = 'data-persists';
-
-	let drawWrap;
-	let drawBoxOuter;
-	let drawBoxInner;
-	let drawCanvas;
-	let ctx;
-	let ctxPenSample;
-	let undoImage;
-	let mousedownPos = {x: null, y: null};
-
-	let foregroundColor = '#800000';
-	let backgroundColor = '#f0e0d6';
-	let penSize = 3;
-	let zoomFactor = 1;
-
-	function displayPenSample (size) {
-		let w = ctxPenSample.canvas.width;
-		let h = ctxPenSample.canvas.height;
-		ctxPenSample.clearRect(0, 0, w, h);
-		ctxPenSample.beginPath();
-		ctxPenSample.arc(w / 2, h / 2, size / 2, 0, 2 * Math.PI);
-		ctxPenSample.closePath();
-		ctxPenSample.fillStyle = '#fff';
-		ctxPenSample.fill();
-	}
-
-	function setZoomFactor (zf) {
-		zoomFactor = zf;
-		drawCanvas.style.width = (ctx.canvas.width * zoomFactor) + 'px';
-		drawCanvas.style.height = (ctx.canvas.height * zoomFactor) + 'px';
-	}
-
-	function canvasMousedown (x, y) {
-		undoImage = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-
-		mousedownPos.x = x;
-		mousedownPos.y = y;
-
-		ctx.strokeStyle = ctx.fillStyle = foregroundColor;
-
-		ctx.arc(x, y, ctx.lineWidth / 2, 0, 2 * Math.PI);
-		ctx.closePath();
-		ctx.fill();
-
-		ctx.beginPath();
-		ctx.moveTo(x, y);
-	}
-
-	function canvasMousemove (x, y) {
-		ctx.lineTo(x, y);
-		ctx.stroke();
-		ctx.beginPath();
-		ctx.moveTo(x, y);
-	}
-
-	function canvasMouseup (x, y) {
-		ctx.lineTo(x, y);
-		ctx.stroke();
-
-		mousedownPos.x = mousedownPos.y = null;
-	}
-
-	function dispatch (e, handler) {
-		let x, y;
-
-		if (e.target == drawCanvas) {
-			x = e.offsetX;
-			y = e.offsetY;
-		}
-		else if (e.target == drawBoxInner) {
-			let r1 = drawBoxInner.getBoundingClientRect();
-			let r2 = drawCanvas.getBoundingClientRect();
-			x = r1.left - r2.left + e.offsetX;
-			y = r1.top  - r2.top  + e.offsetY;
-		}
-		else if (e.target == drawBoxOuter) {
-			let r1 = drawBoxOuter.getBoundingClientRect();
-			let r2 = drawCanvas.getBoundingClientRect();
-			x = r1.left - r2.left + e.offsetX;
-			y = r1.top  - r2.top  + e.offsetY;
-		}
-
-		if (x != undefined && y != undefined) {
-			x /= zoomFactor;
-			y /= zoomFactor;
-			e.cancelable && e.preventDefault();
-			handler(x, y);
-			return true;
-		}
-	}
-
-	function initOnFirstRun (key) {
-		let node;
-
-		// background color indicator
-		node = $qs('.draw-bg', drawWrap);
-		node.setAttribute('data-color', backgroundColor);
-
-		// foreground color indicator
-		node = $qs('.draw-fg', drawWrap);
-		node.setAttribute('data-color', foregroundColor);
-
-		// init canvas
-		if (key != 'canvas-initialized') {
-			drawCanvas.width = TEGAKI_CANVAS_WIDTH;
-			drawCanvas.height = TEGAKI_CANVAS_HEIGHT;
-			const c = drawCanvas.getContext('2d');
-			c.fillStyle = backgroundColor;
-			c.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
-		}
-	}
-
-	function initOnSecondRun (key) {
-		foregroundColor =
-			$qs('.draw-color-wrap', drawWrap)
-			.lastElementChild
-			.getAttribute('data-color');
-
-		backgroundColor =
-			$qs('.draw-color-wrap', drawWrap)
-			.firstElementChild
-			.getAttribute('data-color');
-
-		$qsa('[name="draw-zoom"]', drawWrap).forEach(node => {
-			if (node.checked) {
-				zoomFactor = node.value - 0;
-			}
-		});
-	}
-
-	function initContext () {
-		ctx = drawCanvas.getContext('2d');
-		ctx.lineCap = 'round';
-		ctx.lineJoin = 'round';
-
-		ctxPenSample = $qs('.draw-pen-sample', drawWrap).getContext('2d');
-	}
-
-	function init () {
-		// retrieve container elements
-		drawWrap = $('draw-wrap');
-		drawBoxOuter = $qs('.draw-box-outer', drawWrap);
-		drawBoxInner = $qs('.draw-box-inner', drawWrap);
-		drawCanvas = $qs('.draw-canvas', drawWrap);
-
-		// start new state
-		appStates.unshift('draw');
-
-		// pre initialize when first run or other...
-		const persistKey = drawWrap.getAttribute(PERSIST_KEY);
-		if (persistKey == 'completed') {
-			initOnSecondRun(persistKey);
-		}
-		else {
-			initOnFirstRun(persistKey);
-		}
-
-		// retrieve canvas contexts
-		initContext();
-
-		// post initialize
-		if (persistKey == 'completed') {
-			//
-		}
-		else {
-			// init zoom state
-			handleZoomFactor({target: {value: zoomFactor}});
-
-			// display pen sample
-			handlePenRangeInput({target: $qs('.draw-pen-range', drawWrap)});
-
-			drawWrap.setAttribute(PERSIST_KEY, 'completed');
-		}
-
-		// register some native events
-		drawBoxOuter.addEventListener(
-			'mousedown', handleMousedown, false);
-		$qs('.draw-bg', drawWrap).addEventListener(
-			'click', handleColorIndicatorClick, false);
-		$qs('.draw-fg', drawWrap).addEventListener(
-			'click', handleColorIndicatorClick, false);
-		$qs('.draw-pen-range', drawWrap).addEventListener(
-			'input', handlePenRangeInput, false);
-
-		// register click-dispatched events
-		clickDispatcher
-			.add('#draw-color-switch', handleColorSwitch)
-			.add('#draw-zoom-factor', handleZoomFactor)
-			.add('#draw-clear', handleClear)
-			.add('#draw-undo', handleUndo)
-			.add('#draw-resize', handleResize)
-			.add('#draw-complete', handleComplete)
-			.add('#draw-cancel', handleCancel);
-
-		// register keyboard events
-		keyManager
-			.addStroke('draw', ['1', '2', '3', '4'], handleZoomFactorKey)
-			.addStroke('draw', '[', handleThinerPen)
-			.addStroke('draw', ']', handleThickerPen)
-			.addStroke('draw', 'x', handleColorSwitch)
-			.addStroke('draw', 'u', handleUndo)
-			.addStroke('draw', '\u001b', handleCancel)
-			.updateManifest();
-
-		// disable auto selection menu
-		selectionMenu.enabled = false;
-
-		// start transition
-		drawWrap.classList.remove('hide');
-		drawBoxOuter.classList.remove('hide');
-		setTimeout(() => {
-			$qs('.dimmer', drawWrap).classList.add('run');
-		}, 0);
-	}
-
-	function leave () {
-		drawBoxOuter.removeEventListener(
-			'mousedown', handleMousedown, false);
-		$qs('.draw-bg', drawWrap).removeEventListener(
-			'click', handleColorIndicatorClick, false);
-		$qs('.draw-fg', drawWrap).removeEventListener(
-			'click', handleColorIndicatorClick, false);
-		$qs('.draw-pen-range', drawWrap).removeEventListener(
-			'input', handlePenRangeInput, false);
-
-		clickDispatcher
-			.remove('#draw-color-switch')
-			.remove('#draw-zoom-factor')
-			.remove('#draw-clear')
-			.remove('#draw-undo')
-			.remove('#draw-paste')
-			.remove('#draw-complete')
-			.remove('#draw-cancel');
-
-		keyManager
-			.removeStroke('draw');
-
-		selectionMenu.enabled = true;
-
-		let dimmer = $qs('.dimmer', drawWrap);
-		drawBoxOuter.classList.add('hide');
-		transitionend(dimmer, function () {
-			drawWrap.classList.add('hide');
-			dimmer = drawWrap = drawBoxOuter = drawBoxInner =
-			drawCanvas = ctx = ctxPenSample = undoImage = mousedownPos = null;
-			appStates.shift();
-			keyManager.updateManifest();
-		});
-
-		setTimeout(() => {
-			dimmer.classList.remove('run');
-		}, 0);
-	}
-
-	function handleMousedown (e) {
-		if (e.button != 0) return;
-		if (dispatch(e, canvasMousedown)) {
-			drawBoxOuter.addEventListener(MMOVE_EVENT_NAME, handleMousemove, false);
-			drawBoxOuter.addEventListener('mouseup', handleMouseup, false);
-		}
-	}
-
-	function handleMousemove (e) {
-		dispatch(e, canvasMousemove);
-	}
-
-	function handleMouseup (e) {
-		dispatch(e, canvasMouseup);
-		drawBoxOuter.removeEventListener(MMOVE_EVENT_NAME, handleMousemove, false);
-		drawBoxOuter.removeEventListener('mouseup', handleMouseup, false);
-	}
-
-	function handleColorIndicatorClick (e) {
-		e.target.setAttribute('data-color-saved', e.target.getAttribute('data-color'));
-		Akahuku.startColorPicker(e.target, {
-			initialColor: e.target.getAttribute('data-color'),
-			change: color => {
-				e.target.style.backgroundColor = color.text;
-			},
-			ok: color => {
-				e.target.style.backgroundColor = color.text;
-				e.target.setAttribute('data-color', color.text);
-				e.target.removeAttribute('data-color-saved');
-				if (e.target.parentNode.children[0] == e.target) {
-					backgroundColor = color.text;
-				}
-				else {
-					foregroundColor = color.text;
-				}
-			},
-			cancel: () => {
-				e.target.style.backgroundColor = e.target.getAttribute('data-color-saved');
-				e.target.removeAttribute('data-color-saved');
-			}
-		});
-	}
-
-	function handleColorSwitch () {
-		const container = $qs('.draw-color-wrap', drawWrap);
-		container.appendChild(
-			container.removeChild(container.firstElementChild));
-
-		let tmp = foregroundColor;
-		foregroundColor = backgroundColor;
-		backgroundColor = tmp;
-	}
-
-	function handlePenRangeInput (e) {
-		$('draw-pen-indicator').textContent = e.target.value;
-		displayPenSample(e.target.value);
-		ctx.lineWidth = e.target.value - 0;
-	}
-
-	function handleZoomFactor (e) {
-		setZoomFactor(e.target.value);
-	}
-
-	function handleZoomFactorKey (e) {
-		const node = $qs(`[name="draw-zoom"][value="${e.key}"]`, drawWrap);
-		if (node) {
-			node.click();
-		}
-	}
-
-	function handleThinerPen () {
-		const range = $qs('.draw-pen-range', drawWrap);
-		if (range) {
-			range.value = Math.max(range.min, range.value - 1);
-			handlePenRangeInput({target: range});
-		}
-	}
-
-	function handleThickerPen () {
-		const range = $qs('.draw-pen-range', drawWrap);
-		if (range) {
-			range.value = Math.min(range.max, (range.value - 0) + 1);
-			handlePenRangeInput({target: range});
-		}
-	}
-
-	function handleUndo () {
-		if (undoImage) {
-			ctx.putImageData(undoImage, 0, 0);
-			undoImage = null;
-		}
-	}
-
-	function handleResize () {
-		function minmax (value, min, max) {
-			return Math.max(min, Math.min(value, max));
-		}
-
-		const result = window.prompt(
-			'新しいキャンバスの幅と高さを空白で区切って入力してください。',
-			`${drawCanvas.width} ${drawCanvas.height}`);
-		const re = /(\d+)\s+(\d+)/.exec(result);
-
-		if (re) {
-			const width = minmax(
-				re[1] - 0,
-				storage.config.tegaki_max_width.min,
-				storage.config.tegaki_max_width.max);
-			const height = minmax(
-				re[2] - 0,
-				storage.config.tegaki_max_height.min,
-				storage.config.tegaki_max_height.max);
-
-			drawCanvas.width = width;
-			drawCanvas.height = height;
-			initContext();
-			ctx.fillStyle = backgroundColor;
-			ctx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
-			undoImage = null;
-			handleZoomFactor({target: {value: zoomFactor}});
-			handlePenRangeInput({target: $qs('.draw-pen-range', drawWrap)});
-		}
-	}
-
-	function handleClear () {
-		if (window.confirm('消去していいですか？')) {
-			undoImage = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-			ctx.save();
-			ctx.fillStyle = backgroundColor;
-			ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-			ctx.restore();
-		}
-	}
-
-	function handleComplete () {
-		try {
-			callback(drawCanvas.toDataURL());
-		}
-		finally {
-			leave();
-		}
-	}
-
-	function handleCancel () {
-		try {
-			callback();
-		}
-		finally {
-			leave();
-		}
-	}
-
-	init();
-}
-
-/*
  * <<<1 modal dialog functions
  */
 
@@ -7577,6 +7165,9 @@ function getImageMimeType (href) {
 	if (/\.gif\b/i.test(href)) {
 		return 'image/gif';
 	}
+	if (/\.webp\b/i.test(href)) {
+		return 'image/webp';
+	}
 	if (/\.webm\b/i.test(href)) {
 		return 'video/webm';
 	}
@@ -7938,19 +7529,18 @@ function getPostTimeRegex () {
 }
 
 function getReadableSize (size) {
-	const s = size - 0;
-	if (isNaN(s)) return size;
+	const s = typeof size == 'string' ? size - 0 : size;
+	if (typeof s != 'number' || isNaN(s) || !isFinite(s) || s < 0) return size;
 
-	if (s >= 1024 * 1024 * 1024) {
-		return (s / (1024 * 1024 * 1024)).toFixed(2) + 'GiB';
+	const UNIT = 1024;
+	const index = Math.log(size) / Math.log(UNIT) | 0;
+	if (index == 0) {
+		return s == 1 ? `${s}Byte` : `${s}Bytes`;
 	}
-	else if (s >= 1024 * 1024) {
-		return (s / (1024 * 1024)).toFixed(2) + 'MiB';
-	}
-	else if (s >= 1024) {
-		return (s / 1024).toFixed(2) + 'KiB';
-	}
-	return s + 'Bytes';
+
+	return (s / Math.pow(UNIT, index)).toFixed(20).replace(/(\...).*/, '$1') +
+		' KMGTPEZY'.charAt(index) +
+		'iB';
 }
 
 function getContentsFromEditable (el) {
@@ -8109,7 +7699,13 @@ function resolveCharacterReference (s) {
 			else {
 				$1 = parseInt($1, 10);
 			}
-			return String.fromCodePoint($1);
+
+			try {
+				return String.fromCodePoint($1);
+			}
+			catch (err) {
+				return '';
+			}
 		}
 		else if ($2 != undefined) {
 			const source = `&${$2};`;
@@ -8693,41 +8289,6 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 	reloadStatus.lastReloadType = 'delta';
 	reloadStatus.lastReceivedBytes = reloadStatus.lastReceivedCompressedBytes = 0;
 
-	/* official request sample:
-mode: regist
-MAX_FILE_SIZE: 2048000
-pthb: 
-pthc: 1546482177153
-pthd: 
-ptua: 1341647872
-flrv: 319741762
-flvv: 4161803809
-scsz: 1600x900x24
-js: on
-chrenc: 文字
-resto: 559251924
-email: 
-com: それはCGはアニメの中でCGだけ滑らかという刷り込みのせいな気がする
-pwd: 
-responsemode: ajax
-	 */
-	/* request sample:
-mode: regist
-MAX_FILE_SIZE: 2048000
-pthb: 
-pthc: 
-pthd: 
-ptua: 209825519327
-flrv: 
-flvv: 
-scsz: 1600x900x24
-js: on
-chrenc: <Shift_JIS encoded '文字'>
-resto: 559251924
-email: 
-com: <Shift_JIS encoded comment>
-pwd: 25760501
-	 */
 	return new Promise((resolve, reject) => {
 		const now = Date.now();
 		const url = [
@@ -8899,6 +8460,45 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 					doc = 新字体の漢字を舊字體に変換(doc);
 				}
 
+				const re = /<script[^>]+>var\s+ret\s*=JSON\.parse\('([^<]+)'\)/.exec(doc);
+				if (re) {
+					re[1] = re[1]
+						.replace(/\\u([0-9a-f]{4})/ig, ($0, $1) => String.fromCharCode(parseInt($1, 16)))
+						.replace(/\\([^"\\\/bfnrt])/g, '$1')
+						.replace(/\\","cr":/g, '","cr":');	// **REALLY REALLY BAD**
+
+					let data;
+					try {
+						data = JSON.parse(re[1]);
+					}
+					catch (err) {
+						console.error(err.message + '\n' + err.stack);
+						if (/in JSON at position (\d+)/.test(err.message)) {
+							console.error(`error string: "${re[1].substr(RegExp.$1 - 8, 16)}"`);
+						}
+						data = {res: []};
+					}
+
+					const buffer = [];
+					for (let i = 0; i < data.res.length; i++) {
+						const item = data.res[i];
+
+						if ('src' in item) {
+							buffer.push(`<td><a href='res/${item.no}.htm' target='_blank'><img src='${item.src.replace(/\\\//g, '\/')}' border=0 width=${item.w} height=${item.h} alt=""></a><br><small>${item.com.replace(/\\\//g, '\/')}</small><br><font size=2>${item.cr}</font></td>\n`);
+						}
+						else {
+							buffer.push(`<td><a href='res/${item.no}.htm' target='_blank'><small>${item.com.replace(/\\\//g, '\/')}</small></a><br><font size=2>${item.cr}</font></td>`);
+						}
+
+						if (i > 0 && (i % 15) == 14) {
+							buffer.push('</tr>\n<tr>');
+						}
+					}
+					buffer.unshift("<table border=1 align=center id='cattable'><tr>");
+					buffer.push('</tr>\n</table>');
+					doc = doc.replace(/(<div\s+id=["']?cattable["']?[^>]*>)(<\/div>)/, buffer.join(''));
+				}
+
 				doc = getDOMFromString(doc);
 				if (!doc) {
 					timingLogger.endTag(); // parsing html
@@ -8994,7 +8594,7 @@ function extractIncompleteFiles () {
 					node.appendChild(document.createTextNode(data.base));
 				}
 
-				if (/\.(?:jpg|gif|png|webm|mp4|mp3|ogg)$/.test(data.url)) {
+				if (/\.(?:jpg|gif|png|webp|webm|mp4|mp3|ogg)$/.test(data.url)) {
 					node.classList.add('lightbox');
 				}
 
@@ -9760,7 +9360,7 @@ function setPostThumbnail (file, caption) { /*returns promise*/
 
 	if (!thumbWrap || !thumb) return Promise.resolve();
 
-	if (!file || 'type' in file && !/^(?:image\/(?:jpeg|png|gif))|video\/(?:webm|mp4)$/.test(file.type)) {
+	if (!file || 'type' in file && !/^(?:image\/(?:jpeg|png|webp|gif))|video\/(?:webm|mp4)$/.test(file.type)) {
 		thumbWrap.removeAttribute('data-available');
 		return setPostThumbnailVisibility(false);
 	}
@@ -10035,7 +9635,8 @@ const commands = {
 		document.body.dispatchEvent(ev);
 	},
 	clearUpfile: function () { /*returns promise*/
-		resetForm('upfile');
+		resetForm('upfile', 'baseform');
+		overrideUpfile = undefined;
 		return setPostThumbnail();
 	},
 	summaryBack: function () {
@@ -10774,9 +10375,15 @@ const commands = {
 			// find latest post number
 			if (summaryReloadResult.status >= 200 && summaryReloadResult.status <= 299) {
 				const firstThread = $qs('div.thre', summaryReloadResult.doc);
-				const comments = $qsa('input[type="checkbox"][value="delete"]', firstThread);
+				const comments = $qsa('input[type="checkbox"][value="delete"],span[id^="delcheck"]', firstThread);
 				if (comments.length) {
-					siteInfo.latestNumber = comments[comments.length - 1].name - 0;
+					const last = comments[comments.length - 1];
+					if (/^delcheck(\d+)/.test(last.id)) {
+						siteInfo.latestNumber = RegExp.$1 - 0;
+					}
+					else if (last.name) {
+						siteInfo.latestNumber = last.name - 0;
+					}
 				}
 			}
 
@@ -10857,7 +10464,7 @@ const commands = {
 					}
 
 					for (let node = wrap.firstChild; node; node = node.nextSibling) {
-						let [threadNumber, imageNumber] = insertee.getAttribute('data-number').split(',');
+						let [threadNumber, imageNumber] = node.getAttribute('data-number').split(',');
 						threadNumber -= 0;
 						imageNumber -= 0;
 
@@ -11283,57 +10890,47 @@ const commands = {
 				},
 				onok: dialog => {
 					const TRANSPORT_TYPE = 'moderate';
-
 					let form = $qs('form', dialog.content);
-					let status = $qs('.moderate-status', dialog.content);
-					if (!form || !status) return;
+					if (!form) return;
 
-					if (transport.isRunning(TRANSPORT_TYPE)) {
-						transport.abort(TRANSPORT_TYPE);
-						$t(status, '中断しました。');
-						dialog.isPending = false;
-						return false;
-					}
+					form = form.cloneNode(true);
 
-					if (transport.isRapidAccess(TRANSPORT_TYPE)) {
-						$t(status, 'ちょっと待ってね。');
-						dialog.isPending = false;
-						return false;
-					}
-
-					$t(status, '申請を登録しています...');
-					dialog.isPending = true;
-					postBase(TRANSPORT_TYPE, form).then(response => {
-						response = response.replace(/\r\n|\r|\n/g, '\t');
-						let result = parseModerateResponse(response);
-
-						if (!result.registered) {
-							throw new Error(result.error || 'なんかエラー？');
-						}
-
-						$t(status, '登録されました');
-
-						$qsa('input[type="radio"]:checked', form).forEach(node => {
-							storage.runtime.del.lastReason = node.value;
-							storage.saveRuntime();
-							node.checked = false;
-						});
-
-						return delay(WAIT_AFTER_POST).then(() => {
-							dialog.isPending = false;
-							dialog.close();
-						});
-					})
-					.catch(err => {
-						console.error(`${APP_NAME}: moderate failed: ${err.stack}`);
-						$t(status, err.message);
-						dialog.enableButtons();
-					})
-					.finally(() => {
-						dialog.isPending = false;
-						form = status = dialog = null;
-						transport.release(TRANSPORT_TYPE);
+					$qsa('input[type="radio"]:checked', form).forEach(node => {
+						storage.runtime.del.lastReason = node.value;
+						storage.saveRuntime();
 					});
+
+					const no = $qs('input[name="d"]', form).value;
+					moderatePromise = moderatePromise.then(() => {
+						return postBase(TRANSPORT_TYPE, form).then(response => {
+							response = response.replace(/\r\n|\r|\n/g, '\t');
+							const result = parseModerateResponse(response);
+
+							if (!result.registered) {
+								throw new Error(result.error || 'なんかエラー？');
+							}
+
+							console.log(`${APP_NAME}: moderation for No.${no} completed.`);
+						})
+						.catch(err => {
+							console.error(`${APP_NAME}: moderation for No.${no} failed: ${err.stack}`);
+						})
+						.finally(() => {
+							const target = $qs([
+								`article .topic-wrap[data-number="${no}"]`,
+								`article .reply-wrap > [data-number="${no}"]`
+							].join(','));
+							const delLink = $qs('.del', target);
+							if (delLink) {
+								delLink.classList.add('posted');
+								delLink.setAttribute('title', 'del済み');
+							}
+
+							form = null;
+							transport.release(TRANSPORT_TYPE);
+						});
+					})
+					.then(() => delay(1000 * 10));
 				}
 			});
 		};
@@ -11357,32 +10954,57 @@ const commands = {
 		});
 	},
 	openDrawDialog: (e, anchor) => {
-		startDrawing(dataURL => {
-			if (!dataURL) return;
+		function runMomocan () {
+			let momocan = Akahuku.momocan.create({
+				onmarkup: markup => {
+					const imagePath = chrome.runtime.getURL('/images/momo/');
+					return markup
+						.replace(/\/\/dev\.appsweets\.net\/momo\//g, imagePath)
+						.replace(/\/@version@/g, '');
+				},
+				onok: canvas => {
+					const dataURL = canvas.toDataURL();
 
-			getImageFrom(dataURL).then(img => {
-				let result;
-				if (img) {
-					if (pageModes[0].mode == 'summary' || pageModes[0].mode == 'catalog') {
-						result = getBlobFrom(dataURL).then(blob => {
-							overrideUpfile = {
-								name: 'tegaki.png',
-								data: blob
-							};
-						});
-					}
-					else {
-						let baseform = document.getElementsByName('baseform')[0];
-						if (baseform) {
-							baseform.value = dataURL.replace(/^[^,]+,/, '');
+					getImageFrom(dataURL).then(img => {
+						let result;
+						if (img) {
+							if (pageModes[0].mode == 'summary' || pageModes[0].mode == 'catalog') {
+								result = getBlobFrom(dataURL).then(blob => {
+									overrideUpfile = {
+										name: 'tegaki.png',
+										data: blob
+									};
+								});
+							}
+							else {
+								const baseform = document.getElementsByName('baseform')[0];
+								if (baseform) {
+									baseform.value = dataURL.replace(/^[^,]+,/, '');
+								}
+							}
+							resetForm('upfile', 'textonly');
+							setPostThumbnail(img, '手書き');
 						}
-					}
-					resetForm('upfile', 'textonly');
-					setPostThumbnail(img, '手書き');
+						return result;
+					});
+				},
+				oncancel: () => {
+				},
+				onclose: () => {
+					momocan = null;
 				}
-				return result;
 			});
-		});
+
+			momocan.start();
+		}
+
+		if ($('momocan-container')) {
+			runMomocan();
+		}
+		else {
+			const style = chrome.runtime.getURL('/styles/momocan.css');
+			Akahuku.momocan.loadStyle(style).then(runMomocan);
+		}
 	},
 
 	/*
@@ -11815,6 +11437,7 @@ storage.onChanged = (changes, areaName) => {
 		storage.assignRuntime(changes.runtime.newValue);
 	}
 };
+Object.defineProperty(window.Akahuku, 'storage', {get: function () {return storage}});
 
 transport = createTransport();
 resources = createResourceManager();

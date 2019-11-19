@@ -112,7 +112,7 @@ FORCE:
 
 .PHONY: all crx nex xpi binkeys \
 	clean message \
-	debug-firefox version \
+	debug-firefox momocan version \
 	FORCE
 
 #
@@ -123,31 +123,34 @@ FORCE:
 # akahukuplus.crx
 $(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEYS_PATH)
 #	copy all of sources to embryo dir
-	$(RSYNC) $(RSYNC_OPT) \
+	@echo synchoronizing source...
+	@$(RSYNC) $(RSYNC_OPT) \
 		$(CHROME_SRC_PATH)/ $(CHROME_EMBRYO_SRC_PATH)
 
 #	update akahukuplus.js
-	sed $(SED_SCRIPT_DEBUG_OFF) \
+	@echo updating akahukuplus.js...
+	@sed $(SED_SCRIPT_DEBUG_OFF) \
 		$(CHROME_SRC_PATH)/frontend/akahukuplus.js \
 		> $(CHROME_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
 
 #	update manifest
-	tool/update-chrome-manifest.js \
+	@echo updating manifest file...
+	@tool/update-chrome-manifest.js \
 		--indir $(CHROME_SRC_PATH) \
 		--outdir $(CHROME_EMBRYO_SRC_PATH) \
 		--ver $(VERSION) \
 		--strip-applications
 
 #	build general crx
-	$(CHROME) \
+	@echo building crx...
+	@$(CHROME) \
 		--lang=en \
 		--pack-extension=$(CHROME_EMBRYO_SRC_PATH) \
 		--pack-extension-key=$(PRODUCT).pem
-
-	mv $(EMBRYO_DIR)/$(CHROME_SRC_DIR).$(CHROME_SUFFIX) $@
+	@mv $(EMBRYO_DIR)/$(CHROME_SRC_DIR).$(CHROME_SUFFIX) $@
 
 #	update manifest for google web store
-	tool/update-chrome-manifest.js \
+	@tool/update-chrome-manifest.js \
 		--indir $(CHROME_SRC_PATH) \
 		--outdir $(CHROME_EMBRYO_SRC_PATH) \
 		--ver $(VERSION) \
@@ -155,13 +158,14 @@ $(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEYS_PATH)
 		--strip-applications
 
 #	build zip archive for google web store
-	rm -f $(DIST_DIR)/$(PRODUCT)_chrome_web_store.zip
-	cd $(CHROME_EMBRYO_SRC_PATH) \
+	@echo building zip...
+	@rm -f $(DIST_DIR)/$(PRODUCT)_chrome_web_store.zip
+	@cd $(CHROME_EMBRYO_SRC_PATH) \
 		&& find . -type f -print0 | sort -z | xargs -0 $(ZIP) \
 		../../$(DIST_DIR)/$(PRODUCT)_chrome_web_store.zip
 
 #	create update description file
-	sed -e 's/@appid@/$(CHROME_EXT_ID)/g' \
+	@sed -e 's/@appid@/$(CHROME_EXT_ID)/g' \
 		-e 's!@location@!$(CHROME_EXT_LOCATION)!g' \
 		-e 's/@version@/$(VERSION)/g' \
 		$(SRC_DIR)/chrome.xml > $(DIST_DIR)/$(notdir $(CHROME_UPDATE_LOCATION))
@@ -173,7 +177,7 @@ $(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEYS_PATH)
 # last mtime holder
 $(CHROME_MTIME_PATH): FORCE
 	@mkdir -p $(CHROME_EMBRYO_SRC_PATH) $(DIST_DIR)
-	tool/mtime.js --dir $(CHROME_SRC_PATH) --base $(CHROME_TARGET_PATH) --out $@
+	@tool/mtime.js --dir $(CHROME_SRC_PATH) --base $(CHROME_TARGET_PATH) --out $@
 
 
 
@@ -313,5 +317,16 @@ debug-firefox: FORCE
 
 version: FORCE
 	@echo $(VERSION)
+
+
+
+#
+# rules to make momo source
+# ========================================
+#
+
+momocan: FORCE
+	wget http://dev.appsweets.net/momo/can.php?extension=js -O src/chrome/frontend/momocan.js
+	wget http://dev.appsweets.net/momo/can.php?extension=css -O src/chrome/styles/momocan.css
 
 # end
