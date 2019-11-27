@@ -737,7 +737,7 @@ function install (mode) {
 			updateViewportRectGeometry(style);
 			updateMaxSizeOfDialogs(style);
 			updateHeaderHeight(style);
-			readjustReplyWidth();
+			//readjustReplyWidth();
 		}
 
 		setupWindowResizeEvent(100, handler);
@@ -5287,11 +5287,12 @@ function createAutoTracker () {
 
 	function computeTrackFrequency () {
 		const logs = [];
+		const outputLog = false;
 		let median;
 		let referencedReplyNumber;
 
 		const postTimes = Array
-		.from($qsa(`.reply-wrap:nth-last-child(-n+${storage.config.autotrack_sampling_replies.value + 1})`))
+		.from($qsa(`.replies .reply-wrap:nth-last-child(-n+${storage.config.autotrack_sampling_replies.value + 1})`))
 		.map(node => {
 			referencedReplyNumber = $qs('[data-number]', node).dataset.number - 0;
 			return new Date($qs('.postdate', node).dataset.value - 0);
@@ -5338,7 +5339,7 @@ function createAutoTracker () {
 			`result: ${result} - ${getTimeSpanText(result / 1000)}`,
 			`result for display: ${Math.floor(result / 1000)}`
 		);
-		console.log(logs.join('\n'));
+		outputLog && console.log(logs.join('\n'));
 
 		return result;
 	}
