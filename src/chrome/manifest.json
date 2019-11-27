@@ -64,6 +64,17 @@
 			],
 			"run_at": "document_start",
 			"all_frames": true
+		},
+		{
+			"matches": [
+				"*://dec.2chan.net/up/up.htm",
+				"*://dec.2chan.net/up2/up.htm"
+			],
+			"js": [
+				"frontend/up.js"
+			],
+			"run_at": "document_start",
+			"all_frames": true
 		}
 	],
 	"web_accessible_resources": [

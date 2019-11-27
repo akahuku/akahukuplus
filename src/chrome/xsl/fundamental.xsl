@@ -602,7 +602,7 @@ article.summary .replies {
 	padding:2px 8px 2px 8px;
 	background-color:#f0e0d6;
 	border-radius:4px;
-	word-wrap:break-word;
+	word-break:break-word;
 	overflow-wrap:break-word;
 	box-shadow:0 1px #8004;
 }
@@ -621,7 +621,7 @@ article.summary .replies {
 
 /* comment header with image */
 .reply-wrap > div:last-child > div:first-child.image_true {
-	padding-right:250px;
+	/*padding-right:250px;*/
 }
 
 /* comment body */
@@ -670,7 +670,8 @@ article.summary .replies {
 	margin:0 0 12px 0;
 }
 
-.thread-footer .expire-warn {
+.thread-footer .expire-warn,
+.thread-footer .expire-maxreached {
 	color:red;
 	font-weight:bold;
 }
@@ -683,6 +684,15 @@ article.summary .replies {
 	margin:0 12px 0 0;
 	font-size:medium;
 	font-weight:bold;
+}
+
+.thread-footer .track-indicator {
+	margin:6px 0 0 0;
+	width:0px;
+	height:6px;
+	box-shadow:0px 1px 0px #444;
+	background-color:#789922;
+	transition:width 3s linear;
 }
 
 .thread-footer #replies-total,
@@ -1265,7 +1275,7 @@ article.summary .replies {
 #panel-content-mark li p.sub-header {
 	font-weight:bold;
 	border-bottom:1px dotted silver;
-	word-wrap:break-word;
+	word-break:break-word;
 	overflow-wrap:break-word;
 }
 
@@ -2484,7 +2494,7 @@ div.catalog-popup span {
 				<input type="checkbox"/>
 				<xsl:if test="topic/sub"><span class="sub def_{topic/sub=$sub_default}"><xsl:value-of select="topic/sub"/></span><span class="sep">|</span></xsl:if>
 				<xsl:if test="topic/name"><span class="name def_{topic/name=$name_default}"><xsl:value-of select="topic/name"/></span><span class="sep">|</span> </xsl:if>
-				<span class="postdate"><xsl:value-of select="topic/post_date"/></span><span class="sep">|</span>
+				<span class="postdate" data-value="{topic/post_date/@value}"><xsl:value-of select="topic/post_date"/></span><span class="sep">|</span>
 				<xsl:if test="topic/ip"><span class="ip">IP:<xsl:value-of select="topic/ip"/></span><span class="sep">|</span></xsl:if>
 				<xsl:if test="topic/user_id"><span class="user-id" data-id="{topic/user_id}">ID:<xsl:value-of select="topic/user_id"/></span><span></span><span class="sep">|</span></xsl:if>
 				<a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{topic/sodane/@class} js" href="#sodane"><xsl:value-of select="topic/sodane"/></a>&#160;<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
@@ -2517,6 +2527,7 @@ div.catalog-popup span {
 				<div class="reloader-wrap">
 					<a class="reloader js" href="#reload" id="reload-anchor"><kbd>r</kbd>続きを読む</a>
 					<span class="hide" id="fetch-status"></span>
+					<div class="track-indicator"></div>
 				</div>
 			</div>
 			</xsl:when>
@@ -2538,7 +2549,7 @@ div.catalog-popup span {
 			<input type="checkbox"/>
 			<xsl:if test="sub"><span class="sub def_{sub=$sub_default}"><xsl:value-of select="sub"/></span><span class="sep">|</span></xsl:if>
 			<xsl:if test="name"><span class="name def_{name=$name_default}"><xsl:value-of select="name"/></span><span class="sep">|</span></xsl:if>
-			<span class="postdate"><xsl:value-of select="post_date"/></span><span class="sep">|</span>
+			<span class="postdate" data-value="{post_date/@value}"><xsl:value-of select="post_date"/></span><span class="sep">|</span>
 			<xsl:if test="ip"><span class="ip"><xsl:value-of select="ip"/></span><span class="sep">|</span></xsl:if>
 			<a class="postno" href="#quote">No.<xsl:apply-templates select="number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{sodane/@class} js" href="#sodane"><xsl:value-of select="sodane"/></a>
 		</div>
@@ -2668,6 +2679,16 @@ div.catalog-popup span {
 <small> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
 <a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/><br/></a>
 </xsl:when>
+<xsl:when test="contains(@class,'link-up') and @thumbnail">
+<a class="{@class}" href="{@href}" target="_blank"><xsl:value-of select="."/></a>
+<small> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
+<a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/><br/></a>
+</xsl:when>
+<xsl:when test="contains(@class,'link-up-small') and @thumbnail">
+<a class="{@class}" href="{@href}" target="_blank"><xsl:value-of select="."/></a>
+<small> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
+<a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/><br/></a>
+</xsl:when>
 <xsl:when test="contains(@class,'link-twitter') and not (name(..)='q')">
 <a class="{@class}" href="{@href}" target="_blank" data-tweet-id="{@tweet-id}"><xsl:value-of select="."/></a>
 </xsl:when>
@@ -2698,6 +2719,10 @@ div.catalog-popup span {
 	class="{concat('expire-warn ',substring('hide',1,4-count(@warned)*4))}"
 	data-binding="xpath-class[reply]:concat('expire-warn ',substring('hide',1,4-count(/futaba/thread[1]/topic/expires/@warned)*4))"
 >このスレは古いので、もうすぐ消えます。</div>
+<div
+	class="{concat('expire-maxreached ',substring('hide',1,4-count(@maxreached)*4))}"
+	data-binding="xpath-class[reply]:concat('expire-maxreached ',substring('hide',1,4-count(/futaba/thread[1]/topic/expires/@maxreached)*4))"
+>レスの上限に達したので、これ以上コメントできません。</div>
 </xsl:template>
 
 </xsl:stylesheet>

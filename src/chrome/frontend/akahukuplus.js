@@ -53,6 +53,7 @@ const HEADER_MARGIN_BOTTOM = 16;
 const FALLBACK_JPEG_QUALITY = 0.8;
 const TEGAKI_CANVAS_WIDTH = 344;// original size: 344
 const TEGAKI_CANVAS_HEIGHT = 135;// original size: 135
+const INLINE_VIDEO_MAX_WIDTH = 720;
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
@@ -96,6 +97,7 @@ let sounds;
 let catalogPopup;
 let urlStorage;
 let quotePopup;
+let autoTracker;
 
 // others
 const siteInfo = {
@@ -124,6 +126,7 @@ const reloadStatus = {
 	lastRepliesCount: 0,
 	lastReceivedBytes: 0,
 	lastReceivedCompressedBytes: 0,
+	lastStatus: 0,
 	totalReceivedBytes: 0,
 	totalReceivedCompressedBytes: 0
 };
@@ -695,27 +698,6 @@ function install (mode) {
 			}
 		}
 
-		function updateMaxWidthOfComments (style) {
-			const text = $qs('article div.text');
-			if (text) {
-				const isContentInvisible = $('content').classList.contains('hide');
-				$('content').classList.remove('hide');
-				try {
-					const rect = text.getBoundingClientRect();
-					style.appendChild(document.createTextNode([
-						'.reply-wrap > div:last-child {',
-						`  max-width:${Math.floor(rect.width * 0.9)}px;`,
-						'}'
-					].join('\n')));
-				}
-				finally {
-					if (isContentInvisible) {
-						$('content').classList.add('hide');
-					}
-				}
-			}
-		}
-
 		function updateMaxSizeOfDialogs (style) {
 			style.appendChild(document.createTextNode([
 				`.dialog-wrap .dialog-content {`,
@@ -740,15 +722,22 @@ function install (mode) {
 			].join('\n')));
 		}
 
+		function readjustReplyWidth () {
+			$qsa('.reply-wrap .reply-image.width-adjusted').forEach(node => {
+				node.classList.remove('width-adjusted');
+			});
+			adjustReplyWidth();
+		}
+
 		function handler () {
 			const style = $('dynstyle-comment-maxwidth');
 			if (!style) return;
 			empty(style);
 
 			updateViewportRectGeometry(style);
-			updateMaxWidthOfComments(style);
 			updateMaxSizeOfDialogs(style);
 			updateHeaderHeight(style);
+			readjustReplyWidth();
 		}
 
 		setupWindowResizeEvent(100, handler);
@@ -835,6 +824,12 @@ function install (mode) {
 	 */
 
 	selectionMenu = createSelectionMenu();
+
+	/*
+	 * auto-reloder
+	 */
+
+	autoTracker = createAutoTracker();
 
 	/*
 	 * restore cookie value
@@ -1673,9 +1668,19 @@ function createXMLGenerator () {
 	};
 	LinkTarget.prototype.upProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
+			// re[0] -> "fu99999.xxx"
+			// re[1] -> "fu99999"
+			// re[2] -> ".xxx"
 			anchor.setAttribute('basename', re[1] + re[2]);
 			if (/\.(?:jpg|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
 				anchor.setAttribute('class', `${this.className} lightbox`);
+
+			}
+			if (/\.(?:jpg|gif|png|webp)$/.test(re[2])) {
+				const boardName = /\/(up2?)\/$/.exec(baseUrl)[1];
+				anchor.setAttribute(
+					'thumbnail',
+					`https://appsweets.net/thumbnail/${boardName}/${re[1]}s.png`);
 			}
 			return `${baseUrl}src/${re[1]}${re[2]}`;
 		}
@@ -2162,7 +2167,8 @@ function createXMLGenerator () {
 			// expiration date
 			let expires = /<(?:small|span)[^>]*>([^<]+?頃消えます)<\/(?:small|span)>/i.exec(topicInfo);
 			let expireWarn = /<font[^>]+><b>このスレは古いので、/i.test(topicInfo);
-			if (expires || expireWarn) {
+			let maxReached = /<span\s+class=["']?maxres["']?[^>]*>[^<]+<\/span>/i.test(topicInfo);
+			if (expires || expireWarn || maxReached) {
 				let expiresNode = element(topicNode, 'expires');
 				if (expires) {
 					expiresNode.appendChild(text(expires[1]));
@@ -2173,6 +2179,9 @@ function createXMLGenerator () {
 				}
 				if (expireWarn) {
 					expiresNode.setAttribute('warned', 'true');
+				}
+				if (maxReached) {
+					expiresNode.setAttribute('maxreached', 'true');
 				}
 			}
 
@@ -2211,7 +2220,7 @@ function createXMLGenerator () {
 				);
 				let postDateNode = element(topicNode, 'post_date');
 				postDateNode.appendChild(text(re[0]));
-				postDateNode.setAttribute('value', postedDate.getTime() / 1000);
+				postDateNode.setAttribute('value', postedDate.getTime());
 			}
 
 			// subject
@@ -2488,7 +2497,7 @@ function createXMLGenerator () {
 				);
 				let postDateNode = element(replyNode, 'post_date');
 				postDateNode.appendChild(text(re[0]));
-				postDateNode.setAttribute('value', postedDate.getTime() / 1000);
+				postDateNode.setAttribute('value', postedDate.getTime());
 			}
 
 			// subject
@@ -2693,7 +2702,7 @@ function createXMLGenerator () {
 				let postedDate = new Date(reply.tim - 0);
 				let postDateNode = element(replyNode, 'post_date');
 				postDateNode.appendChild(text(reply.now.replace(/<[^>]*>/g, '')));
-				postDateNode.setAttribute('value', postedDate.getTime() / 1000);
+				postDateNode.setAttribute('value', postedDate.getTime());
 			}
 
 			// subject and name
@@ -2959,6 +2968,20 @@ function createPersistentStorage () {
 			value:400,
 			name:'手書きキャンバスの最大の高さ',
 			min:1,max:1000
+		},
+		autotrack_expect_replies: {
+			type:'int',
+			value:5,
+			name:'自動追尾時に待機するレス数',
+			desc:'このレス数がつくと思われる時間だけ自動追尾を待機します',
+			min:1,max:10
+		},
+		autotrack_sampling_replies: {
+			type:'int',
+			value:10,
+			name:'自動追尾時のサンプルレス数',
+			desc:'待機時間を算出するために参照する既存レス群のサンプル数',
+			min:3,max:30
 		}
 	};
 	let runtime = {
@@ -5186,6 +5209,193 @@ function createScrollManager (frequencyMsecs) {
 	};
 }
 
+function createAutoTracker () {
+	const TIMER1_FREQ_MIN = Math.max(1000 * 5, NETWORK_ACCESS_MIN_INTERVAL);
+	const TIMER1_FREQ_MAX = 1000 * 60 * 5;
+	const TIMER2_FREQ = 1000 * 3;
+	const DEFAULT_MEDIAN = 15 * 1000;
+
+	let timer1;
+	let timer2;
+	let baseTime;
+	let waitSeconds;
+	let lastMedian;
+	let lastReferencedReplyNumber;
+
+	function getTimeSpanText (span) {
+		const text = [];
+		if (span >= 3600) {
+			text.push(`${Math.floor(span / 3600)}時間`);
+			span %= 3600;
+		}
+		if (span >= 60) {
+			text.push(`${Math.floor(span / 60)}分`);
+			span %= 60;
+		}
+		text.push(`${span}秒`);
+
+		return text.join('');
+	}
+
+	function updateNormalLink () {
+		$qsa('a[href="#track"]').forEach(node => {
+			$t(node, '自動追尾');
+		});
+		$qsa('.track-indicator').forEach(node => {
+			node.style.transitionDuration = '.25s';
+			node.style.width = '0px';
+		});
+	}
+
+	function updateTrackingLink (restSeconds, ratio) {
+		const text = getTimeSpanText(restSeconds);
+		$qsa('a[href="#track"]').forEach(node => {
+			$t(node, `自動追尾中`);
+		});
+		$qsa('.track-indicator').forEach(node => {
+			node.style.transitionDuration = ratio == 1 ? '.25s' : `${TIMER2_FREQ / 1000}s`;
+			node.style.width = `${$('reload-anchor').offsetWidth * ratio}px`;
+			node.title = `あと ${text} で更新します`;
+		});
+	}
+
+	function startTimer2 (rest) {
+		baseTime = Date.now();
+		waitSeconds = rest;
+		updateTrackingLink(rest, 1);
+		if (!timer2) {
+			timer2 = setInterval(function intervalIndicator () {
+				const elapsedSeconds = (Date.now() - baseTime) / 1000;
+				const restSeconds = Math.floor(waitSeconds - elapsedSeconds);
+				if (restSeconds >= 0) {
+					updateTrackingLink(restSeconds, restSeconds / waitSeconds);
+				}
+				else {
+					stopTimer2();
+				}
+			}, TIMER2_FREQ);
+		}
+	}
+
+	function stopTimer2 () {
+		if (timer2) {
+			clearInterval(timer2);
+			timer2 = undefined;
+		}
+		updateNormalLink();
+	}
+
+	function computeTrackFrequency () {
+		const logs = [];
+		let median;
+		let referencedReplyNumber;
+
+		const postTimes = Array
+		.from($qsa(`.reply-wrap:nth-last-child(-n+${storage.config.autotrack_sampling_replies.value + 1})`))
+		.map(node => {
+			referencedReplyNumber = $qs('[data-number]', node).dataset.number - 0;
+			return new Date($qs('.postdate', node).dataset.value - 0);
+		});
+
+		const intervals = [];
+		for (let i = 0; i < postTimes.length - 1; i++) {
+			intervals.push(postTimes[i + 1].getTime() - postTimes[i].getTime());
+		}
+
+		if (intervals.length == 0) {
+			median = DEFAULT_MEDIAN;
+			logs.push(`frequency median set to default ${median}.`);
+		}
+		else if (referencedReplyNumber == lastReferencedReplyNumber) {
+			median = lastMedian * 2;
+			logs.push(`number of replies has not changed. use the previous value: ${median}`);
+		}
+		else {
+			intervals.sort((a, b) => a - b);
+			const medianIndex = Math.floor(intervals.length / 2);
+			median = (intervals.length % 2) ?
+				intervals[medianIndex] :
+				(intervals[medianIndex - 1] + intervals[medianIndex]) / 2;
+			
+			logs.push(
+				`  postTimes: ${postTimes.map(a => a.getTime()).join(', ')}`,
+				`  intervals: ${intervals.map(a => `${getTimeSpanText(a / 1000)}`).join(', ')}`,
+				`medianIndex: ${medianIndex}`,
+				`     median: ${median} - ${getTimeSpanText(median / 1000)}`,
+				` multiplier: ${storage.config.autotrack_expect_replies.value}`,
+				`   sampling: ${storage.config.autotrack_sampling_replies.value}`
+			);
+		}
+
+		let result = median * storage.config.autotrack_expect_replies.value;
+		result = Math.min(result, TIMER1_FREQ_MAX);
+		result = Math.max(result, TIMER1_FREQ_MIN);
+		lastMedian = median;
+		lastReferencedReplyNumber = referencedReplyNumber;
+		startTimer2(Math.floor(result / 1000));
+
+		logs.push(
+			`result: ${result} - ${getTimeSpanText(result / 1000)}`,
+			`result for display: ${Math.floor(result / 1000)}`
+		);
+		console.log(logs.join('\n'));
+
+		return result;
+	}
+
+	function start () {
+		if (timer1) return;
+
+		timer1 = setTimeout(function autoTrackHandler () {
+			stopTimer2();
+
+			if (pageModes[0].mode == 'reply') {
+				commands.reload().then(() => {
+					if (/^[23]..$/.test(reloadStatus.lastStatus)) {
+						timer1 = setTimeout(
+							autoTrackHandler,
+							computeTrackFrequency());
+					}
+					else {
+						timer1 = undefined;
+						console.log(`autoTracker: timer cleared. reason: unusual http status (${reloadStatus.lastStatus})`);
+					}
+				});
+			}
+			else if (pageModes.length >= 2 && pageModes[1].mode == 'reply') {
+				timer1 = setTimeout(
+					autoTrackHandler,
+					computeTrackFrequency());
+			}
+			else {
+				timer1 = undefined;
+				console.log(`autoTracker: timer cleared. reason: not a reply mode (${pageModes[0].mode})`);
+			}
+		}, computeTrackFrequency());
+	}
+
+	function stop () {
+		if (!timer1) return;
+
+		clearTimeout(timer1);
+		timer1 = undefined;
+		stopTimer2();
+	}
+
+	function afterPost () {
+		if (!timer1) return;
+		stop();
+		start();
+	}
+
+	return {
+		start: start,
+		stop: stop,
+		afterPost: afterPost,
+		get running () {return !!timer1}
+	};
+}
+
 /*
  * <<<1 page set-up functions
  */
@@ -5428,8 +5638,8 @@ function setupPostFormItemEvent (items) {
 		const upfile = $('upfile');
 		if (!upfile) return false;
 		if (upfile.disabled) return false;
-		if (upfile.getAttribute('data-origin') == 'js') return;
-		if (upfile.getAttribute('data-pasting')) return;
+		if (upfile.getAttribute('data-origin') == 'js') return false;
+		if (upfile.getAttribute('data-pasting')) return false;
 		return true;
 	}
 
@@ -5455,7 +5665,7 @@ function setupPostFormItemEvent (items) {
 		}, null);
 	}
 
-	function dumpElement (head, elm) {
+	function dumpElement (head, elm, ...rest) {
 		let logs = [];
 		for (; elm; elm = elm.parentNode) {
 			switch (elm.nodeType) {
@@ -5482,14 +5692,34 @@ function setupPostFormItemEvent (items) {
 				break;
 			}
 		}
-		console.log(head + ': ' + logs.join(' → '));
+		console.log(`${head}: ${logs.join(' → ')}: ${rest.join(' ')}`);
 	}
 
 	function pasteText (e, text) {
 		document.execCommand('insertText', false, text);
 	}
 
+	async function encodeJpeg (canvas, maxSize) {
+		let result;
+		let quality = 10;
+		for (let quality = 9; quality > 0; quality--) {
+			result = await getBlobFrom(canvas, 'image/jpeg', quality / 10);
+			if (result.size <= maxSize) {
+				break;
+			}
+		}
+		if (result) {
+			overrideUpfile.data = result;
+		}
+		else {
+			const message = 'JPEG エンコードしてもファイルが大きすぎます';
+			setBottomStatus(message);
+			throw new Error(message);
+		}
+	}
+
 	function pasteFile (e, file) {
+		overrideUpfile = undefined;
 		if (!file) return;
 
 		const canUpload = isFileElementReady();
@@ -5497,6 +5727,8 @@ function setupPostFormItemEvent (items) {
 		if (!canUpload && !canTegaki) return;
 
 		const upfile = $('upfile');
+		let resetItems = ['textonly'];
+		let p;
 
 		switch (e.type) {
 		case 'paste':
@@ -5508,12 +5740,6 @@ function setupPostFormItemEvent (items) {
 			setBottomStatus('サムネイルを生成しています...', true);
 			break;
 		}
-
-		overrideUpfile = {
-			name: file.name,
-			data: file
-		};
-		let resetItems = ['textonly'];
 
 		/*
 		 * IMPORTANT: WHICH ELEMENTS SHOULD BE RESET?
@@ -5534,9 +5760,14 @@ function setupPostFormItemEvent (items) {
 		 *               others: upfile, baseform
 		 */
 
-		let p;
 		// pseudo reply image
 		if (!canUpload && canTegaki) {
+			// only image can post as reply
+			if (!file.type.startsWith('image/')) {
+				setBottomStatus('画像以外のファイルは添付できません');
+				return;
+			}
+
 			p = getImageFrom(file).then(img => {
 				if (!img) return;
 
@@ -5570,6 +5801,12 @@ function setupPostFormItemEvent (items) {
 
 		// too large file size: re-encode to jpeg
 		else if (siteInfo.maxAttachSize && file.size > siteInfo.maxAttachSize) {
+			// we can not handle videos that are to large
+			if (!file.type.startsWith('image/')) {
+				setBottomStatus('ファイルが大きすぎます');
+				return;
+			}
+
 			p = getImageFrom(file).then(img => {
 				if (!img) return;
 
@@ -5586,9 +5823,7 @@ function setupPostFormItemEvent (items) {
 
 				return Promise.all([
 					setPostThumbnail(canvas, '再エンコードJPEG'),
-					getBlobFrom(canvas.toDataURL('image/jpeg', FALLBACK_JPEG_QUALITY)).then(blob => {
-						overrideUpfile.data = blob;
-					})
+					encodeJpeg(canvas, siteInfo.maxAttachSize)
 				]);
 			});
 		}
@@ -5604,6 +5839,11 @@ function setupPostFormItemEvent (items) {
 				resetItems.push('upfile', 'baseform');
 			}
 		}
+
+		overrideUpfile = {
+			name: file.name,
+			data: file
+		};
 
 		p = p.finally(() => {
 			setBottomStatus();
@@ -5626,8 +5866,7 @@ function setupPostFormItemEvent (items) {
 
 		register('dnd', () => {
 			if (!$('postform-wrap').classList.contains('hover')) {
-				commands.activatePostForm().then(() => {
-				});
+				commands.activatePostForm();
 			}
 			$('postform-drop-indicator').classList.remove('hide');
 		});
@@ -5639,16 +5878,15 @@ function setupPostFormItemEvent (items) {
 	}
 
 	function handleDragLeave (e) {
-		//dumpElement('    dragleave', e.target);
+		//dumpElement('    dragleave', e.target, `target:${Object.prototype.toString.call(e.target)}, relatedTarget:${Object.prototype.toString.call(e.relatedTarget)}`);
 
-		let isDocument = e.target == document
-			|| e.target == document.documentElement
-			|| e.target == document.body;
-		if (isDocument && $('postform-wrap').classList.contains('hover')) {
+		if (!e.relatedTarget) {
 			register('dnd', () => {
-				commands.deactivatePostForm().then(() => {
-					$('postform-drop-indicator').classList.add('hide');
-				});
+				if ($('postform-wrap').classList.contains('hover')) {
+					commands.deactivatePostForm().then(() => {
+						$('postform-drop-indicator').classList.add('hide');
+					});
+				}
 			});
 		}
 	}
@@ -5799,7 +6037,7 @@ function setupWheelReload () {
 
 function setupCustomEventHandler () {
 	const wheelHideIntervalMsecs = 1000 * 3;
-	const navHideIntervalMsecs = 1000 * 5;
+	const navHideIntervalMsecs = 1000 * 2;
 
 	let wheelStatusHideTimer;
 	let navStatusHideTimer;
@@ -7466,28 +7704,35 @@ function rangeToString (range) {
 	return nodeToString(container);
 }
 
-// http://stackoverflow.com/a/30666203
-function getBlobFrom (url) { /*returns promise*/
-	return new Promise(resolve => {
-		let xhr = transport.create();
+function getBlobFrom (url, mimeType = 'image/png', quality = 0.9) { /*returns promise*/
+	if (url instanceof HTMLCanvasElement) {
+		return new Promise(resolve => {
+			url.toBlob(blob => {resolve(blob)}, mimeType, quality);
+		});
+	}
+	else {
+		// http://stackoverflow.com/a/30666203
+		return new Promise(resolve => {
+			let xhr = transport.create();
 
-		xhr.open('GET', url);
-		// Can't use blob directly because of https://crbug.com/412752
-		xhr.responseType = 'arraybuffer';
-		xhr.onload = () => {
-			let mime = xhr.getResponseHeader('content-type');
-			resolve(new window.Blob([xhr.response], {type: mime}));
-		};
-		xhr.onerror = () => {
-			resolve();
-		};
-		xhr.onloadend = () => {
-			xhr = null;
-		};
+			xhr.open('GET', url);
+			// Can't use blob directly because of https://crbug.com/412752
+			xhr.responseType = 'arraybuffer';
+			xhr.onload = () => {
+				let mime = xhr.getResponseHeader('content-type');
+				resolve(new window.Blob([xhr.response], {type: mime}));
+			};
+			xhr.onerror = () => {
+				resolve();
+			};
+			xhr.onloadend = () => {
+				xhr = null;
+			};
 
-		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
-		xhr.send();
-	});
+			xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
+			xhr.send();
+		});
+	}
 }
 
 function getImageFrom (target) { /*returns promise*/
@@ -7502,25 +7747,25 @@ function getImageFrom (target) { /*returns promise*/
 			needRevoke = true;
 			if (target.type.startsWith('video/')) {
 				tagName = 'video';
-				loadEvent = 'onloadeddata';
+				loadEvent = 'oncanplay';
 			}
 		}
 		else {
 			url = target;
 		}
 
-		let img = document[CRE](tagName);
-		img[loadEvent] = () => {
+		let media = document[CRE](tagName);
+		media[loadEvent] = () => {
 			needRevoke && URL.revokeObjectURL(url);
-			resolve(img);
-			img = null;
+			resolve(media);
+			media = null;
 		};
-		img.onerror = () => {
+		media.onerror = () => {
 			needRevoke && URL.revokeObjectURL(url);
 			resolve();
-			img = null;
+			media = null;
 		};
-		img.src = url;
+		media.src = url;
 	});
 }
 
@@ -7593,9 +7838,8 @@ function setContentsToEditable (el, s) {
 function displayInlineVideo (anchor) {
 	if ($qs('video', anchor.parentNode)) return;
 
-	let thumbnail = $qs('img', anchor);
-	let video = document[CRE]('video');
-	let props = {
+	const video = document[CRE]('video');
+	const props = {
 		autoplay: true,
 		controls: true,
 		//loop: true,
@@ -7607,12 +7851,15 @@ function displayInlineVideo (anchor) {
 	for (let i in props) {
 		video[i] = props[i];
 	}
+	video.style.maxWidth = `${INLINE_VIDEO_MAX_WIDTH}px`;
 
+	let thumbnail = $qs('img', anchor);
 	// video file on siokara
 	if (/\/\/www\.nijibox\d+\.com\//.test(anchor.href)) {
 		/*
 		 * div.link-siokara
 		 *   a.lightbox
+		 *     #text
 		 *   div
 		 *     a.lightbox.siokara-thumbnail
 		 *       img
@@ -7623,26 +7870,17 @@ function displayInlineVideo (anchor) {
 		anchor = thumbnail.parentNode;
 		anchor.parentNode.insertBefore(video, anchor);
 		thumbnail.classList.add('hide');
-
-		video.style.width = '250px';
+		video.style.width = '100%';
 	}
 	// video file on futaba
 	else if (thumbnail) {
 		thumbnail.classList.add('hide');
 		anchor.parentNode.insertBefore(video, anchor);
 		video.style.width = '100%';
-
-		/*
-		let r = thumbnail.getBoundingClientRect();
-		thumbnail.classList.add('hide');
-
-		video.style.width = r.width + 'px';
-		video.style.height = r.height + 'px';
-		*/
 	}
 	// other
 	else {
-		let container = anchor.parentNode.insertBefore(
+		const container = anchor.parentNode.insertBefore(
 			document[CRE]('div'), anchor.nextSibling);
 		container.appendChild(video);
 		video.style.width = '100%';
@@ -7652,8 +7890,8 @@ function displayInlineVideo (anchor) {
 function displayInlineAudio (anchor) {
 	if ($qs('audio', anchor.parentNode)) return;
 
-	let audio = document[CRE]('audio');
-	let props = {
+	const audio = document[CRE]('audio');
+	const props = {
 		autoplay: true,
 		controls: true,
 		muted: false,
@@ -7665,7 +7903,7 @@ function displayInlineAudio (anchor) {
 		audio[i] = props[i];
 	}
 
-	let thumbnail = $qs('img', anchor.parentNode);
+	const thumbnail = $qs('img', anchor.parentNode);
 	anchor = thumbnail.parentNode;
 	anchor.parentNode.insertBefore(audio, anchor);
 	thumbnail.classList.add('hide');
@@ -8532,12 +8770,20 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 	});
 }
 
+function modifyPage () {
+	adjustReplyWidth();
+	extractTweets();
+	extractSiokaraThumbnails();
+	extractNico2();
+	extractIncompleteFiles();
+}
+
 function extractTweets () {
-	var tweets = $qsa('.link-twitter');
+	const tweets = $qsa('.link-twitter');
 	if (tweets.length == 0) return;
 
 	function invokeTweetLoader (html) {
-		var scriptSource = '';
+		let scriptSource = '';
 		if (!$('twitter-widget-script')) {
 			var re = /<script\b[^>]*src="([^"]+)"/.exec(html);
 			if (re) {
@@ -8545,7 +8791,7 @@ function extractTweets () {
 			}
 		}
 
-		var scriptNode = document.head.appendChild(document[CRE]('script'));
+		const scriptNode = document.head.appendChild(document[CRE]('script'));
 		scriptNode.type = 'text/javascript';
 		scriptNode.charset = 'UTF-8';
 		if (scriptSource != '') {
@@ -8572,8 +8818,8 @@ function extractTweets () {
 		}
 	}
 
-	for (var i = 0; i < tweets.length && i < 10; i++) {
-		var id = tweets[i].getAttribute('data-tweet-id');
+	for (let i = 0; i < tweets.length && i < 10; i++) {
+		const id = tweets[i].getAttribute('data-tweet-id');
 		id && sendToBackend('get-tweet', {url:tweets[i].href, id:id}, getHandler(tweets[i]));
 		tweets[i].classList.remove('link-twitter');
 	}
@@ -8582,7 +8828,7 @@ function extractTweets () {
 }
 
 function extractIncompleteFiles () {
-	var files = $qsa('.incomplete');
+	const files = $qsa('.incomplete');
 	if (files.length == 0) return;
 
 	function getHandler (node) {
@@ -8599,24 +8845,24 @@ function extractIncompleteFiles () {
 				}
 
 				if (node.parentNode.nodeName != 'Q' && data.thumbnail) {
-					let div = document[CRE]('div');
+					const div = document[CRE]('div');
 					div.className = 'link-siokara';
 
-					let r = document.createRange();
+					const r = document.createRange();
 					r.selectNode(node);
 					r.surroundContents(div);
 					node.classList.remove('link-siokara');
 
-					let thumbDiv = div.appendChild(document[CRE]('div'));
-					let thumbAnchor = node.cloneNode();
+					const thumbDiv = div.appendChild(document[CRE]('div'));
+					const thumbAnchor = node.cloneNode();
 					thumbAnchor.classList.add('siokara-thumbnail');
 					thumbDiv.appendChild(thumbAnchor);
-					let img = thumbAnchor.appendChild(document[CRE]('img'));
+					const img = thumbAnchor.appendChild(document[CRE]('img'));
 					img.src = data.thumbnail;
 
-					let saveDiv = div.appendChild(document[CRE]('div'));
+					const saveDiv = div.appendChild(document[CRE]('div'));
 					saveDiv.appendChild(document.createTextNode('['));
-					let saveAnchor = saveDiv.appendChild(document[CRE]('a'));
+					const saveAnchor = saveDiv.appendChild(document[CRE]('a'));
 					saveAnchor.className = 'js save-image';
 					saveAnchor.href = data.url;
 					saveAnchor.textContent = '保存する';
@@ -8624,7 +8870,7 @@ function extractIncompleteFiles () {
 				}
 			}
 			else {
-				var span = node.appendChild(document[CRE]('span'));
+				const span = node.appendChild(document[CRE]('span'));
 				span.className = 'link-completion-notice';
 				span.textContent = '(補完失敗)';
 			}
@@ -8632,8 +8878,8 @@ function extractIncompleteFiles () {
 		}
 	}
 
-	for (var i = 0; i < files.length && i < 10; i++) {
-		var id = files[i].getAttribute('data-basename');
+	for (let i = 0; i < files.length && i < 10; i++) {
+		const id = files[i].getAttribute('data-basename');
 		id && sendToBackend(
 			'complete',
 			{url:files[i].href, id:id},
@@ -8654,24 +8900,24 @@ function extractSiokaraThumbnails () {
 				data = chrome.extension.getURL('images/siokara-video.png');
 			}
 			if (data) {
-				let div = document[CRE]('div');
+				const div = document[CRE]('div');
 				div.className = 'link-siokara';
 
-				let r = document.createRange();
+				const r = document.createRange();
 				r.selectNode(node);
 				r.surroundContents(div);
 				node.classList.remove('link-siokara');
 
-				let thumbDiv = div.appendChild(document[CRE]('div'));
-				let thumbAnchor = node.cloneNode();
+				const thumbDiv = div.appendChild(document[CRE]('div'));
+				const thumbAnchor = node.cloneNode();
 				thumbAnchor.classList.add('siokara-thumbnail');
 				thumbDiv.appendChild(thumbAnchor);
-				let img = thumbAnchor.appendChild(document[CRE]('img'));
+				const img = thumbAnchor.appendChild(document[CRE]('img'));
 				img.src = data;
 
-				let saveDiv = div.appendChild(document[CRE]('div'));
+				const saveDiv = div.appendChild(document[CRE]('div'));
 				saveDiv.appendChild(document.createTextNode('['));
-				let saveAnchor = saveDiv.appendChild(document[CRE]('a'));
+				const saveAnchor = saveDiv.appendChild(document[CRE]('a'));
 				saveAnchor.className = 'js save-image';
 				saveAnchor.href = node.href;
 				saveAnchor.textContent = '保存する';
@@ -8682,7 +8928,7 @@ function extractSiokaraThumbnails () {
 	}
 
 	for (let i = 0; i < files.length && i < 10; i++) {
-		let thumbHref = files[i].getAttribute('data-thumbnail-href');
+		const thumbHref = files[i].getAttribute('data-thumbnail-href');
 		if (thumbHref) {
 			sendToBackend(
 				'load-siokara-thumbnail',
@@ -8696,12 +8942,12 @@ function extractSiokaraThumbnails () {
 }
 
 function extractNico2 () {
-	var files = $qsa('.inline-video.nico2[data-nico2-key]');
+	const files = $qsa('.inline-video.nico2[data-nico2-key]');
 	if (files.length == 0) return;
 
-	for (var i = 0; i < files.length && i < 10; i++) {
-		var key = files[i].getAttribute('data-nico2-key');
-		var scriptNode = files[i].appendChild(document[CRE]('script'));
+	for (let i = 0; i < files.length && i < 10; i++) {
+		const key = files[i].getAttribute('data-nico2-key');
+		const scriptNode = files[i].appendChild(document[CRE]('script'));
 		scriptNode.type = 'text/javascript';
 		scriptNode.src = `https://embed.nicovideo.jp/watch/${key}/script?w=640&h=360`;
 		scriptNode.onload = function () {
@@ -8711,6 +8957,33 @@ function extractNico2 () {
 	}
 
 	setTimeout(extractNico2, 911);
+}
+
+function adjustReplyWidth () {
+	const nodes = $qsa('.reply-wrap .reply-image:not(.width-adjusted)');
+	if (nodes.length == 0) return;
+
+	const maxTextWidth = Math.floor($qs('.text').offsetWidth * 0.9);
+
+	for (let i = 0; i < nodes.length && i < 10; i++) {
+		const replyImage = nodes[i];
+		const replyWrap = replyImage.closest('.reply-wrap');
+		const heading = $qs('.image_true', replyWrap);
+		const comment = $qs('.comment', replyWrap);
+		const replyImageWidth = replyImage.offsetWidth;
+
+		replyImage.classList.add('hide');
+		heading.classList.add('hide');
+		const normalWidth = comment.offsetWidth;
+		replyImage.classList.remove('hide');
+		heading.classList.remove('hide');
+		
+		const minWidth = Math.min(normalWidth + replyImageWidth + 8, maxTextWidth);
+		comment.style.minWidth = `${minWidth}px`;
+		replyImage.classList.add('width-adjusted');
+	}
+
+	setTimeout(adjustReplyWidth, 913);
 }
 
 function detectNoticeModification (notice, noticeNew) {
@@ -9208,11 +9481,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 
 					scrollToNewReplies(() => {
 						updateIdFrequency(newStat);
-
-						extractTweets();
-						extractSiokaraThumbnails();
-						extractNico2();
-						extractIncompleteFiles();
+						modifyPage();
 					});
 				}
 				else {
@@ -9229,11 +9498,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 				markStatistics.updatePostformView(newStat);
 				callback && callback(newStat);
 				updateIdFrequency(newStat);
-
-				extractTweets();
-				extractSiokaraThumbnails();
-				extractNico2();
-				extractIncompleteFiles();
+				modifyPage();
 			}
 
 			timingLogger.endTag();
@@ -9257,24 +9522,29 @@ function scrollToNewReplies (callback) {
 		return;
 	}
 
-	let startTime = null;
-
-	window.requestAnimationFrame(function handleScroll (time) {
-		if (!startTime) {
-			startTime = time;
-		}
-		const elapsed = time - startTime;
-		if (elapsed < RELOAD_AUTO_SCROLL_CONSUME) {
-			window.scrollTo(
-				0,
-				Math.floor(scrollTop + distance * (elapsed / RELOAD_AUTO_SCROLL_CONSUME)));
-			window.requestAnimationFrame(handleScroll);
-		}
-		else {
-			window.scrollTo(0, scrollTop + distance);
-			callback && callback();
-		}
-	});
+	if (document.hidden) {
+		window.scrollTo(0, scrollTop + distance);
+		callback && callback();
+	}
+	else {
+		let startTime = null;
+		window.requestAnimationFrame(function handleScroll (time) {
+			if (!startTime) {
+				startTime = time;
+			}
+			const elapsed = time - startTime;
+			if (elapsed < RELOAD_AUTO_SCROLL_CONSUME) {
+				window.scrollTo(
+					0,
+					Math.floor(scrollTop + distance * (elapsed / RELOAD_AUTO_SCROLL_CONSUME)));
+				window.requestAnimationFrame(handleScroll);
+			}
+			else {
+				window.scrollTo(0, scrollTop + distance);
+				callback && callback();
+			}
+		});
+	}
 }
 
 /*
@@ -9324,34 +9594,54 @@ function getThumbnailSize (width, height, maxWidth, maxHeight) {
 	}
 }
 
-function doDisplayThumbnail (thumbWrap, thumb, img) { /*returns promise*/
-	let containerWidth = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
-	let containerHeight = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
-	let naturalWidth = img.naturalWidth || img.videoWidth || img.width;
-	let naturalHeight = img.naturalHeight || img.videoHeight || img.height;
-	let size = getThumbnailSize(
-		naturalWidth, naturalHeight,
-		containerWidth, containerHeight);
+function doDisplayThumbnail (thumbWrap, thumb, media) { /*returns promise*/
+	let p = Promise.resolve();
 
-	let canvas = document[CRE]('canvas');
-	canvas.width = size.width;
-	canvas.height = size.height;
+	if (!media) {
+		return p;
+	}
 
-	let c = canvas.getContext('2d');
-	c.fillStyle = '#f0e0d6';
-	c.fillRect(0, 0, canvas.width, canvas.height);
-	c.drawImage(
-		img,
-		0, 0, naturalWidth, naturalHeight,
-		0, 0, canvas.width, canvas.height);
+	if (media instanceof HTMLVideoElement) {
+		p = p.then(() => new Promise(resolve => {
+			media.addEventListener('timeupdate', () => {
+				media.pause();
+				resolve();
+			}, {once: true});
+			media.muted = true;
+			media.play();
+		}));
+	}
 
-	thumbWrap.classList.add('hide');
-	thumb.classList.remove('run');
-	thumbWrap.setAttribute('data-available', '2');
-	thumb.width = canvas.width;
-	thumb.height = canvas.height;
-	thumb.src = canvas.toDataURL();
-	return delay(0).then(() => commands.activatePostForm());
+	return p.then(() => {
+		const containerWidth = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
+		const containerHeight = Math.min(Math.floor(viewportRect.width / 4 * 0.8), 250);
+		const naturalWidth = media.naturalWidth || media.videoWidth || media.width;
+		const naturalHeight = media.naturalHeight || media.videoHeight || media.height;
+		const size = getThumbnailSize(
+			naturalWidth, naturalHeight,
+			containerWidth, containerHeight);
+
+		const canvas = document[CRE]('canvas');
+		canvas.width = size.width;
+		canvas.height = size.height;
+
+		const c = canvas.getContext('2d');
+		c.fillStyle = '#f0e0d6';
+		c.fillRect(0, 0, canvas.width, canvas.height);
+		c.drawImage(
+			media,
+			0, 0, naturalWidth, naturalHeight,
+			0, 0, canvas.width, canvas.height);
+
+		thumbWrap.classList.add('hide');
+		thumb.classList.remove('run');
+		thumbWrap.setAttribute('data-available', '2');
+		thumb.width = canvas.width;
+		thumb.height = canvas.height;
+		thumb.src = canvas.toDataURL();
+
+		commands.activatePostForm()
+	});
 }
 
 function setPostThumbnail (file, caption) { /*returns promise*/
@@ -9371,16 +9661,10 @@ function setPostThumbnail (file, caption) { /*returns promise*/
 		$t('post-image-thumbnail-info', caption || `(on demand content)`);
 		return doDisplayThumbnail(thumbWrap, thumb, file);
 	}
-
-	$t('post-image-thumbnail-info', `${file.type}, ${getReadableSize(file.size)}`);
-
-	return getImageFrom(file).then(img => {
-		let result;
-		if (img) {
-			result = doDisplayThumbnail(thumbWrap, thumb, img);
-		}
-		return result;
-	});
+	else {
+		$t('post-image-thumbnail-info', `${file.type}, ${getReadableSize(file.size)}`);
+		return getImageFrom(file).then(img => doDisplayThumbnail(thumbWrap, thumb, img));
+	}
 }
 
 /*
@@ -9743,6 +10027,7 @@ const commands = {
 			const {doc, now, status} = reloadResult;
 
 			let fragment;
+			reloadStatus.lastStatus = status;
 
 			switch (status) {
 			case 304:
@@ -9800,12 +10085,7 @@ const commands = {
 
 				footer.classList.remove('hide');
 				content = indicator = footer = null;
-
-				extractTweets();
-				extractSiokaraThumbnails();
-				extractNico2();
-				extractIncompleteFiles();
-
+				modifyPage();
 				sendToBackend(
 					'notify-viewers',
 					{
@@ -9855,6 +10135,7 @@ const commands = {
 			const {doc, now, status} = reloadResult;
 
 			let result;
+			reloadStatus.lastStatus = status;
 
 			switch (status) {
 			case 404:
@@ -9874,6 +10155,7 @@ const commands = {
 				setReloaderStatus(`サーバエラー`);
 				setBottomStatus(`完了: フルリロード, サーバエラー ${status}`);
 				timingLogger.forceEndTag();
+
 				return;
 			}
 
@@ -10010,6 +10292,8 @@ const commands = {
 		return p.then(reloadResult => {
 			const {doc, now, status} = reloadResult;
 
+			reloadStatus.lastStatus = status;
+
 			switch (status) {
 			case 404:
 				setReloaderStatus();
@@ -10034,72 +10318,6 @@ const commands = {
 			return reloadBaseViaAPI('')
 			.then(reloadResult => {
 				const {doc, now, status} = reloadResult;
-				/*
-				 * sample: {
-				 *   "old": 1,
-				 *   "dispname": 1,
-				 *   "dispsod": 1,
-				 *   "die": "12:13",
-				 *   "dielong": "Tue, 20 Nov 2018 03:13:45 GMT",
-				 *   "maxres": "",
-				 *   "res": {
-				 *     "600031491": {
-				 *       "now": "18/11/20(火)11:54:36",
-				 *       "name": "としあき",
-				 *       "email": "",
-				 *       "sub": "無念",
-				 *       "com": "<font color=\"#789922\">&gt;「自分たちだけでロック出たら純子ちゃんの居場所無くなる」</font><br>出なかったらだよ<br>迷惑をかけた責任を感じて余計負担になるってことだろ",
-				 *       "ext": "",						// wheather media file is attached
-				 *       "w": 0,
-				 *       "h": 0,
-				 *       "tim": "1542682476633",
-				 *       "fsize": 0,
-				 *       "del": "",						// wheather this comment is deleted:
-				 *                                           'del': スレッドを立てた人によって削除されました
-				 *                                           'selfdel': 書き込みをした人によって削除されました
-				 *                                           'admindel': なー
-				 *       "host": "",
-				 *       "id": "",
-				 *       "src": "/b/src/1542682476633",
-				 *       "thumb": "/b/thumb/1542682476633s.jpg"
-				 *    },
-				 *    "600031506": {
-				 *       "now": "18/11/20(火)11:54:44",
-				 *       "name": "としあき",
-				 *       "email": "",
-				 *       "sub": "無念",
-				 *       "com": "<font color=\"#789922\">&gt;サキちゃんの事を考えると下半身に血が集まってくる</font><br>特にサキっちょに集まるな",
-				 *       "ext": "",
-				 *       "w": 0,
-				 *       "h": 0,
-				 *       "tim": "1542682484050",
-				 *       "fsize": 0,
-				 *       "del": "",
-				 *       "host": "",
-				 *       "id": "",
-				 *       "src": "/b/src/1542682484050",
-				 *       "thumb": "/b/thumb/1542682484050s.jpg"
-				 *     },
-				 *     "600249697": {
-				 *       "now": "18/11/21(水)14:09:36",
-				 *       "name": "としあき",
-				 *       "email": "・3・",
-				 *       "sub": "無念",
-				 *       "com": "<font color=\"#789922\">&gt;佐賀ってスガキヤある？なかったら田舎だが<\/font><br>スガキヤとかやっとかめだなも<br>雁道に住んどったもんだで<br>高辻のダイエーによう行っとったでよ",
-				 *       "ext": "",
-				 *       "w": 0,
-				 *       "h": 0,
-				 *       "tim": "1542776976479",
-				 *       "fsize": 0,
-				 *       "del": "",
-				 *       "host": "ntsaga008056.saga.nt.ngn.ppp.infoweb.ne.jp",	// [<font color="#ff0000">remote-host</font>]
-				 *       "id": "",
-				 *       "src": "\/b\/src\/1542776976479",
-				 *       "thumb": "\/b\/thumb\/1542776976479s.jpg"
-				 *     }
-				 *   }
-				 * }
-				 */
 				const result = xmlGenerator.runFromJson(doc, $qs('article .replies').childElementCount);
 
 				xsltProcessor.setParameter(null, 'render_mode', 'replies');
@@ -10130,12 +10348,7 @@ const commands = {
 					scrollToNewReplies(() => {
 						updateIdFrequency(newStat);
 						updateSodanesViaAPI(doc.sd);
-
-						extractTweets();
-						extractSiokaraThumbnails();
-						extractNico2();
-						extractIncompleteFiles();
-
+						modifyPage();
 						timingLogger.forceEndTag();
 					});
 				}
@@ -10560,10 +10773,14 @@ const commands = {
 					case 'reply':
 						if (storage.config.full_reload_after_post.value) {
 							reloadStatus.lastReloaded = Date.now();
-							return commands.reloadReplies();
+							return commands.reloadReplies().then(() => {
+								return autoTracker.afterPost();
+							});
 						}
 						else {
-							return commands.reload(true);
+							return commands.reload(true).then(() => {
+								return autoTracker.afterPost();
+							});
 						}
 					}
 				});
@@ -10963,29 +11180,21 @@ const commands = {
 						.replace(/\/@version@/g, '');
 				},
 				onok: canvas => {
-					const dataURL = canvas.toDataURL();
-
-					getImageFrom(dataURL).then(img => {
-						let result;
-						if (img) {
-							if (pageModes[0].mode == 'summary' || pageModes[0].mode == 'catalog') {
-								result = getBlobFrom(dataURL).then(blob => {
-									overrideUpfile = {
-										name: 'tegaki.png',
-										data: blob
-									};
-								});
-							}
-							else {
-								const baseform = document.getElementsByName('baseform')[0];
-								if (baseform) {
-									baseform.value = dataURL.replace(/^[^,]+,/, '');
-								}
-							}
-							resetForm('upfile', 'textonly');
-							setPostThumbnail(img, '手書き');
+					getBlobFrom(canvas).then(blob => {
+						if (pageModes[0].mode == 'summary' || pageModes[0].mode == 'catalog') {
+							overrideUpfile = {
+								name: 'tegaki.png',
+								data: blob
+							};
 						}
-						return result;
+						else {
+							const baseform = document.getElementsByName('baseform')[0];
+							if (baseform) {
+								baseform.value = canvas.toDataURL().replace(/^[^,]+,/, '');
+							}
+						}
+						resetForm('upfile', 'textonly');
+						return setPostThumbnail(canvas, '手書き');
 					});
 				},
 				oncancel: () => {
@@ -11233,8 +11442,12 @@ const commands = {
 	 */
 
 	registerTrack: function () {
-		// TODO: fill me
-		alert('Under Development!');
+		if (autoTracker.running) {
+			autoTracker.stop();
+		}
+		else {
+			autoTracker.start();
+		}
 	},
 
 	/*
