@@ -725,6 +725,7 @@ function install (mode) {
 		function readjustReplyWidth () {
 			$qsa('.reply-wrap .reply-image.width-adjusted').forEach(node => {
 				node.classList.remove('width-adjusted');
+				node.style.minWidth = '';
 			});
 			adjustReplyWidth();
 		}
@@ -1672,11 +1673,11 @@ function createXMLGenerator () {
 			// re[1] -> "fu99999"
 			// re[2] -> ".xxx"
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
+			if (/\.(?:jpe?g|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
 				anchor.setAttribute('class', `${this.className} lightbox`);
 
 			}
-			if (/\.(?:jpg|gif|png|webp)$/.test(re[2])) {
+			if (/\.(?:jpe?g|gif|png|webp|webm|mp4)$/.test(re[2])) {
 				const boardName = /\/(up2?)\/$/.exec(baseUrl)[1];
 				anchor.setAttribute(
 					'thumbnail',
@@ -5287,9 +5288,8 @@ function createAutoTracker () {
 
 	function computeTrackFrequency () {
 		const logs = [];
-		const outputLog = false;
-		let median;
-		let referencedReplyNumber;
+		let median = 0;
+		let referencedReplyNumber = 0;
 
 		const postTimes = Array
 		.from($qsa(`.replies .reply-wrap:nth-last-child(-n+${storage.config.autotrack_sampling_replies.value + 1})`))
@@ -5339,7 +5339,7 @@ function createAutoTracker () {
 			`result: ${result} - ${getTimeSpanText(result / 1000)}`,
 			`result for display: ${Math.floor(result / 1000)}`
 		);
-		outputLog && console.log(logs.join('\n'));
+		devMode && console.log(logs.join('\n'));
 
 		return result;
 	}
@@ -5375,17 +5375,20 @@ function createAutoTracker () {
 		}, computeTrackFrequency());
 	}
 
-	function stop () {
+	function stop (keepLastVars) {
 		if (!timer1) return;
 
 		clearTimeout(timer1);
 		timer1 = undefined;
+		if (!keepLastVars) {
+			lastMedian = lastReferencedReplyNumber = 0;
+		}
 		stopTimer2();
 	}
 
 	function afterPost () {
 		if (!timer1) return;
-		stop();
+		stop(true);
 		start();
 	}
 
