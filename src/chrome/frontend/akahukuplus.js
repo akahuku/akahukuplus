@@ -564,7 +564,7 @@ function install (mode) {
 				}, 1000 * 1, e, t);
 			}
 			if (storage.config.lightbox_enabled.value) {
-				if (/\.(?:jpg|gif|png|webp)$/.test(t.href)) {
+				if (/\.(?:jpe?g|gif|png|webp)$/.test(t.href)) {
 					let ignoreThumbnail =
 						t.classList.contains('link-siokara')
 						|| t.classList.contains('siokara-thumbnail');
@@ -1746,7 +1746,7 @@ function createXMLGenerator () {
 			'\\b((?:h?t?t?p?s?://)?(?:dec\\.2chan\\.net/up/src/)?(f\\d{4,})(\\.\\w+)?)',
 			function (re, anchor) {
 				anchor.setAttribute('title', 'あぷ');
-				return this.upProc(re, anchor, 'http://dec.2chan.net/up/');
+				return this.upProc(re, anchor, 'https://dec.2chan.net/up/');
 			}
 		),
 		new LinkTarget(
@@ -1754,7 +1754,7 @@ function createXMLGenerator () {
 			'\\b((?:h?t?t?p?s?://)?(?:dec\\.2chan\\.net/up/src/)?(fu\\d{4,})(\\.\\w+)?)',
 			function (re, anchor) {
 				anchor.setAttribute('title', 'あぷ小');
-				return this.upProc(re, anchor, 'http://dec.2chan.net/up2/');
+				return this.upProc(re, anchor, 'https://dec.2chan.net/up2/');
 			}
 		),
 		new LinkTarget(
@@ -1779,13 +1779,13 @@ function createXMLGenerator () {
 		),
 		new LinkTarget(
 			'link-futaba lightbox',
-			'\\b((?:h?t?t?p?s?://)?[^.]+\\.2chan\\.net/[^/]+/src/\\d+\\.(?:jpg|gif|png|webp|webm|mp4)\\S*)',
+			'\\b((?:h?t?t?p?s?://)?[^.]+\\.2chan\\.net/[^/]+/src/\\d+\\.(?:jpe?g|gif|png|webp|webm|mp4)\\S*)',
 			function (re, anchor) {
 				anchor.setAttribute(
 					'thumbnail',
 					re[0]
 						.replace('/src/', '/thumb/')
-						.replace(/\.(?:jpg|gif|png|webp|webm|mp4)/, 's.jpg'));
+						.replace(/\.(?:jpe?g|gif|png|webp|webm|mp4)/, 's.jpg'));
 				return re[0];
 			}
 		),
@@ -7424,10 +7424,30 @@ function getImageName (href, targetNode) {
 	let re;
 	let imageDate;
 
-	// image on futaba server
+	// image on image board of futaba server:
+	//
+	// https://img.2chan.net/b/src/999999999.jpg
+	//         ^^^           ^     ^^^^^^^^^
+	//          1            2         3
 	re = /^https?:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/src\/(\d+)\.([^.]+)/.exec(restoreDistributedImageURL(href));
 
-	// image on siokara server
+	// image on up/up2 of futaba server:
+	//
+	// https://dec.2chan.net/up2/src/fu999999.jpg
+	//         ^^^           ^^^     ^^^^^^^^
+	//          1             2          3
+	if (!re) {
+		re = /^https?:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/src\/(\w+\d+)\.([^.]+)/.exec(href);
+		if (re) {
+			dateAvailable = false;
+		}
+	}
+
+	// image on siokara server:
+	//
+	// https://www.nijibox5.com/futabafiles/tubu/src/su999999.jpg
+	//             ^^^^^^^^                 ^^^^     ^^^^^^^^
+	//                 1                      2          3
 	if (!re) {
 		re = /^https?:\/\/[^.]+\.(nijibox\d+)\.com(?::\d+)?\/futabafiles\/([^\/]+)\/src\/(\w+\d+)\.([^.]+)/.exec(href);
 		if (re) {

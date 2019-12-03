@@ -2674,17 +2674,7 @@ div.catalog-popup span {
 	<div class="inline-video nico2" data-nico2-key="{@nico2-key}"></div>
 </div>
 </xsl:when>
-<xsl:when test="contains(@class,'link-futaba') and not (name(..)='q')">
-<a class="{@class}" href="{@href}" target="_blank"><xsl:value-of select="."/></a>
-<small> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
-<a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/><br/></a>
-</xsl:when>
-<xsl:when test="contains(@class,'link-up') and @thumbnail">
-<a class="{@class}" href="{@href}" target="_blank"><xsl:value-of select="."/></a>
-<small> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
-<a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/><br/></a>
-</xsl:when>
-<xsl:when test="contains(@class,'link-up-small') and @thumbnail">
+<xsl:when test="(contains(@class,'link-futaba') or contains(@class,'link-up') or contains(@class,'link-up-small')) and @thumbnail and not(name(..)='q')">
 <a class="{@class}" href="{@href}" target="_blank"><xsl:value-of select="."/></a>
 <small> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
 <a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/><br/></a>
