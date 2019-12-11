@@ -158,6 +158,9 @@ input[type="checkbox"] {
 twitter-widget {
 	clear:both;
 }
+twitter-widget + br {
+	display:none;
+}
 
 .blink-cursor {
 	font-size:75%;
@@ -752,6 +755,10 @@ article.summary .replies {
 }
 
 #content .inline-video-container .nico2 {
+}
+
+#content .inline-video-container + br {
+	display:none;
 }
 
 /*
@@ -2676,8 +2683,8 @@ div.catalog-popup span {
 </xsl:when>
 <xsl:when test="(contains(@class,'link-futaba') or contains(@class,'link-up') or contains(@class,'link-up-small')) and @thumbnail and not(name(..)='q')">
 <a class="{@class}" href="{@href}" target="_blank"><xsl:value-of select="."/></a>
-<small> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
-<a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/><br/></a>
+<small class="inline-save-image-wrap"> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
+<a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/></a>
 </xsl:when>
 <xsl:when test="contains(@class,'link-twitter') and not (name(..)='q')">
 <a class="{@class}" href="{@href}" target="_blank" data-tweet-id="{@tweet-id}"><xsl:value-of select="."/></a>
@@ -2706,13 +2713,13 @@ div.catalog-popup span {
 
 <xsl:template match="expires" mode="simple">
 <div
-	class="{concat('expire-warn ',substring('hide',1,4-count(@warned)*4))}"
-	data-binding="xpath-class[reply]:concat('expire-warn ',substring('hide',1,4-count(/futaba/thread[1]/topic/expires/@warned)*4))"
->このスレは古いので、もうすぐ消えます。</div>
-<div
 	class="{concat('expire-maxreached ',substring('hide',1,4-count(@maxreached)*4))}"
 	data-binding="xpath-class[reply]:concat('expire-maxreached ',substring('hide',1,4-count(/futaba/thread[1]/topic/expires/@maxreached)*4))"
 >レスの上限に達したので、これ以上コメントできません。</div>
+<div
+	class="{concat('expire-warn ',substring('hide',1,4-count(@warned)*4))}"
+	data-binding="xpath-class[reply]:concat('expire-warn ',substring('hide',1,4-count(/futaba/thread[1]/topic/expires/@warned)*4))"
+>このスレは古いので、もうすぐ消えます。</div>
 </xsl:template>
 
 </xsl:stylesheet>

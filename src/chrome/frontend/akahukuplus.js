@@ -153,7 +153,7 @@ let scriptWatcher = (function () {
 		e.preventDefault();
 	}
 
-	let result = new MutationObserver(ms => {
+	const result = new MutationObserver(ms => {
 		ms.forEach(m => {
 			m.addedNodes.forEach(node => {
 				if (node.nodeType != 1 || node.nodeName != 'SCRIPT') return;
@@ -174,7 +174,7 @@ let scriptWatcher = (function () {
 
 // html extension to DOMParser: @see https://gist.github.com/kethinov/4760460
 (function (DOMParser) {
-	let DOMParser_proto = DOMParser.prototype,
+	const DOMParser_proto = DOMParser.prototype,
 		real_parseFromString = DOMParser_proto.parseFromString;
 
 	// Firefox/Opera/IE throw errors on unsupported types
@@ -188,7 +188,7 @@ let scriptWatcher = (function () {
 
 	DOMParser_proto.parseFromString = function(markup, type) {
 		if (/^\s*text\/html\s*(?:;|$)/i.test(type)) {
-			let doc = document.implementation.createHTMLDocument('');
+			const doc = document.implementation.createHTMLDocument('');
 			if (/<!doctype/i.test(markup)) {
 				doc.documentElement[IHTML] = markup;
 			}
@@ -273,7 +273,7 @@ function transformWholeDocument (xsl) {
 	urlStorage = createUrlStorage();
 	xmlGenerator = createXMLGenerator();
 
-	let generateResult = xmlGenerator.run(
+	const generateResult = xmlGenerator.run(
 		bootVars.bodyHTML + bootVars.iframeSources,
 		pageModes[0].mode == 'reply' ? LEAD_REPLIES_COUNT : null);
 
@@ -321,9 +321,9 @@ function transformWholeDocument (xsl) {
 			`${APP_NAME}: XML 文書を変換できませんでした。中止します。`);
 	}
 
-	let head = $qs('head', fragment);
-	let body = $qs('body', fragment);
-	let removeHeadElements = () => {
+	const head = $qs('head', fragment);
+	const body = $qs('body', fragment);
+	const removeHeadElements = () => {
 		$qsa('head > *').forEach(node => {
 			if (node.nodeName == 'BASE') return;
 			node.parentNode.removeChild(node);
@@ -352,7 +352,7 @@ function transformWholeDocument (xsl) {
 	});
 
 	// some tweaks: move some elements to its proper position
-	let headNodes = Array.from($qsa('body style, body link'));
+	const headNodes = Array.from($qsa('body style, body link'));
 	while (headNodes.length) {
 		const node = headNodes.shift();
 		node.parentNode.removeChild(node);
@@ -492,15 +492,15 @@ function install (mode) {
 		.add('#toggle-timing-log', commands.toggleLogging)
 
 		.add('#search-item', (e, t) => {
-			let number = t.getAttribute('data-number');
+			const number = t.getAttribute('data-number');
 			if (!number) return;
-			let wrapper = $qs([
+			const wrapper = $qs([
 				`article .topic-wrap[data-number="${number}"]`,
 				`article .reply-wrap > [data-number="${number}"]`
 			].join(','));
 			if (!wrapper) return;
 
-			let rect = wrapper.getBoundingClientRect();
+			const rect = wrapper.getBoundingClientRect();
 			if (rect.top < 0 || rect.bottom >= viewportRect.height) {
 				window.scrollTo(
 					0,
@@ -529,12 +529,12 @@ function install (mode) {
 			commands.openModerateDialog(e, t);
 		})
 		.add('.postno', (e, t) => {
-			let wrap = getWrapElement(t);
+			const wrap = getWrapElement(t);
 			if (!wrap) return;
 			let comment = $qs('.comment', wrap);
 			if (!comment) return;
 
-			comment = nodeToString(comment);
+			comment = commentToString(comment);
 
 			if ($qs('.reply-image', wrap) && /^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
 				comment = $qs('.postno', wrap).textContent;
@@ -556,7 +556,7 @@ function install (mode) {
 		.add('.lightbox',  (e, t) => {
 			if (storage.config.auto_save_image.value) {
 				setTimeout((e, t) => {
-					let saveLink = $qs(`.save-image[href="${t.href}"]`);
+					const saveLink = $qs(`.save-image[href="${t.href}"]`);
 					if (!saveLink) return;
 					if (saveLink.getAttribute('data-image-saved')) return;
 
@@ -565,7 +565,7 @@ function install (mode) {
 			}
 			if (storage.config.lightbox_enabled.value) {
 				if (/\.(?:jpe?g|gif|png|webp)$/.test(t.href)) {
-					let ignoreThumbnail =
+					const ignoreThumbnail =
 						t.classList.contains('link-siokara')
 						|| t.classList.contains('siokara-thumbnail');
 
@@ -600,8 +600,8 @@ function install (mode) {
 				newActive.classList.add('active');
 			}
 
-			let order = newActive.href.match(/\w+$/)[0];
-			let contentId = `catalog-threads-wrap-${order}`;
+			const order = newActive.href.match(/\w+$/)[0];
+			const contentId = `catalog-threads-wrap-${order}`;
 			$qsa('#catalog .catalog-threads-wrap > div').forEach(node => {
 				if (node.id == contentId) {
 					node.classList.remove('hide');
@@ -622,8 +622,8 @@ function install (mode) {
 			commands.sodane(e, t);
 		})
 		.add('*noclass*', (e, t) => {
-			let re1 = /(.*)#[^#]*$/.exec(t.href);
-			let re2 = /(.*)(#[^#]*)?$/.exec(window.location.href);
+			const re1 = /(.*)#[^#]*$/.exec(t.href);
+			const re2 = /(.*)(#[^#]*)?$/.exec(window.location.href);
 			if (t.target != '_blank') return;
 			if (re1 && re2 && re1[1] == re2[1]) return;
 
@@ -762,7 +762,7 @@ function install (mode) {
 		].join('\n'));
 		*/
 
-		let isCatalog = window.location.hash == '#mode=cat';
+		const isCatalog = window.location.hash == '#mode=cat';
 
 		if (pageModes[0].mode == 'catalog' && !isCatalog
 		||  pageModes[0].mode != 'catalog' && isCatalog) {
@@ -770,16 +770,16 @@ function install (mode) {
 		}
 
 		if (pageModes[0].mode == 'summary') {
-			let re = /(\d+)\.htm$/.exec(window.location.pathname);
+			const re = /(\d+)\.htm$/.exec(window.location.pathname);
 			siteInfo.summaryIndex = re ? re[1] : 0;
 			commands.reload();
 		}
 		else if (pageModes[0].mode == 'catalog' && pageModes[1].mode == 'summary') {
-			let re = /(\d+)\.htm$/.exec(window.location.pathname);
-			let summaryIndex = siteInfo.summaryIndex = re ? re[1] : 0;
+			const re = /(\d+)\.htm$/.exec(window.location.pathname);
+			const summaryIndex = siteInfo.summaryIndex = re ? re[1] : 0;
 
 			// title sync
-			let titleElement = $qs('#header h1 a');
+			const titleElement = $qs('#header h1 a');
 			let title = titleElement
 				.textContent
 				.replace(/\s*\[ページ\s*\d+\]/, '');
@@ -789,17 +789,17 @@ function install (mode) {
 			$t(titleElement, title);
 
 			// page navigator sync
-			let navElement = $qs('#postform-wrap .nav-links');
-			let pageCount = Math.min(11, navElement.childElementCount);
+			const navElement = $qs('#postform-wrap .nav-links');
+			const pageCount = Math.min(11, navElement.childElementCount);
 			empty(navElement);
 			for (let i = 0; i < pageCount; i++) {
 				if (i == summaryIndex) {
-					let span = navElement.appendChild(document[CRE]('span'));
+					const span = navElement.appendChild(document[CRE]('span'));
 					span.className = 'current';
 					$t(span, i);
 				}
 				else {
-					let a = navElement.appendChild(document[CRE]('a'));
+					const a = navElement.appendChild(document[CRE]('a'));
 					a.className = 'switch-to';
 					a.href = `${location.protocol}//${location.host}/${siteInfo.board}/${i == 0 ? 'futaba' : i}.htm`;
 					$t(a, i);
@@ -931,7 +931,7 @@ function install (mode) {
 					p = p.parentNode;
 				}
 				if (p) return;
-				let thumb = $('post-image-thumbnail-wrap');
+				const thumb = $('post-image-thumbnail-wrap');
 				if (thumb && thumb.getAttribute('data-available') == '2') {
 					thumb.setAttribute('data-available', '1');
 					return;
@@ -1026,7 +1026,7 @@ function install (mode) {
 	 */
 
 	let queries = (() => {
-		let result = {};
+		const result = {};
 		window.location.hash
 		.replace(/^#/, '')
 		.split('&').forEach(s => {
@@ -1151,9 +1151,9 @@ function createResourceManager () {
 					return s1.replace(/#((?:ffe|800|ea8)[0-9a-f]?|(?:f0e0d6|faf4e6)(?:[0-9a-f]{2})?)\b/gi, (s2, s3) => {
 						// 4 digits
 						if (s3.length == 4) {
-							let alpha = s3.substr(-1);
+							const alpha = s3.substr(-1);
 							s3 = s3.substring(0, s3.length - 1);
-							let result = map[s3.toLowerCase()];
+							const result = map[s3.toLowerCase()];
 							if (result.length == 3) {
 								return `#${result}${alpha}`;
 							}
@@ -1164,9 +1164,9 @@ function createResourceManager () {
 
 						// 8 digits
 						else if (s3.length == 8) {
-							let alpha = s3.substr(-2);
+							const alpha = s3.substr(-2);
 							s3 = s3.substring(0, s3.length - 2);
-							let result = map[s3.toLowerCase()];
+							const result = map[s3.toLowerCase()];
 							return `#${result}${alpha}`;
 						}
 
@@ -1180,7 +1180,7 @@ function createResourceManager () {
 	];
 
 	function setSlot (path, expires, data) {
-		let slot = {
+		const slot = {
 			expires: Date.now() + (expires === undefined ? 1000 * 60 * 60 : expires),
 			data: data
 		};
@@ -1231,9 +1231,9 @@ function createResourceManager () {
 
 	function get (key, opts) { /*returns promise*/
 		opts || (opts = {});
-		let resKey = getResKey(key);
-		let responseType = opts.responseType || 'text';
-		let expires = opts.expires;
+		const resKey = getResKey(key);
+		const responseType = opts.responseType || 'text';
+		const expires = opts.expires;
 		let slot = window.localStorage.getItem(resKey);
 		if (slot !== null) {
 			slot = JSON.parse(slot);
@@ -1254,7 +1254,7 @@ function createResourceManager () {
 
 	function clearCache () {
 		for (let i = 0; i < window.localStorage.length; i++) {
-			let key = window.localStorage.key(i);
+			const key = window.localStorage.key(i);
 			if (/^resource:/.test(key)) {
 				window.localStorage.removeItem(key);
 				i--;
@@ -1392,7 +1392,7 @@ function createXMLGenerator () {
 
 	function linkify (node, opts) {
 		opts = opts || {linkify: true, emojify: true};
-		let emojiRegex = Akahuku.twemoji.regex;
+		const emojiRegex = Akahuku.twemoji.regex;
 		let r = node.ownerDocument.createRange();
 		let re;
 		while (node.lastChild.nodeType == 3) {
@@ -1443,17 +1443,17 @@ function createXMLGenerator () {
 
 	function reduceURL (url) {
 		const LIMIT = 100;
+		const seps = ['/', '&'];
 
 		if (url.length <= LIMIT) {
 			return url;
 		}
 
-		var re = /^([^:]+:\/\/[^\/]+\/)([^?]*)?(\?.*)?/.exec(url);
-		var result = re[1];
-		var seps = ['/', '&'];
-		var components = [(re[2] || '').split(seps[0]), (re[3] || '').split(seps[1])];
+		let re = /^([^:]+:\/\/[^\/]+\/)([^?]*)?(\?.*)?/.exec(url);
+		let result = re[1];
+		const components = [(re[2] || '').split(seps[0]), (re[3] || '').split(seps[1])];
 
-		components.forEach(function (cs, i) {
+		components.forEach((cs, i) => {
 			if (i == 1 && components[0].length) return;
 
 			while (cs.length && result.length < LIMIT) {
@@ -1465,7 +1465,7 @@ function createXMLGenerator () {
 			}
 
 			if (result.length >= LIMIT) {
-				var lastIndex = result.lastIndexOf(seps[i]);
+				const lastIndex = result.lastIndexOf(seps[i]);
 				if (lastIndex >= 0) {
 					cs.push(result.substring(lastIndex + 1));
 					result = result.substring(0, lastIndex + 1);
@@ -1481,8 +1481,9 @@ function createXMLGenerator () {
 	}
 
 	function pushComment (node, s) {
-		var stack = [node];
-		var re, regex = /<[^>]+>|[^<]+/g;
+		const stack = [node];
+		const regex = /<[^>]+>|[^<]+/g;
+		let re;
 		while ((re = regex.exec(s))) {
 			re = re[0];
 			if (re.charAt(0) == '<') {
@@ -1655,7 +1656,7 @@ function createXMLGenerator () {
 	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
 		if (re[2]) {
 			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpg|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
+			if (/\.(?:jpe?g|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
 				anchor.setAttribute('class', `${this.className} incomplete-siokara-thumbnail lightbox`);
 				anchor.setAttribute('thumbnail', `${baseUrl}misc/${re[1]}.thumb.jpg`);
 			}
@@ -1673,16 +1674,23 @@ function createXMLGenerator () {
 			// re[1] -> "fu99999"
 			// re[2] -> ".xxx"
 			anchor.setAttribute('basename', re[1] + re[2]);
+
+			// inline lightbox
 			if (/\.(?:jpe?g|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
-				anchor.setAttribute('class', `${this.className} lightbox`);
+				anchor.setAttribute(
+					'class',
+					`${this.className} lightbox`);
 
 			}
+
+			// if thumbnail supported, add attribute
 			if (/\.(?:jpe?g|gif|png|webp|webm|mp4)$/.test(re[2])) {
 				const boardName = /\/(up2?)\/$/.exec(baseUrl)[1];
 				anchor.setAttribute(
 					'thumbnail',
 					`https://appsweets.net/thumbnail/${boardName}/${re[1]}s.png`);
 			}
+
 			return `${baseUrl}src/${re[1]}${re[2]}`;
 		}
 		else {
@@ -1806,7 +1814,7 @@ function createXMLGenerator () {
 		)
 	];
 	const linkTargetRegex = new RegExp(linkTargets.map((a, i) => {
-		let re = (a.pattern.replace(/\(\?/g, '')).match(/\(/g);
+		const re = (a.pattern.replace(/\(\?/g, '')).match(/\(/g);
 		linkTargets[i].backrefLength = re ? re.length : 0;
 		linkTargets[i].offset = i > 0 ? linkTargets[i - 1].offset + linkTargets[i - 1].backrefLength : 1;
 		return a.pattern;
@@ -1879,7 +1887,7 @@ function createXMLGenerator () {
 
 		// page title
 		(function () {
-			let re = />([^<>]+)(＠ふたば)/.exec(content);
+			const re = />([^<>]+)(＠ふたば)/.exec(content);
 			if (!re) return;
 			let title = re[1].replace(/二次元裏$/, `虹裏${siteInfo.server}`)
 				+ re[2];
@@ -1897,9 +1905,9 @@ function createXMLGenerator () {
 			if (!notices) return;
 			notices = notices[1];
 
-			let noticeMarkups = [];
-			let noticesNode = element(metaNode, 'notices');
-			let noticeRegex = /<li[^>]*>(.*?)<\/li>/g;
+			const noticeMarkups = [];
+			const noticesNode = element(metaNode, 'notices');
+			const noticeRegex = /<li[^>]*>(.*?)<\/li>/g;
 			let notice;
 			while ((notice = noticeRegex.exec(notices))) {
 				notice = notice[1];
@@ -1939,11 +1947,12 @@ function createXMLGenerator () {
 
 		// page navigator
 		(function () {
-			let navs = /<table[^>]+class="psen"[^>]*>(.*)<\/table>/i.exec(content);
+			const navs = /<table[^>]+class="psen"[^>]*>(.*)<\/table>/i.exec(content);
 			if (!navs) return;
-			let buffer = [];
+			const buffer = [];
 
-			let nav, navRegex = /<a[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
+			const navRegex = /<a[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
+			let nav;
 			while ((nav = navRegex.exec(navs[1]))) {
 				buffer.push([nav[2] - 0, resolveRelativePath(nav[1], baseUrl)]);
 			}
@@ -1956,9 +1965,9 @@ function createXMLGenerator () {
 			}
 
 			buffer.sort((a, b) => a[0] - b[0]);
-			let navsNode = element(metaNode, 'navs');
+			const navsNode = element(metaNode, 'navs');
 			for (let i = 0, goal = Math.min(11, buffer.length); i < goal; i++) {
-				let navNode = element(navsNode, 'nav');
+				const navNode = element(navsNode, 'nav');
 
 				navNode.appendChild(text(buffer[i][0]));
 				navNode.setAttribute('href', buffer[i][1]);
@@ -1988,21 +1997,23 @@ function createXMLGenerator () {
 			while ((postform = postformRegex.exec(content))) {
 				if (!/<input[^>]+value="regist"/.test(postform[2])) continue;
 
-				let pfNode = element(metaNode, 'postform');
+				const pfNode = element(metaNode, 'postform');
 
 				// postform attributes
-				let attribRegex = /(action|method|enctype)="([^"]*)"/ig;
-				let attrib;
-				while ((attrib = attribRegex.exec(postform[1]))) {
-					pfNode.setAttribute(attrib[1], attrib[2]);
+				{
+					const attribRegex = /(action|method|enctype)="([^"]*)"/ig;
+					let attrib;
+					while ((attrib = attribRegex.exec(postform[1]))) {
+						pfNode.setAttribute(attrib[1], attrib[2]);
+					}
 				}
 
 				// input elements
 				const inputRegex = /<input[^>]+>/gi;
 				let input;
 				while ((input = inputRegex.exec(postform[2]))) {
-					let inputNode = element(pfNode, 'input');
-					let attribRegex = /(type|name|value)="([^"]*)"/ig;
+					const inputNode = element(pfNode, 'input');
+					const attribRegex = /(type|name|value)="([^"]*)"/ig;
 					let attrib;
 					while ((attrib = attribRegex.exec(input[0]))) {
 						inputNode.setAttribute(attrib[1], attrib[2]);
@@ -2016,11 +2027,11 @@ function createXMLGenerator () {
 
 		// ads
 		(function () {
-			let adsNode = element(metaNode, 'ads');
-			let adsHash = {};
+			const adsNode = element(metaNode, 'ads');
+			const adsHash = {};
 
 			// pick up unique ad iframe list
-			let adsRegex = /<iframe([^>]+)>.*?<\/iframe>/gi;
+			const adsRegex = /<iframe([^>]+)>.*?<\/iframe>/gi;
 			let ads;
 			while ((ads = adsRegex.exec(content))) {
 				let width, height, src, re;
@@ -2046,22 +2057,22 @@ function createXMLGenerator () {
 			}
 
 			// shuffle
-			let adsArray = Object.keys(adsHash);
+			const adsArray = Object.keys(adsHash);
 			for (let i = adsArray.length - 1; i > 0; i--) {
-				let index = Math.floor(Math.random() * (i + 1));
-				let tmp = adsArray[i];
+				const index = Math.floor(Math.random() * (i + 1));
+				const tmp = adsArray[i];
 				adsArray[i] = adsArray[index];
 				adsArray[index] = tmp;
 			}
 
 			// store into xml
-			let bannersNode = element(adsNode, 'banners');
+			const bannersNode = element(adsNode, 'banners');
 			for (let i of adsArray) {
-				let parts = i.split('_');
-				let width = parts.shift() - 0;
-				let height = parts.shift() - 0;
-				let src = parts.join('_');
-				let adNode = element(bannersNode, 'ad');
+				const parts = i.split('_');
+				const width = parts.shift() - 0;
+				const height = parts.shift() - 0;
+				const src = parts.join('_');
+				const adNode = element(bannersNode, 'ad');
 				let className = 'unknown';
 
 				if (width == 336) {
@@ -2088,8 +2099,8 @@ function createXMLGenerator () {
 
 		// configurations
 		(function () {
-			let configNode = element(metaNode, 'configurations');
-			let cs = getCatalogSettings();
+			const configNode = element(metaNode, 'configurations');
+			const cs = getCatalogSettings();
 			let paramNode;
 
 			paramNode = configNode.appendChild(element(configNode, 'param'));
@@ -2124,7 +2135,7 @@ function createXMLGenerator () {
 		markStatistics.start();
 
 		for (let matches; (matches = threadRegex.exec(content)); threadIndex++) {
-			let match = matches[0];
+			const match = matches[0];
 			let topic = /^(.+?)<blockquote[^>]*>(.*?)<\/blockquote>(.*)/i.exec(match);
 			if (!topic) continue;
 
@@ -2156,21 +2167,21 @@ function createXMLGenerator () {
 			 * thread meta informations
 			 */
 
-			let threadNode = element(enclosureNode, 'thread');
+			const threadNode = element(enclosureNode, 'thread');
 			threadNode.setAttribute('url', resolveRelativePath(htmlref[1], baseUrl));
 
 			/*
 			 * topic informations
 			 */
 
-			let topicNode = element(threadNode, 'topic');
+			const topicNode = element(threadNode, 'topic');
 
 			// expiration date
-			let expires = /<(?:small|span)[^>]*>([^<]+?頃消えます)<\/(?:small|span)>/i.exec(topicInfo);
-			let expireWarn = /<font[^>]+><b>このスレは古いので、/i.test(topicInfo);
-			let maxReached = /<span\s+class=["']?maxres["']?[^>]*>[^<]+<\/span>/i.test(topicInfo);
+			const expires = /<(?:small|span)[^>]*>([^<]+?頃消えます)<\/(?:small|span)>/i.exec(topicInfo);
+			const expireWarn = /<font[^>]+><b>このスレは古いので、/i.test(topicInfo);
+			const maxReached = /<span\s+class=["']?maxres["']?[^>]*>[^<]+</i.test(topicInfo);
 			if (expires || expireWarn || maxReached) {
-				let expiresNode = element(topicNode, 'expires');
+				const expiresNode = element(topicNode, 'expires');
 				if (expires) {
 					expiresNode.appendChild(text(expires[1]));
 					expiresNode.setAttribute('remains', getExpirationDate(expires[1]));
@@ -2195,7 +2206,7 @@ function createXMLGenerator () {
 				threadNumber = htmlref[3] - 0;
 			}
 			if (threadNumber) {
-				let threadNumberNode = element(topicNode, 'number');
+				const threadNumberNode = element(topicNode, 'number');
 				threadNumberNode.appendChild(text(threadNumber));
 				re = /^(\d*?)((\d)\3+)$/.exec(threadNumber);
 				if (re) {
@@ -2210,7 +2221,7 @@ function createXMLGenerator () {
 			// posted date
 			re = postTimeRegex.exec(topicInfo);
 			if (re) {
-				let postedDate = new Date(
+				const postedDate = new Date(
 					2000 + (re[1] - 0),
 					re[2] - 1,
 					re[3] - 0,
@@ -2219,7 +2230,7 @@ function createXMLGenerator () {
 					re[6] - 0,
 					0
 				);
-				let postDateNode = element(topicNode, 'post_date');
+				const postDateNode = element(topicNode, 'post_date');
 				postDateNode.appendChild(text(re[0]));
 				postDateNode.setAttribute('value', postedDate.getTime());
 			}
@@ -2245,7 +2256,7 @@ function createXMLGenerator () {
 			// mail address
 			re = /<a[^>]+href="mailto:([^"]*)"/i.exec(topicInfo);
 			if (re) {
-				let emailNode = element(topicNode, 'email');
+				const emailNode = element(topicNode, 'email');
 				emailNode.appendChild(text(stripTags(re[1])));
 				linkify(emailNode);
 				if (isReplyMode && /ID表示/i.test(re[1])) {
@@ -2256,7 +2267,7 @@ function createXMLGenerator () {
 			// そうだね (that's right)
 			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
 			if (re) {
-				let sodaneNode = element(topicNode, 'sodane');
+				const sodaneNode = element(topicNode, 'sodane');
 				if (/x0$/.test(re[1])) {
 					re[1] = '+';
 				}
@@ -2270,7 +2281,7 @@ function createXMLGenerator () {
 			// ID
 			re = /<span\s+class="[^"]*cnw[^"]*"[^>]*>.*?ID:(.+?)<\/span>/i.exec(topicInfo) || /ID:([^ <]+)/.exec(topicInfoText);
 			if (re) {
-				let idNode = element(topicNode, 'user_id');
+				const idNode = element(topicNode, 'user_id');
 				idNode.appendChild(text(stripTags(re[1])));
 				markStatistics.notifyId(threadNumber, re[1]);
 			}
@@ -2278,15 +2289,15 @@ function createXMLGenerator () {
 			// IP
 			re = /IP:([a-zA-Z0-9_*:.\-()]+)/.exec(topicInfoText);
 			if (re) {
-				let ipNode = element(topicNode, 'ip');
+				const ipNode = element(topicNode, 'ip');
 				ipNode.appendChild(text(re[1]));
 			}
 
 			// src & thumbnail url
-			let imagehref = /<br><a[^>]+href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(topicInfo);
+			const imagehref = /<br><a[^>]+href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(topicInfo);
 			if (imagehref) {
-				let imageNode = element(topicNode, 'image');
-				let srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				const imageNode = element(topicNode, 'image');
+				const srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
@@ -2320,8 +2331,8 @@ function createXMLGenerator () {
 					thumbHeight = re[1];
 				}
 				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
-					let thumbNode = element(topicNode, 'thumb');
-					let thumbnailSize = getThumbnailSize(thumbWidth, thumbHeight, 250, 250);
+					const thumbNode = element(topicNode, 'thumb');
+					const thumbnailSize = getThumbnailSize(thumbWidth, thumbHeight, 250, 250);
 					thumbNode.appendChild(text(thumbUrl));
 					thumbNode.setAttribute('width', thumbnailSize.width);
 					thumbNode.setAttribute('height', thumbnailSize.height);
@@ -2331,7 +2342,7 @@ function createXMLGenerator () {
 			// communist sign :-)
 			re = /(\[|dice\d+d\d+(?:[-+]\d+)?=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(topic);
 			if (re && (!re[1] || re[1].substr(-1) != '=')) {
-				let markNode = element(topicNode, 'mark');
+				const markNode = element(topicNode, 'mark');
 				re[0].charAt(0) == '['
 					&& re[0].substr(-1) == ']'
 					&& markNode.setAttribute('bracket', 'true');
@@ -2351,13 +2362,13 @@ function createXMLGenerator () {
 				hiddenRepliesCount = re[1] - 0;
 			}
 
-			let result = fetchReplies(
+			const result = fetchReplies(
 				threadRest,
 				/<table[^>]*>.*?(?:<input[^>]*>|<span\s+id="delcheck\d+"[^>]*>).*?<\/td>/g,
 				hiddenRepliesCount, maxReplies, -1, threadNode,
 				siteInfo.subHash, siteInfo.nameHash, baseUrl);
 
-			let lastIndex = result.regex.lastIndex;
+			const lastIndex = result.regex.lastIndex;
 			if (!result.lastReached && result.regex.exec(threadRest)) {
 				result.regex.lastIndex = lastIndex;
 				remainingRepliesContext.push({
@@ -2406,17 +2417,17 @@ function createXMLGenerator () {
 			let re = /^(.*)<blockquote[^>]*>(.*)<\/blockquote>/i.exec(reply[0]);
 			if (!re) continue;
 
-			let info = re[1];
-			let infoText = info.replace(/<\/?[\w\-:]+(\s+[\w\-:]+\s*=\s*"[^"]*")*[^>]*>/g, '');
-			let comment = re[2];
-			let replyNode = element(repliesNode, 'reply');
+			const info = re[1];
+			const infoText = info.replace(/<\/?[\w\-:]+(\s+[\w\-:]+\s*=\s*"[^"]*")*[^>]*>/g, '');
+			const comment = re[2];
+			const replyNode = element(repliesNode, 'reply');
 			let number;
 
 			// number
 			re = /No\.(\d+)/i.exec(infoText);
 			if (re) {
 				number = re[1];
-				let numberNode = element(replyNode, 'number');
+				const numberNode = element(replyNode, 'number');
 				numberNode.appendChild(text(re[1]));
 				re = /^(\d*?)((\d)\3+)$/.exec(number);
 				if (re) {
@@ -2434,7 +2445,7 @@ function createXMLGenerator () {
 			// ID
 			re = /<span\s+class="[^"]*cnw[^"]*"[^>]*>.*?ID:(.+?)<\/span>/i.exec(info) || /ID:([^ "<]+)/.exec(infoText);
 			if (re) {
-				let idNode = element(replyNode, 'user_id');
+				const idNode = element(replyNode, 'user_id');
 				idNode.appendChild(text(stripTags(re[1])));
 				markStatistics.notifyId(number, re[1]);
 			}
@@ -2442,7 +2453,7 @@ function createXMLGenerator () {
 			// IP
 			re = /IP:([a-zA-Z0-9_*:.\-()]+)/.exec(infoText);
 			if (re) {
-				let ipNode = element(replyNode, 'ip');
+				const ipNode = element(replyNode, 'ip');
 				ipNode.appendChild(text(re[1]));
 			}
 
@@ -2453,7 +2464,7 @@ function createXMLGenerator () {
 					element(replyNode, 'deleted');
 				}
 
-				let markNode = element(replyNode, 'mark');
+				const markNode = element(replyNode, 'mark');
 				if (re[0].charAt(0) == '[' && re[0].substr(-1) == ']') {
 					markNode.setAttribute('bracket', 'true');
 				}
@@ -2465,7 +2476,7 @@ function createXMLGenerator () {
 			// そうだね (that's right)
 			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(info);
 			if (re) {
-				let sodaneNode = element(replyNode, 'sodane');
+				const sodaneNode = element(replyNode, 'sodane');
 				if (/x0$/.test(re[1])) {
 					re[1] = '+';
 				}
@@ -2487,7 +2498,7 @@ function createXMLGenerator () {
 			// posted date
 			re = postTimeRegex.exec(info);
 			if (re) {
-				let postedDate = new Date(
+				const postedDate = new Date(
 					2000 + (re[1] - 0),
 					re[2] - 1,
 					re[3] - 0,
@@ -2496,7 +2507,7 @@ function createXMLGenerator () {
 					re[6] - 0,
 					0
 				);
-				let postDateNode = element(replyNode, 'post_date');
+				const postDateNode = element(replyNode, 'post_date');
 				postDateNode.appendChild(text(re[0]));
 				postDateNode.setAttribute('value', postedDate.getTime());
 			}
@@ -2522,16 +2533,16 @@ function createXMLGenerator () {
 			// mail address
 			re = /<a[^>]+href="mailto:([^"]*)"/i.exec(info);
 			if (re) {
-				let emailNode = element(replyNode, 'email');
+				const emailNode = element(replyNode, 'email');
 				emailNode.appendChild(text(stripTags(re[1])));
 				linkify(emailNode);
 			}
 
 			// src & thumbnail url
-			let imagehref = /<br><a[^>]+href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
+			const imagehref = /<br><a[^>]+href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
 			if (imagehref) {
-				let imageNode = element(replyNode, 'image');
-				let srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				const imageNode = element(replyNode, 'image');
+				const srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
@@ -2565,8 +2576,8 @@ function createXMLGenerator () {
 					thumbHeight = re[1];
 				}
 				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
-					let thumbNode = element(replyNode, 'thumb');
-					let thumbnailSize = getThumbnailSize(thumbWidth, thumbHeight, 250, 250);
+					const thumbNode = element(replyNode, 'thumb');
+					const thumbnailSize = getThumbnailSize(thumbWidth, thumbHeight, 250, 250);
 					thumbNode.appendChild(text(thumbUrl));
 					thumbNode.setAttribute('width', thumbnailSize.width);
 					thumbNode.setAttribute('height', thumbnailSize.height);
@@ -2611,7 +2622,7 @@ function createXMLGenerator () {
 		 * thread meta informations
 		 */
 
-		let threadNode = element(enclosureNode, 'thread');
+		const threadNode = element(enclosureNode, 'thread');
 		threadNode.setAttribute('url', baseUrl);
 
 		/*
@@ -2630,7 +2641,7 @@ function createXMLGenerator () {
 
 			// number
 			{
-				let numberNode = element(replyNode, 'number');
+				const numberNode = element(replyNode, 'number');
 				numberNode.appendChild(text(replyNumber));
 
 				let re = /^(\d*?)((\d)\3+)$/.exec(replyNumber);
@@ -2658,7 +2669,7 @@ function createXMLGenerator () {
 						element(replyNode, 'deleted');
 					}
 
-					let markNode = element(replyNode, 'mark');
+					const markNode = element(replyNode, 'mark');
 					if (re[0].charAt(0) == '[' && re[0].substr(-1) == ']') {
 						markNode.setAttribute('bracket', 'true');
 					}
@@ -2672,11 +2683,11 @@ function createXMLGenerator () {
 			if (reply.id != '') {
 				const id = reply.id.replace(/^id:\s*/i, '');
 				if (/^ip:\s*/i.test(id)) {
-					let ipNode = element(replyNode, 'ip');
+					const ipNode = element(replyNode, 'ip');
 					ipNode.appendChild(text(id.replace(/^ip:\s*/i, '')));
 				}
 				else {
-					let idNode = element(replyNode, 'user_id');
+					const idNode = element(replyNode, 'user_id');
 					idNode.appendChild(text(id));
 					markStatistics.notifyId(replyNumber, id);
 				}
@@ -2684,7 +2695,7 @@ function createXMLGenerator () {
 
 			// sodane
 			if (content.dispsod - 0) {
-				let sodaneNode = element(replyNode, 'sodane');
+				const sodaneNode = element(replyNode, 'sodane');
 				if (replyNumber in content.sd) {
 					sodaneNode.appendChild(text(`そうだね × ${content.sd[replyNumber]}`));
 					sodaneNode.setAttribute('class', 'sodane');
@@ -2700,8 +2711,8 @@ function createXMLGenerator () {
 
 			// posted date
 			{
-				let postedDate = new Date(reply.tim - 0);
-				let postDateNode = element(replyNode, 'post_date');
+				const postedDate = new Date(reply.tim - 0);
+				const postDateNode = element(replyNode, 'post_date');
 				postDateNode.appendChild(text(reply.now.replace(/<[^>]*>/g, '')));
 				postDateNode.setAttribute('value', postedDate.getTime());
 			}
@@ -2721,15 +2732,15 @@ function createXMLGenerator () {
 
 			// mail address
 			if (reply.email != '') {
-				let emailNode = element(replyNode, 'email');
+				const emailNode = element(replyNode, 'email');
 				emailNode.appendChild(text(stripTags(reply.email)));
 				linkify(emailNode);
 			}
 
 			// src & thumbnail url
 			if (reply.ext != '') {
-				let imageNode = element(replyNode, 'image');
-				let srcUrl = restoreDistributedImageURL(resolveRelativePath(reply.src, baseUrl));
+				const imageNode = element(replyNode, 'image');
+				const srcUrl = restoreDistributedImageURL(resolveRelativePath(reply.src, baseUrl));
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', reply.src.match(/[^\/]+$/)[0]);
 
@@ -2749,8 +2760,8 @@ function createXMLGenerator () {
 					let thumbUrl = resolveRelativePath(reply.thumb, baseUrl);
 					thumbUrl = restoreDistributedImageURL(thumbUrl);
 
-					let thumbNode = element(replyNode, 'thumb');
-					let thumbnailSize = getThumbnailSize(reply.w, reply.h, 250, 250);
+					const thumbNode = element(replyNode, 'thumb');
+					const thumbnailSize = getThumbnailSize(reply.w, reply.h, 250, 250);
 					thumbNode.appendChild(text(thumbUrl));
 					thumbNode.setAttribute('width', thumbnailSize.width);
 					thumbNode.setAttribute('height', thumbnailSize.height);
@@ -2777,8 +2788,8 @@ function createXMLGenerator () {
 
 		function main () {
 			timingLogger.startTag('creating fragment of replies');
-			let xml = document.implementation.createDocument(null, 'futaba', null);
-			let result = fetchReplies(
+			const xml = document.implementation.createDocument(null, 'futaba', null);
+			const result = fetchReplies(
 				context[0].content,
 				context[0].regex,
 				context[0].repliesCount,
@@ -2796,7 +2807,7 @@ function createXMLGenerator () {
 			callback1(xml, context[0].index, result.repliesCount, context[0].repliesCount);
 			timingLogger.endTag();
 
-			let lastIndex = context[0].regex.lastIndex;
+			const lastIndex = context[0].regex.lastIndex;
 			if (!result.lastReached && context[0].regex.exec(context[0].content)) {
 				context[0].regex.lastIndex = lastIndex;
 				context[0].repliesCount = result.repliesCount;
@@ -3023,7 +3034,7 @@ function createPersistentStorage () {
 			value = '' + value;
 			break;
 		case 'list':
-			let keys = Object.keys(data[name].list);
+			const keys = Object.keys(data[name].list);
 			if (keys.indexOf(value) < 0) {
 				value = keys[0];
 			}
@@ -3036,7 +3047,7 @@ function createPersistentStorage () {
 	}
 
 	function saveConfig () {
-		let config = {};
+		const config = {};
 
 		for (let i in data) {
 			if (data[i].value != data[i].defaultValue) {
@@ -3056,7 +3067,7 @@ function createPersistentStorage () {
 
 		for (let i in storage) {
 			if (!(i in data)) continue;
-			let value = validate(i, storage[i]);
+			const value = validate(i, storage[i]);
 			if (value != undefined) {
 				data[i].value = value;
 			}
@@ -3074,7 +3085,7 @@ function createPersistentStorage () {
 	}
 
 	function getAllConfig () {
-		let result = {};
+		const result = {};
 		for (let i in data) {
 			result[i] = data[i].value;
 		}
@@ -3082,7 +3093,7 @@ function createPersistentStorage () {
 	}
 
 	function getAllConfigDefault () {
-		let result = {};
+		const result = {};
 		for (let i in data) {
 			result[i] = data[i].defaultValue;
 		}
@@ -3155,8 +3166,8 @@ function createTimingLogger () {
 	return {
 		startTag: function (message, appendix) {
 			if (locked) return;
-			let now = Date.now();
-			let item = {time:now, message: message};
+			const now = Date.now();
+			const item = {time:now, message: message};
 			logs.push(
 				'[start]\t' +
 				timeOffset(now) + '\t' +
@@ -3168,9 +3179,9 @@ function createTimingLogger () {
 		},
 		endTag: function (message) {
 			if (locked) return;
-			let item = stack.pop();
+			const item = stack.pop();
 			if (!item) return;
-			let now = Date.now();
+			const now = Date.now();
 			logs.push(
 				`[done]\t` +
 				`${timeOffset(now)}\t` +
@@ -3268,7 +3279,7 @@ function createClickDispatcher () {
 		}
 
 		let isAnchor = false;
-		for (var elm = e.target; elm; elm = elm.parentNode) {
+		for (let elm = e.target; elm; elm = elm.parentNode) {
 			if (elm.nodeName == 'A') {
 				isAnchor = true;
 				break;
@@ -3305,12 +3316,12 @@ function createKeyManager () {
 	const strokes = {};
 
 	function keypress (e) {
-		let focusedNodeName = getFocusedNodeName();
+		const focusedNodeName = getFocusedNodeName();
 		if ((e.code == 13 || e.code == 27) && isSpecialInputElement(focusedNodeName)) {
 			return;
 		}
 
-		let mode = appStates[0] +
+		const mode = appStates[0] +
 			(isTextInputElement(focusedNodeName) ? '.edit' : '');
 		if (!(mode in strokes) || !(e.key in strokes[mode])) {
 			return;
@@ -3395,7 +3406,7 @@ function createKeyManager () {
 			return;
 		}
 
-		let m = [];
+		const m = [];
 		for (let i in strokes[mode]) {
 			if (strokes[mode][i].isPrior) {
 				m.push(i);
@@ -3450,7 +3461,7 @@ function createMarkStatistics () {
 	};
 
 	function notifyMark (number, content) {
-		let key = KEY_MAP[content];
+		const key = KEY_MAP[content];
 		if (key) {
 			if (!(number in marks[key])) {
 				newEntries[`${key}_${number}`] = 1;
@@ -3496,19 +3507,19 @@ function createMarkStatistics () {
 	}
 
 	function getStatistics (dropDelta) {
-		let extMarks = {};
-		let newMarks = {};
-		let extIds = {};
-		let newIds = {};
-		let currentRepliesCount = getRepliesCount();
+		const extMarks = {};
+		const newMarks = {};
+		const extIds = {};
+		const newIds = {};
+		const currentRepliesCount = getRepliesCount();
 
 		function getMarkData () {
-			let result = {};
+			const result = {};
 
 			for (let i in marks) {
 				result[i] = [];
 				for (let num in marks[i]) {
-					let isNew = `${i}_${num}` in newEntries;
+					const isNew = `${i}_${num}` in newEntries;
 					if (isNew) {
 						newMarks[num] = 1;
 					}
@@ -3525,12 +3536,12 @@ function createMarkStatistics () {
 		}
 
 		function getOtherMarkData () {
-			let result = {};
+			const result = {};
 
 			for (let host in otherMarks) {
 				result[host] = [];
 				for (let num in otherMarks[host]) {
-					let isNew = `other_${num}` in newEntries;
+					const isNew = `other_${num}` in newEntries;
 					if (isNew) {
 						newMarks[num] = 1;
 					}
@@ -3547,13 +3558,13 @@ function createMarkStatistics () {
 		}
 
 		function getIdData () {
-			let result = {};
+			const result = {};
 
 			for (let id in ids) {
 				result[id] = [];
 
 				for (let num in ids[id]) {
-					let isNew = `id_${num}` in newEntries;
+					const isNew = `id_${num}` in newEntries;
 					if (isNew) {
 						newIds[id] = 1;
 					}
@@ -3611,18 +3622,18 @@ function createMarkStatistics () {
 		}
 
 		function outputSubHeader (container, label, count) {
-			let p = container.appendChild(document[CRE]('p'));
+			const p = container.appendChild(document[CRE]('p'));
 			p.classList.add('sub-header');
 			p.textContent = label;
 
-			let pp = p.appendChild(document[CRE]('span'));
+			const pp = p.appendChild(document[CRE]('span'));
 			pp.appendChild(document.createTextNode(`(${count} 回)`));
 		}
 
 		function outputArray (container, a) {
 			for (let i = 0; i < a.length; i++) {
 				container.appendChild(document.createTextNode(' '));
-				let anchor = container.appendChild(document[CRE]('a'));
+				const anchor = container.appendChild(document[CRE]('a'));
 				anchor.href = '#search-item';
 				anchor.textContent = `No.${a[i].number}`;
 				anchor.setAttribute('data-number', a[i].number);
@@ -3630,21 +3641,21 @@ function createMarkStatistics () {
 			}
 		}
 
-		let markData = statistics.markData;
-		let otherMarkData = statistics.otherMarkData;
-		let idData = statistics.idData;
+		const markData = statistics.markData;
+		const otherMarkData = statistics.otherMarkData;
+		const idData = statistics.idData;
 		let container;
 
 		for (let i in markData) {
-			let container = $(`stat-${i}`);
+			container = $(`stat-${i}`);
 			if (!container) continue;
 
 			empty(container);
-			let data = markData[i];
+			const data = markData[i];
 			if (data.length) {
-				let li = setListItemVisibility(container, true);
+				const li = setListItemVisibility(container, true);
 				if (li) {
-					let header = $qs('p span', li);
+					const header = $qs('p span', li);
 					if (header) {
 						header.textContent = ` (${markData[i].length})`;
 					}
@@ -3674,13 +3685,13 @@ function createMarkStatistics () {
 		container = $('stat-id');
 		if (container) {
 			empty(container);
-			let idKeys = Object.keys(idData);
+			const idKeys = Object.keys(idData);
 			if (idKeys.length) {
 				$t('stat-id-header', `(${idKeys.length} ID)`);
 				for (let i in idData) {
-					let li = container.appendChild(document[CRE]('li'));
+					const li = container.appendChild(document[CRE]('li'));
 					outputSubHeader(li, i, idData[i].length);
-					let div = li.appendChild(document[CRE]('div'));
+					const div = li.appendChild(document[CRE]('div'));
 					outputArray(div, idData[i]);
 				}
 			}
@@ -3695,7 +3706,7 @@ function createMarkStatistics () {
 		let identified = false;
 
 		for (let i in statistics.count) {
-			let current = statistics.count[i];
+			const current = statistics.count[i];
 			let diff;
 
 			if (!statistics.delta || (diff = statistics.delta[i]) == undefined || diff == 0) {
@@ -3704,7 +3715,7 @@ function createMarkStatistics () {
 				continue;
 			}
 
-			let s = `${current}(${diff > 0 ? '+' : ''}${diff})`;
+			const s = `${current}(${diff > 0 ? '+' : ''}${diff})`;
 			$t(`replies-${i}`, s);
 			$t(`pf-replies-${i}`, s);
 
@@ -3791,9 +3802,9 @@ function createQueryCompiler () {
 	}
 
 	function or (v) {
-		let result = [];
+		const result = [];
 		while (true) {
-			let a = and(v);
+			const a = and(v);
 			result.push(a);
 
 			v = next();
@@ -3812,9 +3823,9 @@ function createQueryCompiler () {
 	}
 
 	function and (v) {
-		let result = [];
+		const result = [];
 		while (true) {
-			let a = word(v);
+			const a = word(v);
 			result.push(a);
 
 			v = next();
@@ -3831,7 +3842,7 @@ function createQueryCompiler () {
 
 	function word (v) {
 		if (v == '(') {
-			let a = or(next());
+			const a = or(next());
 			v = next();
 			if (v != ')') {
 				throw new Error('括弧がつり合っていません');
@@ -3839,7 +3850,7 @@ function createQueryCompiler () {
 			return `(${a})`;
 		}
 		else if (v == '-(') {
-			let a = or(next());
+			const a = or(next());
 			v = next();
 			if (v != ')') {
 				throw new Error('括弧がつり合っていません');
@@ -3873,7 +3884,7 @@ function createQueryCompiler () {
 		let result;
 		if (query.charAt(0) == '/' && query.substr(-1) == '/') {
 			try {
-				let regex = new RegExp(query.substring(1, query.length - 1), 'i');
+				const regex = new RegExp(query.substring(1, query.length - 1), 'i');
 				result = {
 					test: target => regex.test(target)
 				};
@@ -3902,7 +3913,7 @@ function createQueryCompiler () {
 			}
 
 			try {
-				let f = window[FUN];
+				const f = window[FUN];
 				result = {
 					test: new f('target', `return ${source}`)
 				};
@@ -3973,11 +3984,11 @@ function createUrlStorage () {
 	}
 
 	function memo (url, expire) {
-		let key = getKey(url);
+		const key = getKey(url);
 		if (!key) return;
 
 		loadSlot(slot => {
-			let index = indexOf(slot, key);
+			const index = indexOf(slot, key);
 			if (index >= 0) {
 				slot[index].expire = expire;
 				slot[index].count++;
@@ -3992,9 +4003,9 @@ function createUrlStorage () {
 	function getAll () { /*returns promise*/
 		return new Promise(resolve => {
 			loadSlot(slot => {
-				let result = {};
+				const result = {};
 				slot.forEach(item => {
-					let key = item.key.split('-');
+					const key = item.key.split('-');
 					if (siteInfo.server == key[0] && siteInfo.board == key[1]) {
 						result[key[2]] = item.count;
 					}
@@ -4077,9 +4088,9 @@ function createCatalogPopup (container) {
 	}
 
 	function getRect (elm) {
-		let rect = elm.getBoundingClientRect();
-		let sl = docScrollLeft();
-		let st = docScrollTop();
+		const rect = elm.getBoundingClientRect();
+		const sl = docScrollLeft();
+		const st = docScrollTop();
 		return {
 			left:   sl + rect.left,
 			top:    st + rect.top,
@@ -4098,12 +4109,12 @@ function createCatalogPopup (container) {
 	}
 
 	function clip (rect) {
-		let sl = viewportRect.left + docScrollLeft();
-		let st = viewportRect.top + docScrollTop();
-		let sr = sl + viewportRect.width;
-		let sb = st + viewportRect.height;
-		let right = rect.left + rect.width;
-		let bottom = rect.top + rect.height;
+		const sl = viewportRect.left + docScrollLeft();
+		const st = viewportRect.top + docScrollTop();
+		const sr = sl + viewportRect.width;
+		const sb = st + viewportRect.height;
+		const right = rect.left + rect.width;
+		const bottom = rect.top + rect.height;
 		if ('left' in rect && rect.left < sl) rect.left = sl;
 		if ('left' in rect && right > sr) rect.left = sr - rect.width;
 		if ('top' in rect && rect.top < st) rect.top = st;
@@ -4121,7 +4132,7 @@ function createCatalogPopup (container) {
 
 		let thumbnail, text, shrinkedRect;
 
-		let targetThumbnail = $qs('img', target);
+		const targetThumbnail = $qs('img', target);
 		if (targetThumbnail && targetThumbnail.naturalWidth && targetThumbnail.naturalHeight) {
 			thumbnail = document.body.appendChild(document[CRE]('img'));
 			thumbnail.src = targetThumbnail.src.replace('/cat/', '/thumb/');
@@ -4136,8 +4147,8 @@ function createCatalogPopup (container) {
 			shrinkedRect = getRect(targetThumbnail);
 		}
 
-		let targetText = $qs('.text', target);
-		let targetCount = $qs('.info span:first-child', target);
+		const targetText = $qs('.text', target);
+		const targetCount = $qs('.info span:first-child', target);
 		if (targetText || targetCount) {
 			text = document.body.appendChild(document[CRE]('div'));
 			text.className = 'catalog-popup hide';
@@ -4149,7 +4160,7 @@ function createCatalogPopup (container) {
 			}
 		}
 
-		let item = {
+		const item = {
 			state: 'initialize',
 			target: target,
 			thumbnail: thumbnail,
@@ -4182,13 +4193,13 @@ function createCatalogPopup (container) {
 	}
 
 	function open (target) {
-		let index = typeof target == 'number' ? target : indexOf(target);
+		const index = typeof target == 'number' ? target : indexOf(target);
 		if (index < 0 || target >= popups.length) {
 			_log(`open: index ${index} is invalid. exit.`);
 			return;
 		}
 
-		let item = popups[index];
+		const item = popups[index];
 		_log(`open: ${item.text.textContent}`);
 		if (item.thumbnail) {
 			if (!item.zoomedRect) {
@@ -4233,7 +4244,7 @@ function createCatalogPopup (container) {
 	}
 
 	function close (target) {
-		let index = typeof target == 'number' ? target : indexOf(target);
+		const index = typeof target == 'number' ? target : indexOf(target);
 		if (index < 0 || index >= popups.length) {
 			_log(`close: index ${index} is invalid. exit.`);
 			return;
@@ -4242,9 +4253,9 @@ function createCatalogPopup (container) {
 		let item = popups[index];
 		if (item.state == 'closing') return;
 
-		let handleTransitionend = function (e) {
+		const handleTransitionend = function (e) {
 			if (e && e.target) {
-				let t = e.target;
+				const t = e.target;
 				t.parentNode && t.parentNode.removeChild(t);
 			}
 			if (item && --item.closingCount <= 0 && item.state == 'closing') {
@@ -4324,8 +4335,8 @@ function createQuotePopup () {
 	const ORIGIN_CACHE_ATTR = 'data-quote-origin';
 	const ORIGIN_ID_ATTR = 'data-quote-origin-id';
 
-	var timer;
-	var lastQuoteElement;
+	let timer;
+	let lastQuoteElement;
 
 	function init () {
 		if (pageModes[0].mode != 'reply') return;
@@ -4346,9 +4357,9 @@ function createQuotePopup () {
 	function getParent (elm, spec) {
 		spec = spec.split('.');
 
-		var nodeName = spec[0].toLowerCase();
-		var className = spec.length >= 2 ? spec[1] : '';
-		var key = (nodeName != '' ? 2 : 0) | (className != '' ? 1 : 0);
+		const nodeName = spec[0].toLowerCase();
+		const className = spec.length >= 2 ? spec[1] : '';
+		const key = (nodeName != '' ? 2 : 0) | (className != '' ? 1 : 0);
 
 		for (; elm; elm = elm.parentNode) {
 			if (elm.nodeType != 1) continue;
@@ -4382,8 +4393,8 @@ function createQuotePopup () {
 			return null;
 		}
 
-		var attr = quote.getAttribute(ORIGIN_CACHE_ATTR);
-		var re = /^(_\d+)\|(\d+)$/.exec(attr);
+		const attr = quote.getAttribute(ORIGIN_CACHE_ATTR);
+		let re = /^(_\d+)\|(\d+)$/.exec(attr);
 		if (!re) {
 			return null;
 		}
@@ -4489,8 +4500,8 @@ function createQuotePopup () {
 		// quote content
 		let quoteTextForSearch;
 		{
-			let span = document[CRE]('span');
-			let quoteText = quote.textContent.replace(/[\s\u3000]*$/, '');
+			const span = document[CRE]('span');
+			const quoteText = quote.textContent.replace(/[\s\u3000]*$/, '');
 
 			if (singleLine) {
 				quoteTextForSearch = quoteText;
@@ -4498,10 +4509,10 @@ function createQuotePopup () {
 			else {
 				sentinelComment[IHTML].split(/<br[^>]*>/i).some(function (t) {
 					span[IHTML] = t;
-					var result = false;
-					var fragment = span.textContent
+					const fragment = span.textContent
 						.replace(/^\s+/, '')
 						.replace(/[\s\u3000]+$/, '');
+					let result = false;
 
 					if (/^(?:>|&gt;)/.test(fragment)) {
 						if (!quoteTextForSearch) {
@@ -4532,8 +4543,8 @@ function createQuotePopup () {
 			'article .reply-wrap .comment'
 		].join(','));
 		for (let i = 0, goal = nodes.length; i < goal ; i++) {
-			let origin = getWrapElement(nodes[i]);
-			let originNo = getPostNumber(origin);
+			const origin = getWrapElement(nodes[i]);
+			const originNo = getPostNumber(origin);
 
 			if (originNo >= sentinelNo) {
 				break;
@@ -4556,9 +4567,9 @@ function createQuotePopup () {
 	}
 
 	function removePopup (sentinelComment) {
-		var pool = $(POOL_ID);
+		const pool = $(POOL_ID);
 		while (pool && pool.childNodes.length > 0) {
-			var ch = pool.lastChild;
+			const ch = pool.lastChild;
 
 			if (indexOfNodes($qsa('.comment', ch), sentinelComment) >= 0) {
 				break;
@@ -4569,20 +4580,20 @@ function createQuotePopup () {
 	}
 
 	function createPopup (quoteOrigin, poolId) {
-		let no = quoteOrigin.element.getAttribute('data-number') ||
+		const no = quoteOrigin.element.getAttribute('data-number') ||
 			$qs('[data-number]', quoteOrigin.element).getAttribute('data-number');
 		quoteOrigin.element.id = `_${no}`;
 
 		// create new popup
-		let div = ($(poolId) || $(POOL_ID)).appendChild(document[CRE]('div'));
+		const div = ($(poolId) || $(POOL_ID)).appendChild(document[CRE]('div'));
 		div.className = 'quote-popup';
 		div.appendChild(quoteOrigin.element.cloneNode(true));
 
 		// some tweaks for contents
 		{
-			let noElm = $qs('.no', div);
+			const noElm = $qs('.no', div);
 			if (noElm) {
-				let a = document[CRE]('a');
+				const a = document[CRE]('a');
 				noElm.parentNode.replaceChild(a, noElm);
 				a.className = 'jumpto-quote-anchor';
 				a.href = '#jumpto-quote-origin';
@@ -4601,14 +4612,14 @@ function createQuotePopup () {
 		// positioning
 		div.style.visibility = 'hidden';
 		div.style.left = div.style.top = '0';
-		let w = div.offsetWidth;
-		let h = div.offsetHeight;
-		let sl = docScrollLeft();
-		let st = docScrollTop();
-		let cw = viewportRect.width;
-		let ch = viewportRect.height;
-		let l = Math.max(0, Math.min(cursorPos.pagex + QUOTE_POPUP_POS_OFFSET, sl + cw - w));
-		let t = Math.max(0, Math.min(cursorPos.pagey + QUOTE_POPUP_POS_OFFSET, st + ch - h));
+		const w = div.offsetWidth;
+		const h = div.offsetHeight;
+		const sl = docScrollLeft();
+		const st = docScrollTop();
+		const cw = viewportRect.width;
+		const ch = viewportRect.height;
+		const l = Math.max(0, Math.min(cursorPos.pagex + QUOTE_POPUP_POS_OFFSET, sl + cw - w));
+		const t = Math.max(0, Math.min(cursorPos.pagey + QUOTE_POPUP_POS_OFFSET, st + ch - h));
 		div.style.left = l + 'px';
 		div.style.top = t + 'px';
 		div.style.visibility = '';
@@ -4617,10 +4628,10 @@ function createQuotePopup () {
 	}
 
 	function popup () {
-		var element = document.elementFromPoint(cursorPos.x, cursorPos.y);
-		var q = getParent(element, 'q');
-		var comment = getParent(element, '.comment');
-		var wrap = comment ? comment.parentNode : null;
+		const element = document.elementFromPoint(cursorPos.x, cursorPos.y);
+		const q = getParent(element, 'q');
+		const comment = getParent(element, '.comment');
+		const wrap = comment ? comment.parentNode : null;
 
 		if (q && comment && wrap) {
 			/*
@@ -4631,8 +4642,8 @@ function createQuotePopup () {
 			lastQuoteElement = q;
 			 */
 
-			for (var i = 0; i < 2; i++) {
-				var quoteOrigin = getQuoteOrigin(q, comment, wrap, i == 1);
+			for (let i = 0; i < 2; i++) {
+				const quoteOrigin = getQuoteOrigin(q, comment, wrap, i == 1);
 				if (!quoteOrigin) {
 					continue;
 				}
@@ -4646,7 +4657,7 @@ function createQuotePopup () {
 		}
 
 		if (element) {
-			var quotePopupContainer = getParent(element, '.quote-popup');
+			const quotePopupContainer = getParent(element, '.quote-popup');
 			if (quotePopupContainer) {
 				removePopup($qs('.comment', quotePopupContainer));
 				return;
@@ -4663,8 +4674,8 @@ function createQuotePopup () {
 		&& !target.classList.contains('reply-wrap')) return;
 
 		target.classList.add('highlight');
-		var st = docScrollTop();
-		var y = Math.max(0, target.getBoundingClientRect().top + st - QUOTE_POPUP_HIGHLIGHT_TOP_MARGIN);
+		const st = docScrollTop();
+		const y = Math.max(0, target.getBoundingClientRect().top + st - QUOTE_POPUP_HIGHLIGHT_TOP_MARGIN);
 		y < st && window.scrollTo(0, y);
 		removePopup();
 
@@ -4757,14 +4768,8 @@ function createSelectionMenu () {
 		switch (key) {
 		case 'quote':
 		case 'pull':
-			{
-				const com = $('com');
-				if (com) {
-					commands.activatePostForm().then(() => {
-						quote(com, text, /^quote\b/.test(key));
-					});
-				}
-			}
+			commands.activatePostForm();
+			quote($('com'), text, /^quote\b/.test(key));
 			break;
 		case 'join':
 			{
@@ -4863,16 +4868,13 @@ function createSelectionMenu () {
 		target = $(target);
 		if (!target) return;
 
-		let s = addPrefix ? getQuoted(text) : text;
-		s = s.replace(/^\s+|\s+$/g, '');
+		const s = (addPrefix ? getQuoted(text) : text).replace(/^\s+|\s+$/g, '');
 		if (s == '') return;
 
-		if (!/^\s*$/.test(target.textContent)) {
-			s = `\n${s}`;
-		}
+		const lead = /^\s*$/.test(target.textContent) ? '' : '\n';
 
 		setCaretToContentLast(target);
-		document.execCommand('insertText', false, `${s}\n`);
+		document.execCommand('insertText', false, `${lead}${s}\n`);
 	}
 
 	function setCaretToContentLast (el) {
@@ -4880,8 +4882,31 @@ function createSelectionMenu () {
 			el.setSelectionRange(el.value.length, el.value.length);
 		}
 		else {
+			regalizeComment(el);
 			document.execCommand('selectAll', false, null);
 			document.getSelection().getRangeAt(0).collapse(false);
+		}
+	}
+
+	function regalizeComment (el) {
+		const r = document.createRange();
+		let div;
+		while ((div = el.querySelector('div'))) {
+			r.selectNodeContents(div);
+			/*
+			 * ...<br><div>+++</div>    -->  ...<br>+++
+			 * ...<div>+++</div>        -->  ...<br>+++     (new BR inserted)
+			 * ...<br><div><br></div>   -->  ...<br><br>+++
+			 * ...<div><br></div>  -->  -->  ...<br>+++
+			 */
+			const prevBreak = div.previousSibling && div.previousSibling.nodeName == 'BR';
+			const nextBreak = div.firstChild && div.firstChild.nodeName == 'BR';
+			if (!prevBreak && !nextBreak) {
+				div.parentNode.insertBefore(document[CRE]('br'), div);
+			}
+
+			div.parentNode.insertBefore(r.extractContents(), div);
+			div.parentNode.removeChild(div);
 		}
 	}
 
@@ -4918,7 +4943,7 @@ function createFavicon () {
 	let isLoading = false;
 
 	function createLinkNode () {
-		let link = document.head.appendChild(document[CRE]('link'));
+		const link = document.head.appendChild(document[CRE]('link'));
 		link.setAttribute('rel', 'icon');
 		link.setAttribute('id', FAVICON_ID);
 		link.setAttribute('type', 'image/png');
@@ -4936,19 +4961,19 @@ function createFavicon () {
 		const w = 16;
 		const h = 16;
 		const factor = 3;
-		let canvas = document[CRE]('canvas');
+		const canvas = document[CRE]('canvas');
 		canvas.width = w * factor;
 		canvas.height = h * factor;
-		let c = canvas.getContext('2d');
+		const c = canvas.getContext('2d');
 		c.fillStyle = '#000000';
 		c.fillRect(0, 0, canvas.width, canvas.height);
-		let clipSize = Math.min(image.width, image.height);
+		const clipSize = Math.min(image.width, image.height);
 		c.drawImage(image,
 			image.width / 2 - clipSize / 2,
 			image.height / 2 - clipSize / 2,
 			clipSize, clipSize, 0, 0, canvas.width, canvas.height);
 
-		let ps = c.getImageData(0, 0, w * factor, h * factor);
+		const ps = c.getImageData(0, 0, w * factor, h * factor);
 		let pd;
 		if (window[USW] && window[USW].ImageData) {
 			pd = new window[USW].ImageData(w, h);
@@ -4961,10 +4986,10 @@ function createFavicon () {
 		}
 
 		if (pd) {
-			let factorPower = Math.pow(factor, 2);
+			const factorPower = Math.pow(factor, 2);
 			for (let i = 0; i < h; i++) {
 				for (let j = 0; j < w; j++) {
-					let avg = [0, 0, 0, 0];
+					const avg = [0, 0, 0, 0];
 
 					for (let k = 0; k < factor; k++) {
 						for (let l = 0; l < factor; l++) {
@@ -4988,15 +5013,12 @@ function createFavicon () {
 			canvas.getContext('2d').putImageData(pd, 0, 0);
 			favicon.href = canvas.toDataURL('image/png');
 		}
-
-		c = null;
-		canvas = null;
 	}
 
 	function update () {
 		if (isLoading) return;
 
-		let link = $(FAVICON_ID);
+		const link = $(FAVICON_ID);
 		if (link) return;
 
 		switch (pageModes[0].mode) {
@@ -5016,37 +5038,39 @@ function createFavicon () {
 			break;
 
 		case 'reply':
-			let thumb = $qs('article:nth-of-type(1) img');
-			if (!thumb) break;
+			{
+				let thumb = $qs('article:nth-of-type(1) img');
+				if (!thumb) break;
 
-			let re = /^[^:]+:\/\/([^\/]+)/.exec(thumb.src);
-			if (!re) break;
+				let re = /^[^:]+:\/\/([^\/]+)/.exec(thumb.src);
+				if (!re) break;
 
-			// thumbnail exists in the same domain as the document?
-			if (re[1] == window.location.host) {
-				// yes: use thumbnail directly
-				if (thumb.naturalWidth && thumb.naturalHeight) {
-					overwriteFavicon(thumb, createLinkNode());
+				// thumbnail exists in the same domain as the document?
+				if (re[1] == window.location.host) {
+					// yes: use thumbnail directly
+					if (thumb.naturalWidth && thumb.naturalHeight) {
+						overwriteFavicon(thumb, createLinkNode());
+					}
+					else {
+						isLoading = true;
+						thumb.onload = () => {
+							overwriteFavicon(thumb, createLinkNode());
+							isLoading = false;
+							thumb = thumb.onload = null;
+						};
+					}
 				}
+
+				// no: transform thumbnail url
 				else {
 					isLoading = true;
-					thumb.onload = () => {
-						overwriteFavicon(thumb, createLinkNode());
+					getImageFrom(restoreDistributedImageURL(thumb.src)).then(img => {
+						if (img) {
+							overwriteFavicon(img, createLinkNode());
+						}
 						isLoading = false;
-						thumb = thumb.onload = null;
-					};
+					});
 				}
-			}
-
-			// no: transform thumbnail url
-			else {
-				isLoading = true;
-				getImageFrom(restoreDistributedImageURL(thumb.src)).then(img => {
-					if (img) {
-						overwriteFavicon(img, createLinkNode());
-					}
-					isLoading = false;
-				});
 			}
 			break;
 		}
@@ -5072,7 +5096,7 @@ function createHistoryStateWrapper (popstateHandler) {
 			if (hash != '') {
 				hash = '#' + hash.replace(/^#/, '');
 			}
-			let url = `${location.protocol}//${location.host}${location.pathname}${hash}${location.search}`;
+			const url = `${location.protocol}//${location.host}${location.pathname}${hash}${location.search}`;
 			window.history.replaceState(null, '', url);
 		}
 	};
@@ -5098,7 +5122,7 @@ function createTransport () {
 	}
 
 	function create (tag) {
-		let result = createXMLHttpRequest();
+		const result = createXMLHttpRequest();
 
 		if (tag) {
 			transports[tag] = result;
@@ -5188,14 +5212,14 @@ function createScrollManager (frequencyMsecs) {
 	}
 
 	function addEventListener (listener) {
-		let index = listeners.indexOf(listener);
+		const index = listeners.indexOf(listener);
 		if (index < 0) {
 			listeners.push(listener);
 		}
 	}
 
 	function removeEventListener (listener) {
-		let index = listeners.indexOf(listener);
+		const index = listeners.indexOf(listener);
 		if (index >= 0) {
 			listener.splice(index, 1);
 		}
@@ -5254,7 +5278,7 @@ function createAutoTracker () {
 			$t(node, `自動追尾中`);
 		});
 		$qsa('.track-indicator').forEach(node => {
-			node.style.transitionDuration = ratio == 1 ? '.25s' : `${TIMER2_FREQ / 1000}s`;
+			node.style.transitionDuration = ratio == 1 ? '.25s' : '1s';
 			node.style.width = `${$('reload-anchor').offsetWidth * ratio}px`;
 			node.title = `あと ${text} で更新します`;
 		});
@@ -5303,7 +5327,7 @@ function createAutoTracker () {
 			intervals.push(postTimes[i + 1].getTime() - postTimes[i].getTime());
 		}
 
-		if (intervals.length == 0) {
+		if ((intervals.length == 0 || median == 0) && !lastMedian) {
 			median = DEFAULT_MEDIAN;
 			logs.push(`frequency median set to default ${median}.`);
 		}
@@ -5352,7 +5376,9 @@ function createAutoTracker () {
 
 			if (pageModes[0].mode == 'reply') {
 				commands.reload().then(() => {
-					if (/^[23]..$/.test(reloadStatus.lastStatus)) {
+					const isValidStatus = /^[23]..$/.test(reloadStatus.lastStatus);
+					const isMaxresReached = !!$qs('.expire-maxreached:not(.hide)');
+					if (!isMaxresReached && isValidStatus) {
 						timer1 = setTimeout(
 							autoTrackHandler,
 							computeTrackFrequency());
@@ -5405,10 +5431,10 @@ function createAutoTracker () {
  */
 
 function setupParallax (selector) {
-	var marginTop = undefined;
+	let marginTop = undefined;
 
 	function init () {
-		var node = $qs(selector);
+		const node = $qs(selector);
 		if (!node) return;
 		marginTop = node.getBoundingClientRect().top;
 		scrollManager.addEventListener(handleScroll);
@@ -5422,15 +5448,15 @@ function setupParallax (selector) {
 	}
 
 	function handleScroll () {
-		var node = $qs(selector);
+		const node = $qs(selector);
 		if (!node) return;
 
-		var rect = node.getBoundingClientRect();
+		const rect = node.getBoundingClientRect();
 		if (rect.height > viewportRect.height) {
-			var stickyRange = rect.height - viewportRect.height + marginTop + 16;
-			var scrollRange = document.documentElement.scrollHeight - viewportRect.height;
-			var scrollTop = docScrollTop();
-			var value = marginTop - Math.floor(scrollTop / scrollRange * stickyRange);
+			const stickyRange = rect.height - viewportRect.height + marginTop + 16;
+			const scrollRange = document.documentElement.scrollHeight - viewportRect.height;
+			const scrollTop = docScrollTop();
+			const value = marginTop - Math.floor(scrollTop / scrollRange * stickyRange);
 			node.style.top = value + 'px';
 		}
 		else {
@@ -5442,7 +5468,7 @@ function setupParallax (selector) {
 }
 
 function setupVideoViewer () {
-	var timer;
+	let timer;
 
 	function init () {
 		scrollManager.addEventListener(handleScroll);
@@ -5497,8 +5523,8 @@ function setupMouseHoverEvent (element, nodeName, hoverCallback, leaveCallback) 
 	}
 
 	function mover (e) {
-		let fromElement = findTarget(e.relatedTarget);
-		let toElement = findTarget(e.target);
+		const fromElement = findTarget(e.relatedTarget);
+		const toElement = findTarget(e.target);
 		let needInvokeHoverEvent = false;
 		let needInvokeLeaveEvent = false;
 
@@ -5536,7 +5562,7 @@ function setupMouseHoverEvent (element, nodeName, hoverCallback, leaveCallback) 
 	}
 
 	function mout (e) {
-		let toElement = findTarget(e.relatedTarget);
+		const toElement = findTarget(e.relatedTarget);
 		if (!toElement && lastHoverElement) {
 			leaveCallback({target: lastHoverElement});
 			lastHoverElement = null;
@@ -5576,13 +5602,14 @@ function setupWindowResizeEvent (frequencyMsecs, handler) {
 
 function setupPostFormItemEvent (items) {
 	const timers = {};
+	const debugLines = [];
 
 	function updateInfoCore (result, item) {
 		const el = $(item.id);
 		if (!el) return result;
 
 		const span = $('comment-info-details').appendChild(document[CRE]('span'));
-		const lines = getContentsFromEditable(el).replace(/[\r\n\s]+$/, '').split(/\r?\n/);
+		const lines = getContentsFromEditable(el).value.replace(/[\r\n\s]+$/, '').split(/\r?\n/);
 		const bytes = lines.join('\r\n').replace(/[^\u0001-\u007f\uff61-\uff9f]/g, '__').length;
 		const linesOvered = item.lines ? lines.length > item.lines : false;
 		const bytesOvered = item.bytes ? bytes > item.bytes : false;
@@ -5604,13 +5631,31 @@ function setupPostFormItemEvent (items) {
 	}
 
 	function adjustTextAreaHeight (e) {
-		let com = e.target;
+		// do nothing during composing
+		if (e.type == 'input' && e.isComposing) {
+			return;
+		}
+
+		const com = e.target;
 		if (com.innerHTML != '' && /^\n*$/.test(com.innerText)) {
 			empty(com);
 		}
 
-		$('com2').value = getContentsFromEditable(com);
+		const contents = getContentsFromEditable(com);
 
+		debugLines.push(contents.debugInfo);
+		while (debugLines.length > 10) {
+			debugLines.shift();
+		}
+
+		if (devMode && $qs('[data-href="#toggle-comment-log"]').checked) {
+			debugLines.forEach(line => {
+				console.log(line);
+			});
+			debugLines.length = 0;
+		}
+
+		$('com2').value = contents.value;
 		com.style.height = '';
 		com.style.height = Math.min(com.scrollHeight, Math.floor(viewportRect.height * 0.8)) + 'px';
 	}
@@ -5660,7 +5705,8 @@ function setupPostFormItemEvent (items) {
 			'image/gif',
 			'image/webp',
 			'video/webm',
-			'video/mp4'
+			'video/mp4',
+			'video/x-m4v'
 		];
 		return Array.prototype.reduce.call(files, (file, f) => {
 			if (file) return file;
@@ -5670,7 +5716,7 @@ function setupPostFormItemEvent (items) {
 	}
 
 	function dumpElement (head, elm, ...rest) {
-		let logs = [];
+		const logs = [];
 		for (; elm; elm = elm.parentNode) {
 			switch (elm.nodeType) {
 			case 1: // ELEMENT_NODE
@@ -5775,15 +5821,15 @@ function setupPostFormItemEvent (items) {
 			p = getImageFrom(file).then(img => {
 				if (!img) return;
 
-				let canvas = $qs('#draw-wrap .draw-canvas');
-				let size = getThumbnailSize(
+				const canvas = $qs('#draw-wrap .draw-canvas');
+				const size = getThumbnailSize(
 					img.naturalWidth, img.naturalHeight,
 					storage.config.tegaki_max_width.value,
 					storage.config.tegaki_max_height.value);
 				canvas.width = size.width;
 				canvas.height = size.height;
 
-				let c = canvas.getContext('2d');
+				const c = canvas.getContext('2d');
 				//c.fillStyle = '#000000';
 				//c.fillRect(0, 0, canvas.width, canvas.height);
 				c.clearRect(0, 0, canvas.width, canvas.height);
@@ -5792,7 +5838,7 @@ function setupPostFormItemEvent (items) {
 					0, 0, img.naturalWidth, img.naturalHeight,
 					0, 0, canvas.width, canvas.height);
 
-				let baseform = document.getElementsByName('baseform')[0];
+				const baseform = document.getElementsByName('baseform')[0];
 				baseform.value = canvas.toDataURL().replace(/^[^,]+,/, '');
 				$('draw-wrap').setAttribute('data-persists', 'canvas-initialized');
 
@@ -5814,11 +5860,11 @@ function setupPostFormItemEvent (items) {
 			p = getImageFrom(file).then(img => {
 				if (!img) return;
 
-				let canvas = document[CRE]('canvas');
+				const canvas = document[CRE]('canvas');
 				canvas.width = img.naturalWidth;
 				canvas.height = img.naturalHeight;
 
-				let c = canvas.getContext('2d');
+				const c = canvas.getContext('2d');
 				c.fillStyle = '#000000';
 				c.fillRect(0, 0, canvas.width, canvas.height);
 				c.drawImage(img, 0, 0);
@@ -5936,11 +5982,12 @@ function setupPostFormItemEvent (items) {
 	 */
 
 	items.forEach(item => {
-		let el = $(item.id);
+		const el = $(item.id);
 		if (!el) return;
 
 		if (el.nodeName == 'TEXTAREA' || el.contentEditable == 'true') {
 			el.addEventListener('input', registerTextAreaHeightAdjuster);
+			el.addEventListener('compositionend', adjustTextAreaHeight);
 			el.addEventListener('paste', handleTextAreaPaste);
 		}
 		else {
@@ -6078,7 +6125,7 @@ function setupCustomEventHandler () {
 		const ns = $('nav-status');
 		if (!nav || !ns) return;
 
-		let s = e.detail.message || '';
+		const s = e.detail.message || '';
 		let persistent = !!e.detail.persistent;
 		let interval = navHideIntervalMsecs;
 
@@ -6139,11 +6186,11 @@ function setupSearchResultPopup () {
 			}
 
 			if (element == target) {
-				let panelRect = $('panel-aside-wrap').getBoundingClientRect();
-				let targetRect = target.getBoundingClientRect();
-				let originNumber = target.getAttribute('data-number');
-				let originElement = getWrapElement($qs(`#_${originNumber}, [data-number="${originNumber}"]`));
-				let popup = quotePopup.createPopup({element: originElement}, 'quote-popup-pool2');
+				const panelRect = $('panel-aside-wrap').getBoundingClientRect();
+				const targetRect = target.getBoundingClientRect();
+				const originNumber = target.getAttribute('data-number');
+				const originElement = getWrapElement($qs(`#_${originNumber}, [data-number="${originNumber}"]`));
+				const popup = quotePopup.createPopup({element: originElement}, 'quote-popup-pool2');
 				popup.style.left = (panelRect.left - 8 - popup.offsetWidth) + 'px';
 				popup.style.top = Math.min(targetRect.top, viewportRect.height - popup.offsetHeight - 8) + 'px';
 				popup.id = 'search-popup';
@@ -6156,7 +6203,7 @@ function setupSearchResultPopup () {
 			clearTimeout(timer);
 			timer = null;
 		}
-		let popup = $('search-popup');
+		const popup = $('search-popup');
 		if (popup) {
 			popup.parentNode.removeChild(popup);
 		}
@@ -6218,7 +6265,7 @@ function lightbox (anchor) {
 	}
 
 	function appendPxSuffix (obj, suffix) {
-		let result = {};
+		const result = {};
 		suffix || (suffix = 'px');
 		for (let i in obj) {
 			if (typeof obj[i] == 'number') {
@@ -6689,10 +6736,10 @@ function lightbox (anchor) {
 	function handleSearch (e) {
 		if (isInTransition) return;
 		if (!image) return;
-		let lang = window.navigator.browserLanguage
+		const lang = window.navigator.browserLanguage
 			|| window.navigator.language
 			|| window.navigator.userLanguage;
-		let url = 'http://www.google.com/searchbyimage'
+		const url = 'http://www.google.com/searchbyimage'
 			+ `?sbisrc=${APP_NAME}`
 			+ `&hl=${lang.toLowerCase()}`
 			+ `&image_url=${encodeURIComponent(image.src)}`;
@@ -6705,8 +6752,8 @@ function lightbox (anchor) {
 	function handleStroke (e) {
 		if (isInTransition) return;
 		if (!image) return;
-		let view = window[USW] || window;
-		let ev = new WheelEvent('wheel', {
+		const view = window[USW] || window;
+		const ev = new WheelEvent('wheel', {
 			bubbles: true, cancelable: true, view: view,
 			detail: 0, screenX: 0, screenY: 0, clientX: 0, clientY: 0,
 			ctrlKey: e.ctrl, altKey: false, shiftKey: e.shift, metaKey: false,
@@ -6741,7 +6788,7 @@ function lightbox (anchor) {
 
 		// info
 		$t('lightbox-ratio', '読み込み中...');
-		let link = $('lightbox-link');
+		const link = $('lightbox-link');
 		$t(link, anchor.href.match(/\/([^\/]+)$/)[1]);
 		link.href = anchor.href;
 
@@ -6755,25 +6802,25 @@ function lightbox (anchor) {
 				if (image) {
 					imageWrap.appendChild(image);
 
-					let thumb = $qs('img', anchor);
+					const thumb = $qs('img', anchor);
 					if (thumb) {
-						let rect1 = thumb.getBoundingClientRect();
-						let rect2 = getImageRect(rect1);
-						let rect3 = appendPxSuffix(rect2);
+						const rect1 = thumb.getBoundingClientRect();
+						const rect2 = getImageRect(rect1);
+						const rect3 = appendPxSuffix(rect2);
 						Object.assign(imageWrap.style, rect3);
 						image.style.width = rect3.width;
 						image.style.height = rect3.height;
 					}
 					else {
-						let rect1 = anchor.getBoundingClientRect();
-						let size = Math.max(rect1.width, rect1.height);
-						let rect2 = getImageRect({
+						const rect1 = anchor.getBoundingClientRect();
+						const size = Math.max(rect1.width, rect1.height);
+						const rect2 = getImageRect({
 							left: rect1.left + rect1.width / 2 - size / 2,
 							top: rect1.top + rect1.height / 2 - size / 2,
 							width: size,
 							height: size
 						});
-						let rect3 = appendPxSuffix(rect2);
+						const rect3 = appendPxSuffix(rect2);
 						Object.assign(imageWrap.style, rect3);
 						image.style.width = rect3.width;
 						image.style.height = rect3.height;
@@ -6801,7 +6848,7 @@ function lightbox (anchor) {
 
 					// debug handler
 					if (false) {
-						let handler = e => {
+						const handler = e => {
 							e.preventDefault();
 							handleZoomModeClick(e, e.target);
 						};
@@ -6810,7 +6857,7 @@ function lightbox (anchor) {
 						});
 					}
 					if (false) {
-						let handler = e => {
+						const handler = e => {
 							e.preventDefault();
 							handleRotateModeClick(e, e.target);
 						};
@@ -6906,13 +6953,13 @@ function lightbox (anchor) {
  */
 
 function modalDialog (opts) {
-	var dialogWrap;
-	var contentWrap;
-	var content;
-	var dimmer;
-	var state = 'initializing';
-	var isPending = false;
-	var scrollTop = docScrollTop();
+	let dialogWrap;
+	let contentWrap;
+	let content;
+	let dimmer;
+	let state = 'initializing';
+	let isPending = false;
+	let scrollTop = docScrollTop();
 
 	function getRemoteController () {
 		return {
@@ -6949,16 +6996,16 @@ function modalDialog (opts) {
 	}
 
 	function initTitle (opt) {
-		var title = $qs('.dialog-content-title', dialogWrap);
+		const title = $qs('.dialog-content-title', dialogWrap);
 		if (!title) return;
 		title.textContent = opt != undefined ? opt : 'dialog';
 	}
 
 	function initButtons (opt) {
-		var footer = $qs('.dialog-content-footer', dialogWrap);
+		const footer = $qs('.dialog-content-footer', dialogWrap);
 		if (!footer) return;
 
-		var buttons = [];
+		const buttons = [];
 
 		while (footer.childNodes.length) {
 			if (footer.firstChild.nodeName == 'A') {
@@ -6992,10 +7039,10 @@ function modalDialog (opts) {
 			`/xsl/${xslName}.xsl`,
 			{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 60}
 		).then(xsl => {
-			var p = new window.XSLTProcessor;
+			const p = new window.XSLTProcessor;
 
 			try {
-				var f;
+				let f;
 
 				try {
 					if (IDEOGRAPH_CONVERSION_UI) {
@@ -7214,7 +7261,7 @@ function $qsa (selector, node) {
 function sendToBackend () { /*returns promise*/
 	if (!backend) return;
 
-	let args = Array.from(arguments);
+	const args = Array.from(arguments);
 	let data, callback;
 
 	if (args.length > 1 && typeof args[args.length - 1] == 'function') {
@@ -7251,7 +7298,7 @@ function getExtensionId () {
 	// extension id can be retrieved by chrome.runtime.id in chrome,
 	// but Firefox's WebExtensions distinguishes extension id from
 	// runtime UUID.
-	let url = chrome.extension.getURL('README.md');
+	const url = chrome.extension.getURL('README.md');
 	let re = /^[^:]+:\/\/([^\/]+)/.exec(url);
 	return re[1];
 }
@@ -7259,15 +7306,15 @@ function getExtensionId () {
 function empty (node) {
 	node = $(node);
 	if (!node) return;
-	var r = document.createRange();
+	const r = document.createRange();
 	r.selectNodeContents(node);
 	r.deleteContents();
 }
 
 function fixFragment (f, tagName) {
-	var element = $qs(tagName || 'body', f);
+	const element = $qs(tagName || 'body', f);
 	if (!element) return f;
-	var r = document.createRange();
+	const r = document.createRange();
 	r.selectNodeContents(element);
 	return r.cloneContents();
 }
@@ -7319,7 +7366,7 @@ function serializeXML (xml) {
 }
 
 function getCookie (key) {
-	var result;
+	let result;
 	document.cookie.split(';').some(function (a) {
 		a = a.split('=', 2);
 		if (a[0].replace(/^\s+|\s+$/g, '') == key) {
@@ -7331,10 +7378,10 @@ function getCookie (key) {
 }
 
 function setCookie (key, value, lifeDays, path) {
-	var s = [];
+	const s = [];
 	s.push(`${key}=${escape(value)}`);
 	if (lifeDays) {
-		var d = new Date;
+		const d = new Date;
 		d.setDate(d.getDate() + lifeDays);
 		s.push('expires=' + d.toUTCString());
 	}
@@ -7481,30 +7528,22 @@ function getImageName (href, targetNode) {
 	let p = targetNode;
 	while (p) {
 		if (p.nodeName == 'ARTICLE') {
-			let topicWrap = $qs('.topic-wrap', p);
+			const topicWrap = $qs('.topic-wrap', p);
 			if (topicWrap) {
 				threadNumber = topicWrap.getAttribute('data-number') - 0 || 0;
 			}
 
-			Array.prototype.some.call(
-				$qsa('.comment', p),
-				node => {
-					let node2 = node.cloneNode(true);
-					$qsa('div,iframe', node2).forEach(div => {
-						div.parentNode.removeChild(div);
-					});
-
-					let comment = node2.textContent;
-					if (/^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
-						defaultCommentText = comment;
-						return false;
-					}
-					else {
-						firstCommentText = comment;
-						return true;
-					}
+			Array.prototype.some.call($qsa('.comment', p), node => {
+				const comment = commentToString(node);
+				if (/^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
+					defaultCommentText = comment;
+					return false;
 				}
-			);
+				else {
+					firstCommentText = comment;
+					return true;
+				}
+			});
 
 			break;
 		}
@@ -7601,7 +7640,7 @@ function getPostNumber (element) {
 	let result;
 
 	for (; element; element = element.parentNode) {
-		let n = element.getAttribute('data-number');
+		const n = element.getAttribute('data-number');
 		if (n) {
 			result = n - 0;
 		}
@@ -7690,13 +7729,24 @@ function getTextForCatalog (text, maxLength) {
 	return result;
 }
 
-function nodeToString (container) {
-	container = container.cloneNode(true);
-	$qsa('div.link-siokara', container).forEach(node => {
+function sanitizeComment (commentNode) {
+	const result = commentNode.cloneNode(true);
+
+	$qsa('.link-siokara', result).forEach(node => {
 		node.parentNode.replaceChild(
 			document.createTextNode($qs('a', node).textContent),
 			node);
 	});
+
+	$qsa('video,audio,iframe,.inline-save-image-wrap', result).forEach(node => {
+		node.parentNode && node.parentNode.removeChild(node);
+	});
+
+	return result;
+}
+
+function commentToString (container) {
+	container = sanitizeComment(container);
 
 	const iterator = document.createNodeIterator(
 		container,
@@ -7723,9 +7773,18 @@ function nodeToString (container) {
 }
 
 function rangeToString (range) {
-	var container = document[CRE]('div');
+	const container = document[CRE]('div');
 	container.appendChild(range.cloneContents());
-	return nodeToString(container);
+	return commentToString(container);
+}
+
+function dumpNode (node, tag) {
+	console.log((tag ? `${tag}: ` : '') + node.innerHTML
+		.replace(/\r/g, '\\r')
+		.replace(/\n/g, '\\n')
+		.replace(/\t/g, '\\t')
+		.replace(/\f/g, '\\f')
+		.replace(/[\x00-\x1f]/g, $0 => `\\x${('00' + $0.charCodeAt(0).toString(16)).substr(-2)}`));
 }
 
 function getBlobFrom (url, mimeType = 'image/png', quality = 0.9) { /*returns promise*/
@@ -7743,7 +7802,7 @@ function getBlobFrom (url, mimeType = 'image/png', quality = 0.9) { /*returns pr
 			// Can't use blob directly because of https://crbug.com/412752
 			xhr.responseType = 'arraybuffer';
 			xhr.onload = () => {
-				let mime = xhr.getResponseHeader('content-type');
+				const mime = xhr.getResponseHeader('content-type');
 				resolve(new window.Blob([xhr.response], {type: mime}));
 			};
 			xhr.onerror = () => {
@@ -7813,7 +7872,7 @@ function getReadableSize (size) {
 }
 
 function getContentsFromEditable (el) {
-	let value;
+	let value, debugInfo;
 	if ('value' in el) {
 		value = el.value;
 	}
@@ -7824,7 +7883,7 @@ function getContentsFromEditable (el) {
 		// This code may be a little heuristic.
 		let html = el.innerHTML;
 		html = html.replace(/<br[^>\/]*\/?>(<\/div[^>]*>)/gi, '$1');
-		html = html.replace(/^<div[^>]*>/, '');
+		html = html.replace(/^<div[^>]*>/i, '');
 		html = html.replace(/<\/div[^>]*>/gi, '');
 		html = html.replace(/<div[^>]*>/gi, '\n');
 		div.innerHTML = html;
@@ -7836,18 +7895,19 @@ function getContentsFromEditable (el) {
 		// Trim all leading spaces
 		value = value.replace(/^\s+/g, '');
 
-		if (devMode && $qs('[data-href="#toggle-comment-log"]').checked) {
-			console.log([
-				`*** original ***`,
-				`"${el.innerHTML}"`,
-				`*** modified ***`,
-				`"${html}"`,
-				`*** result ***`,
-				`"${value}"`
-			].join('\n'));
-		}
+		debugInfo = [
+			`*** original html ***`,
+			`"${el.innerHTML}"`,
+			`--- modified html ---`,
+			`"${html}"`,
+			`--- result text ---`,
+			`"${value}"`
+		].join('\n');
 	}
-	return value;
+	return {
+		value: value,
+		debugInfo: debugInfo
+	};
 }
 
 function setContentsToEditable (el, s) {
@@ -8121,7 +8181,7 @@ function populateFileFormItems (form, callback) {
 
 function postBase (type, form) { /*returns promise*/
 	function getIconvPayload (form) {
-		let payload = {};
+		const payload = {};
 
 		populateTextFormItems(form, node => {
 			let content = node.value;
@@ -8144,10 +8204,10 @@ function postBase (type, form) { /*returns promise*/
 	}
 
 	function getMultipartFormData (items, boundary) {
-		let data = [];
+		const data = [];
 
 		for (let i in items) {
-			let item = new Uint8Array(items[i]);
+			const item = new Uint8Array(items[i]);
 			data.push(
 				`--${boundary}\r\n` +
 				`Content-Disposition: form-data; name="${i}"\r\n\r\n`,
@@ -8182,13 +8242,12 @@ function postBase (type, form) { /*returns promise*/
 		}
 
 		data.push(`--${boundary}--\r\n`);
-		data = new window.Blob(data);
 
-		return data;
+		return new window.Blob(data);
 	}
 
 	function getUrlEncodedFormData (items) {
-		let data = [];
+		const data = [];
 		let delimiter = '';
 
 		for (let i in items) {
@@ -8196,7 +8255,7 @@ function postBase (type, form) { /*returns promise*/
 				delimiter, i, '=',
 				items[i].map(code => {
 					if (code == 32) return '+';
-					let ch = String.fromCharCode(code);
+					const ch = String.fromCharCode(code);
 					return /[a-z0-9-_.!~*'()]/i.test(ch) ?
 						ch : '%' + ('0' + code.toString(16).toUpperCase()).substr(-2);
 				}).join('')
@@ -8263,29 +8322,29 @@ function postBase (type, form) { /*returns promise*/
 		}
 
 		if (form.enctype == 'multipart/form-data') {
-			let boundary = getBoundary();
-			let data = getMultipartFormData(response, boundary);
+			const boundary = getBoundary();
+			const data = getMultipartFormData(response, boundary);
 			return multipartPost(data, boundary);
 		}
 		else {
-			let data = getUrlEncodedFormData(response);
+			const data = getUrlEncodedFormData(response);
 			return urlEncodedPost(data);
 		}
 	});
 }
 
 function resetForm () {
-	let form = document[CRE]('form');
-	let elements = [];
+	const form = document[CRE]('form');
+	const elements = [];
 
 	for (let i = 0; i < arguments.length; i++) {
-		let org = $(arguments[i]);
+		const org = $(arguments[i]);
 		if (!org) continue;
 		if (org.contentEditable == 'true') {
 			empty(org);
 		}
 		else {
-			let clone = org.cloneNode(false);
+			const clone = org.cloneNode(false);
 			elements.push({org:org, clone:clone});
 			org.parentNode.replaceChild(clone, org);
 			form.appendChild(org);
@@ -8402,7 +8461,7 @@ function reloadBase (type, opts) { /*returns promise*/
 				node[IAHTML](
 					'afterbegin',
 					'<font color="#ff0000">marked post</font><br>');
-				for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
+				for (let n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
 				n && n.classList.add('deleted');
 				break;
 			case 3:
@@ -8410,7 +8469,7 @@ function reloadBase (type, opts) { /*returns promise*/
 				node[IAHTML](
 					'afterbegin',
 					'[<font color="#ff0000">marked post</font>]<br>');
-				for (var n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
+				for (let n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
 				n && n.classList.add('deleted');
 				break;
 			}
@@ -8809,7 +8868,7 @@ function extractTweets () {
 	function invokeTweetLoader (html) {
 		let scriptSource = '';
 		if (!$('twitter-widget-script')) {
-			var re = /<script\b[^>]*src="([^"]+)"/.exec(html);
+			let re = /<script\b[^>]*src="([^"]+)"/.exec(html);
 			if (re) {
 				scriptSource = re[1];
 			}
@@ -8864,7 +8923,7 @@ function extractIncompleteFiles () {
 					node.appendChild(document.createTextNode(data.base));
 				}
 
-				if (/\.(?:jpg|gif|png|webp|webm|mp4|mp3|ogg)$/.test(data.url)) {
+				if (/\.(?:jpe?g|gif|png|webp|webm|mp4|mp3|ogg)$/.test(data.url)) {
 					node.classList.add('lightbox');
 				}
 
@@ -9112,21 +9171,21 @@ function setReloaderStatus (content, persistent) {
 }
 
 function updateMarkedTopic (xml, container) {
-	var result = false;
-	var marks = $qsa('topic > mark', xml);
-	for (var i = 0, goal = marks.length; i < goal; i++) {
-		var number = $qs('number', marks[i].parentNode).textContent;
+	let result = false;
+	const marks = $qsa('topic > mark', xml);
+	for (let i = 0, goal = marks.length; i < goal; i++) {
+		const number = $qs('number', marks[i].parentNode).textContent;
 
-		var node = $qs(`.topic-wrap[data-number="${number}"]`, container);
+		const node = $qs(`.topic-wrap[data-number="${number}"]`, container);
 		if (!node || $qs('.mark', node)) continue;
 
-		var comment = $qs('.comment', node);
+		const comment = $qs('.comment', node);
 		if (!comment) continue;
 
-		var isBracket = marks[i].getAttribute('bracket') == 'true';
+		const isBracket = marks[i].getAttribute('bracket') == 'true';
 		comment.insertBefore(document[CRE]('br'), comment.firstChild);
 		isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
-		var m = comment.insertBefore(document[CRE]('span'), comment.firstChild);
+		const m = comment.insertBefore(document[CRE]('span'), comment.firstChild);
 		m.className = 'mark';
 		m.textContent = marks[i].textContent;
 		isBracket && comment.insertBefore(document.createTextNode('['), comment.firstChild);
@@ -9164,14 +9223,14 @@ function updateTopicID (xml, container) {
 }
 
 function updateTopicSodane (xml, container) {
-	var result = false;
-	var sodanes = $qsa('topic > sodane.sodane', xml);
-	for (var i = 0, goal = sodanes.length; i < goal; i++) {
-		var number = $qs('number', sodanes[i].parentNode).textContent;
-		var node = $qs(`.topic-wrap[data-number="${number}"]`, container);
+	let result = false;
+	const sodanes = $qsa('topic > sodane.sodane', xml);
+	for (let i = 0, goal = sodanes.length; i < goal; i++) {
+		const number = $qs('number', sodanes[i].parentNode).textContent;
+		const node = $qs(`.topic-wrap[data-number="${number}"]`, container);
 		if (!node) continue;
 
-		var sodane = $qs('.sodane, .sodane-null', node);
+		const sodane = $qs('.sodane, .sodane-null', node);
 		if (!sodane) continue;
 		if (sodane.textContent == sodanes[i].textContent) continue;
 
@@ -9441,7 +9500,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 		context, maxReplies, lowBoundNumber,
 		function (xml, index, count, count2) {
 			let worked = false;
-			let container = getReplyContainer(index);
+			const container = getReplyContainer(index);
 			if (!container) return worked;
 
 			if (lowBoundNumber < 0) {
@@ -9456,9 +9515,9 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 				xsltProcessor.setParameter(null, 'render_mode', 'replies');
 			}
 			else {
-				let markUpdated = updateMarkedReplies(xml, container, count2 + 1, count);
-				let idUpdated = updateReplyIDs(xml, container, count2 + 1, count);
-				let sodaneUpdated = updateReplySodanes(xml, container, count2 + 1, count);
+				const markUpdated = updateMarkedReplies(xml, container, count2 + 1, count);
+				const idUpdated = updateReplyIDs(xml, container, count2 + 1, count);
+				const sodaneUpdated = updateReplySodanes(xml, container, count2 + 1, count);
 				worked = markUpdated || idUpdated || sodaneUpdated;
 
 				xsltProcessor.setParameter(null, 'low_bound_number', lowBoundNumber);
@@ -9466,7 +9525,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 			}
 
 			try {
-				let f = fixFragment(xsltProcessor.transformToFragment(xml, document));
+				const f = fixFragment(xsltProcessor.transformToFragment(xml, document));
 				if ($qs('.reply-wrap', f)) {
 					if (lowBoundNumber >= 0) {
 						createRule(container);
@@ -9604,7 +9663,7 @@ function setPostThumbnailVisibility (visible) { /*returns promise*/
 
 function getThumbnailSize (width, height, maxWidth, maxHeight) {
 	if (width > maxWidth || height > maxHeight) {
-		var ratio = Math.min(maxWidth / width, maxHeight / height);
+		const ratio = Math.min(maxWidth / width, maxHeight / height);
 		return {
 			width: Math.floor(width * ratio + 0.5),
 			height: Math.floor(height * ratio + 0.5)
@@ -9627,10 +9686,36 @@ function doDisplayThumbnail (thumbWrap, thumb, media) { /*returns promise*/
 
 	if (media instanceof HTMLVideoElement) {
 		p = p.then(() => new Promise(resolve => {
+			/*
+			function f1 (ev) {
+				console.log(`event: ${ev.type}`);
+			}
+			[
+				'abort', 'canplay', 'canplaythrough', 'durationchange', 'emptied', 'encrypted',
+				'ended', 'error', 'interruptbegin', 'interruptend', 'loadeddata', 'loadedmetadata',
+				'loadstart', 'pause', 'play', 'playing', 'progress', 'ratechange', 'seeked',
+				'seeking', 'stalled', 'suspend', 'volumechange', 'waiting', 'timeupdate'
+			].forEach(en => {
+				media.addEventListener(en, f1);
+			});
+			*/
+
 			media.addEventListener('timeupdate', () => {
-				media.pause();
-				resolve();
+				if (media.dataset.resolved != '1') {
+					media.dataset.resolved = '1';
+					media.pause();
+					resolve();
+				}
 			}, {once: true});
+
+			setTimeout(() => {
+				if (media.dataset.resolved != '1') {
+					media.dataset.resolved = '1';
+					media.pause();
+					resolve();
+				}
+			}, 1000);
+
 			media.muted = true;
 			media.play();
 		}));
@@ -9669,8 +9754,8 @@ function doDisplayThumbnail (thumbWrap, thumb, media) { /*returns promise*/
 }
 
 function setPostThumbnail (file, caption) { /*returns promise*/
-	let thumbWrap = $('post-image-thumbnail-wrap');
-	let thumb = $('post-image-thumbnail');
+	const thumbWrap = $('post-image-thumbnail-wrap');
+	const thumb = $('post-image-thumbnail');
 
 	if (!thumbWrap || !thumb) return Promise.resolve();
 
@@ -9696,7 +9781,7 @@ function setPostThumbnail (file, caption) { /*returns promise*/
  */
 
 function showPanel (callback) {
-	let panel = $('panel-aside-wrap');
+	const panel = $('panel-aside-wrap');
 
 	// hide ad container
 	$('ad-aside-wrap').classList.add('hide');
@@ -9720,7 +9805,7 @@ function showPanel (callback) {
 }
 
 function hidePanel (callback) {
-	let panel = $('panel-aside-wrap');
+	const panel = $('panel-aside-wrap');
 
 	if (panel.classList.contains('run')) {
 		setTimeout(() => {panel.classList.remove('run')}, 0);
@@ -9768,23 +9853,23 @@ function activatePanelTab (tab) {
  */
 
 function searchBase (opts) {
-	let query = $('search-text').value;
+	const query = $('search-text').value;
 	if (/^[\s\u3000]*$/.test(query)) {
 		return;
 	}
 
-	let tester = createQueryCompiler().compile(query);
+	const tester = createQueryCompiler().compile(query);
 	if (tester.message) {
 		$t('search-result-count', tester.message);
 		return;
 	}
 
-	let result = $('search-result');
+	const result = $('search-result');
 	let matched = 0;
 	$('search-guide').classList.add('hide');
 	empty(result);
 
-	let nodes = Array.from($qsa(opts.targetNodesSelector));
+	const nodes = Array.from($qsa(opts.targetNodesSelector));
 	if (opts.sort) {
 		nodes.sort(opts.sort);
 	}
@@ -9799,8 +9884,8 @@ function searchBase (opts) {
 		text = getLegalizedStringForSearch(text.join('\t'));
 
 		if (tester.test(text)) {
-			let anchor = result.appendChild(document[CRE]('a'));
-			let postNumber = opts.getPostNumber(node);
+			const anchor = result.appendChild(document[CRE]('a'));
+			const postNumber = opts.getPostNumber(node);
 			anchor.href = '#search-item';
 			anchor.setAttribute('data-number', postNumber);
 			opts.fillItem(anchor, node);
@@ -9922,7 +10007,7 @@ const commands = {
 		]);
 	},
 	scrollPage: function (e) {
-		let sh = document.documentElement.scrollHeight;
+		const sh = document.documentElement.scrollHeight;
 		if (!e.shift && scrollManager.lastScrollTop >= sh - viewportRect.height) {
 			commands.invokeMousewheelEvent();
 		}
@@ -9935,8 +10020,8 @@ const commands = {
 		}
 	},
 	invokeMousewheelEvent: function () {
-		let view = window[USW] || window;
-		let ev = new WheelEvent('wheel', {
+		const view = window[USW] || window;
+		const ev = new WheelEvent('wheel', {
 			bubbles: true, cancelable: true, view: view,
 			detail: 0, deltaX: 0, deltaY: 0, deltaZ: 0
 		});
@@ -9948,13 +10033,13 @@ const commands = {
 		return setPostThumbnail();
 	},
 	summaryBack: function () {
-		let current = $qs('.nav .nav-links .current');
+		const current = $qs('.nav .nav-links .current');
 		if (!current || !current.previousSibling) return;
 		if (transport.isRapidAccess('reload-summary')) return;
 		historyStateWrapper.pushState(current.previousSibling.href);
 	},
 	summaryNext: function () {
-		let current = $qs('.nav .nav-links .current');
+		const current = $qs('.nav .nav-links .current');
 		if (!current || !current.nextSibling) return;
 		if (transport.isRapidAccess('reload-summary')) return;
 		historyStateWrapper.pushState(current.nextSibling.href);
@@ -10071,7 +10156,7 @@ const commands = {
 			timingLogger.startTag('generate internal xml');
 			try {
 				timingLogger.startTag('generate');
-				let xml = xmlGenerator.run(doc.documentElement[IHTML]).xml;
+				const xml = xmlGenerator.run(doc.documentElement[IHTML]).xml;
 				timingLogger.endTag();
 
 				timingLogger.startTag('applying data bindings');
@@ -10415,9 +10500,9 @@ const commands = {
 			'#catalog-order-hist': {n:9, key:'hist'}
 		};
 
-		let p = $qs('#catalog .catalog-options a.active');
-		let sortType = sortMap[p ? p.getAttribute('href') : '#catalog-order-default'];
-		let wrap = $(`catalog-threads-wrap-${sortType.key}`);
+		const p = $qs('#catalog .catalog-options a.active');
+		const sortType = sortMap[p ? p.getAttribute('href') : '#catalog-order-default'];
+		const wrap = $(`catalog-threads-wrap-${sortType.key}`);
 
 		if (transport.isRunning(TRANSPORT_MAIN_TYPE)
 		||  transport.isRunning(TRANSPORT_SUB_TYPE)) {
@@ -10438,7 +10523,7 @@ const commands = {
 
 		// update catalog settings
 		if (!wrap.firstChild) {
-			let currentCs = getCatalogSettings();
+			const currentCs = getCatalogSettings();
 			$('catalog-horz-number').value = currentCs[0];
 			$('catalog-vert-number').value = currentCs[1];
 			$('catalog-with-text').checked = currentCs[2] > 0;
@@ -10539,8 +10624,8 @@ const commands = {
 					anchor.parentNode.insertBefore(anchor, insertee);
 
 					// update reply number and class name
-					let info = $qs('.info', anchor);
-					let oldRepliesCount = info.firstChild.textContent - 0;
+					const info = $qs('.info', anchor);
+					const oldRepliesCount = info.firstChild.textContent - 0;
 					info.firstChild.textContent = repliesCount;
 					if (repliesCount != oldRepliesCount) {
 						anchor.className = repliesCount > CATALOG_LONG_CLASS_THRESHOLD ? 'long' : '';
@@ -10564,13 +10649,13 @@ const commands = {
 				anchor.className = newClass;
 
 				// image
-				let imageWrap = anchor.appendChild(document[CRE]('div'));
+				const imageWrap = anchor.appendChild(document[CRE]('div'));
 				imageWrap.className = 'image';
 				imageWrap.style.height = cellImageHeight + 'px';
 
 				// attribute conversion #1
 				for (let atr in attributeConverter1) {
-					let value = node.getAttribute(atr);
+					const value = node.getAttribute(atr);
 					if (value == null) continue;
 					attributeConverter1[atr](anchor, atr, value);
 				}
@@ -10581,12 +10666,12 @@ const commands = {
 
 					// attribute conversion #2
 					for (let atr in attributeConverter2) {
-						let value = from.getAttribute(atr);
+						const value = from.getAttribute(atr);
 						if (value == null) continue;
 						attributeConverter2[atr](to, imageWrap, atr, value);
 					}
 
-					let imageNumber = /(\d+)s\.jpg/.exec(to.src)[1];
+					const imageNumber = /(\d+)s\.jpg/.exec(to.src)[1];
 					anchor.setAttribute('data-number', `${threadNumber},${imageNumber}`);
 				}
 
@@ -10651,7 +10736,7 @@ const commands = {
 							}
 							else {
 								// treat imageNumber as the birth time of thread
-								let age = now - imageNumber;
+								const age = now - imageNumber;
 								if (threadNumber < deleteLimit && age > siteInfo.minThreadLifeTime) {
 									isDead = true;
 								}
@@ -10659,7 +10744,7 @@ const commands = {
 						}
 
 						if (isDead) {
-							let tmp = insertee.nextSibling;
+							const tmp = insertee.nextSibling;
 							insertee.parentNode.removeChild(insertee);
 							insertee = tmp;
 						}
@@ -10682,7 +10767,7 @@ const commands = {
 						threadNumber -= 0;
 						imageNumber -= 0;
 
-						let isAdult = imageNumber > 0 && now - imageNumber >= siteInfo.minThreadLifeTime;
+						const isAdult = imageNumber > 0 && now - imageNumber >= siteInfo.minThreadLifeTime;
 
 						if (threadNumber < warnLimit
 						&& (siteInfo.minThreadLifeTime == 0 || imageNumber == 0 || isAdult)) {
@@ -10695,7 +10780,7 @@ const commands = {
 			default:
 				{
 					while (insertee) {
-						let tmp = insertee.nextSibling;
+						const tmp = insertee.nextSibling;
 						insertee.parentNode.removeChild(insertee);
 						insertee = tmp;
 					}
@@ -10713,7 +10798,7 @@ const commands = {
 				break;
 			}
 
-			let activePanel = $qs('#panel-aside-wrap:not(.hide) .panel-tab.active');
+			const activePanel = $qs('#panel-aside-wrap:not(.hide) .panel-tab.active');
 			if (activePanel && /#search/.test(activePanel.href)) {
 				commands.searchCatalog();
 			}
@@ -10824,45 +10909,36 @@ const commands = {
 		if (!t) return;
 		if (t.getAttribute('data-busy')) return;
 
-		let postNumber = getPostNumber(t);
+		const postNumber = getPostNumber(t);
 		if (!postNumber) return;
 
 		t.setAttribute('data-busy', '1');
 		t.setAttribute('data-text', t.textContent);
 		t.textContent = '...';
 
-		let url = `${location.protocol}//${location.host}/sd.php?${siteInfo.board}.${postNumber}`
+		const url = `${location.protocol}//${location.host}/sd.php?${siteInfo.board}.${postNumber}`
 		let xhr = transport.create();
 		xhr.open('GET', url);
 		xhr.onload = () => {
-			setTimeout(newSodaneValue => {
-				if (newSodaneValue - 0) {
-					$t(t, `そうだね × ${newSodaneValue}`);
-					t.classList.remove('sodane-null');
-					t.classList.add('sodane');
-				}
-				else {
-					$t(t, '＋');
-					t.classList.add('sodane-null');
-					t.classList.remove('sodane');
-				}
-
-				t.removeAttribute('data-busy');
-				t.removeAttribute('data-text');
-				t = null;
-			}, WAIT_AFTER_POST, parseInt(xhr.responseText, 10) || 0);
+			const newSodaneValue = parseInt(xhr.responseText, 10) || 0;
+			if (newSodaneValue) {
+				$t(t, `そうだね × ${newSodaneValue}`);
+				t.classList.remove('sodane-null');
+				t.classList.add('sodane');
+			}
+			else {
+				$t(t, '＋');
+				t.classList.add('sodane-null');
+				t.classList.remove('sodane');
+			}
 		};
 		xhr.onerror = () => {
-			$t(t, 'なんかエラー');
-			setTimeout(() => {
-				$t(t, t.getAttribute('data-text'));
-				t.removeAttribute('data-busy');
-				t.removeAttribute('data-text');
-				t = null;
-			}, WAIT_AFTER_POST);
+			$t(t, t.getAttribute('data-text'));
 		};
 		xhr.onloadend = () => {
-			xhr = null;
+			t.removeAttribute('data-busy');
+			t.removeAttribute('data-text');
+			xhr = t = null;
 		};
 		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
 		xhr.send();
@@ -10870,8 +10946,8 @@ const commands = {
 	saveImage: function (e, t) { /*returns promise*/
 		if (t.getAttribute('data-original-text')) return;
 
-		let href = t.getAttribute('data-href') || t.href;
-		let f = getImageName(href, t);
+		const href = t.getAttribute('data-href') || t.href;
+		const f = getImageName(href, t);
 		if (f == undefined || f == '') return;
 
 		let id = t.id;
@@ -10904,8 +10980,8 @@ const commands = {
 			title: '記事削除',
 			buttons: 'ok, cancel',
 			oninit: dialog => {
-				let xml = document.implementation.createDocument(null, 'dialog', null);
-				let checksNode = xml.documentElement.appendChild(xml[CRE]('checks'));
+				const xml = document.implementation.createDocument(null, 'dialog', null);
+				const checksNode = xml.documentElement.appendChild(xml[CRE]('checks'));
 				$qsa('article input[type="checkbox"]:checked').forEach(node => {
 					checksNode.appendChild(xml[CRE]('check')).textContent = getPostNumber(node);
 				});
@@ -10914,7 +10990,7 @@ const commands = {
 				dialog.initFromXML(xml, 'delete-dialog');
 			},
 			onopen: dialog => {
-				let deleteKey = $qs('.delete-key', dialog.content);
+				const deleteKey = $qs('.delete-key', dialog.content);
 				if (deleteKey) {
 					deleteKey.focus();
 				}
@@ -10947,7 +11023,7 @@ const commands = {
 				dialog.isPending = true;
 				postBase(TRANSPORT_TYPE, form).then(response => {
 					response = response.replace(/\r\n|\r|\n/g, '\t');
-					let result = parsePostResponse(response);
+					const result = parsePostResponse(response);
 
 					if (!result.redirect) {
 						throw new Error(result.error || 'なんかエラー？');
@@ -10982,15 +11058,15 @@ const commands = {
 			title: '設定',
 			buttons: 'ok, cancel',
 			oninit: dialog => {
-				let xml = document.implementation.createDocument(null, 'dialog', null);
-				let itemsNode = xml.documentElement.appendChild(xml[CRE]('items'));
+				const xml = document.implementation.createDocument(null, 'dialog', null);
+				const itemsNode = xml.documentElement.appendChild(xml[CRE]('items'));
 				itemsNode.setAttribute('prefix', 'config-item.');
 
-				let config = storage.config;
-				let f = IDEOGRAPH_CONVERSION_UI ?
+				const config = storage.config;
+				const f = IDEOGRAPH_CONVERSION_UI ?
 					新字体の漢字を舊字體に変換 : s => s;
 				for (let i in config) {
-					let item = itemsNode.appendChild(xml[CRE]('item'));
+					const item = itemsNode.appendChild(xml[CRE]('item'));
 					item.setAttribute('internal', i);
 					item.setAttribute('name', f(config[i].name));
 					item.setAttribute('value', config[i].value);
@@ -11001,7 +11077,7 @@ const commands = {
 
 					if ('list' in config[i]) {
 						for (let j in config[i].list) {
-							let li = item.appendChild(xml[CRE]('li'));
+							const li = item.appendChild(xml[CRE]('li'));
 							li.textContent = f(config[i].list[j]);
 							li.setAttribute('value', j);
 							j == config[i].value && li.setAttribute('selected', 'true');
@@ -11012,9 +11088,9 @@ const commands = {
 
 				setTimeout(() => {
 					// special element for mouse wheel unit
-					let wheelUnit = $qs('input[name="config-item.wheel_reload_unit_size"]');
+					const wheelUnit = $qs('input[name="config-item.wheel_reload_unit_size"]');
 					if (wheelUnit) {
-						let span = wheelUnit.parentNode.insertBefore(
+						const span = wheelUnit.parentNode.insertBefore(
 							document[CRE]('span'), wheelUnit.nextSibling);
 						span.id = 'wheel-indicator';
 						wheelUnit.addEventListener('wheel', e => {
@@ -11025,9 +11101,9 @@ const commands = {
 				}, 100);
 			},
 			onok: dialog => {
-				let storageData = {};
+				const storageData = {};
 				populateTextFormItems(dialog.content, item => {
-					let name = item.name.replace(/^config-item\./, '');
+					const name = item.name.replace(/^config-item\./, '');
 					let value = item.value;
 
 					if (item.nodeName == 'INPUT') {
@@ -11049,13 +11125,13 @@ const commands = {
 	openModerateDialog: (e, anchor) => {
 		if (!anchor || anchor.getAttribute('data-busy')) return;
 
-		let postNumber = getPostNumber(anchor);
+		const postNumber = getPostNumber(anchor);
 		if (!postNumber) return;
 
 		anchor.setAttribute('data-busy', '1');
 
-		let baseUrl = `${location.protocol}//${location.host}/`;
-		let moderatorUrl = `${baseUrl}del.php?b=${siteInfo.board}&d=${getPostNumber(anchor)}`;
+		const baseUrl = `${location.protocol}//${location.host}/`;
+		const moderatorUrl = `${baseUrl}del.php?b=${siteInfo.board}&d=${getPostNumber(anchor)}`;
 		let xhr = transport.create();
 		xhr.open('GET', moderatorUrl);
 		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
@@ -11073,28 +11149,29 @@ const commands = {
 				title: 'del の申請',
 				buttons: 'ok, cancel',
 				oninit: dialog => {
-					let xml = document.implementation.createDocument(null, 'dialog', null);
+					const xml = document.implementation.createDocument(null, 'dialog', null);
 					dialog.initFromXML(xml, 'moderate-dialog');
 				},
 				onopen: dialog => {
-					let moderateTarget = $qs('.moderate-target', dialog.content);
+					const moderateTarget = $qs('.moderate-target', dialog.content);
 					if (moderateTarget) {
 						let wrapElement = getWrapElement(anchor);
 						if (wrapElement) {
-							wrapElement = wrapElement.cloneNode(true);
+							wrapElement = sanitizeComment(wrapElement);
+
 							// replace anchors to text
 							$qsa('a', wrapElement).forEach(node => {
 								node.parentNode.replaceChild(
 									document.createTextNode(node.textContent),
 									node);
 							});
-							// TODO: strip external contents such as youtube, tweet
+
 							moderateTarget.appendChild(wrapElement);
 						}
 					}
 
 					let form = $qs('form[method="POST"]', doc);
-					let moderateList = $qs('.moderate-form', dialog.content);
+					const moderateList = $qs('.moderate-form', dialog.content);
 					if (form && moderateList) {
 						form = form.cloneNode(true);
 
@@ -11111,8 +11188,8 @@ const commands = {
 
 						// make reason-text clickable
 						$qsa('input[type="radio"][name="reason"]', form).forEach(node => {
-							let r = node.ownerDocument.createRange();
-							let label = node.ownerDocument[CRE]('label');
+							const r = node.ownerDocument.createRange();
+							const label = node.ownerDocument[CRE]('label');
 							r.setStartBefore(node);
 							r.setEndAfter(node.nextSibling);
 							r.surroundContents(label);
@@ -11120,7 +11197,7 @@ const commands = {
 
 						// select last used reason, if available
 						if (storage.runtime.del.lastReason) {
-							let node = $qs(`input[type="radio"][value="${storage.runtime.del.lastReason}"`, form);
+							const node = $qs(`input[type="radio"][value="${storage.runtime.del.lastReason}"`, form);
 							if (node) {
 								node.checked = true;
 							}
@@ -11189,7 +11266,7 @@ const commands = {
 			title: 'キーボード ショートカット',
 			buttons: 'ok',
 			oninit: dialog => {
-				let xml = document.implementation.createDocument(null, 'dialog', null);
+				const xml = document.implementation.createDocument(null, 'dialog', null);
 				dialog.initFromXML(xml, 'help-dialog');
 			}
 		});
@@ -11439,21 +11516,21 @@ const commands = {
 		}, 0);
 	},
 	updateCatalogSettings: function (settings) {
-		let cs = getCatalogSettings();
+		const cs = getCatalogSettings();
 		if ('x' in settings) {
-			let tmp = parseInt(settings.x, 10);
+			const tmp = parseInt(settings.x, 10);
 			if (!isNaN(tmp) && tmp >= 1 && tmp <= 20) {
 				cs[0] = tmp;
 			}
 		}
 		if ('y' in settings) {
-			let tmp = parseInt(settings.y, 10);
+			const tmp = parseInt(settings.y, 10);
 			if (!isNaN(tmp) && tmp >= 1 && tmp <= 100) {
 				cs[1] = tmp;
 			}
 		}
 		if ('text' in settings) {
-			let tmp = parseInt(settings.text, 10);
+			const tmp = parseInt(settings.text, 10);
 			if (!isNaN(tmp) && tmp >= 0 && tmp <= 1000) {
 				cs[2] = tmp;
 			}
@@ -11500,7 +11577,7 @@ const commands = {
 		showPanel();
 	},
 	activateSearchTab: function () {
-		let searchTab = $qs('.panel-tab[href="#search"]');
+		const searchTab = $qs('.panel-tab[href="#search"]');
 		activatePanelTab(searchTab);
 		$t($qs('span.long', searchTab),
 			(pageModes[0].mode == 'catalog' ? 'スレ' : 'レス') + '検索');
@@ -11542,7 +11619,7 @@ const commands = {
 		});
 	},
 	searchCatalog: function () {
-		let currentMode = $qs('#catalog .catalog-options a.active');
+		const currentMode = $qs('#catalog .catalog-options a.active');
 		if (!currentMode) return;
 
 		let re = currentMode = /#catalog-order-(\w+)/.exec(currentMode.href);
@@ -11575,20 +11652,20 @@ const commands = {
 					anchor.classList.add('new');
 				}
 
-				let img = $qs('img', target);
+				const img = $qs('img', target);
 				if (img) {
 					anchor.appendChild(img.cloneNode(false));
 				}
 
-				let text = $qs('[data-text]', target);
+				const text = $qs('[data-text]', target);
 				if (text) {
 					anchor.appendChild(document.createTextNode(text.getAttribute('data-text')));
 				}
 
-				let sentinel = anchor.appendChild(document[CRE]('div'));
+				const sentinel = anchor.appendChild(document[CRE]('div'));
 				sentinel.className = 'sentinel';
 
-				let info = $qsa('.info span', target);
+				const info = $qsa('.info span', target);
 				if (info) {
 					if (target.classList.contains('new')) {
 						$t(sentinel, `${info[0].textContent} レス (new)`);
@@ -11763,7 +11840,7 @@ Promise.all([
 		'/xsl/fundamental.xsl',
 		{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 10})
 ]).then(data => {
-	let [storageData, backendConnected, runnable, xsl] = data;
+	const [storageData, backendConnected, runnable, xsl] = data;
 	timingLogger.endTag();
 
 	if (!runnable) {
