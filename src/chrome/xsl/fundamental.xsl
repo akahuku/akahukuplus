@@ -23,6 +23,7 @@
 <xsl:when test="$render_mode='threads'"><xsl:apply-templates mode="threads"/></xsl:when>
 <xsl:when test="$render_mode='replies'"><xsl:apply-templates mode="replies"/></xsl:when>
 <xsl:when test="$render_mode='replies_diff'"><xsl:apply-templates mode="replies_diff"/></xsl:when>
+<xsl:when test="$render_mode='comment'"><xsl:apply-templates mode="comment"/></xsl:when>
 <xsl:when test="$render_mode='navigator'"><xsl:apply-templates mode="navigator"/></xsl:when>
 <xsl:when test="$render_mode='notices'"><xsl:apply-templates mode="notices"/></xsl:when>
 <xsl:when test="$render_mode='amazon'"><xsl:apply-templates mode="amazon"/></xsl:when>
@@ -460,6 +461,7 @@ twitter-widget + br {
 	line-height:1;
 	font-size:medium;
 	font-weight:bold;
+	white-space:nowrap;
 }
 
 .topic-wrap .reply-link a:hover {
@@ -506,6 +508,11 @@ twitter-widget + br {
 .topic-wrap .link-siokara .save-image,
 .reply-wrap .link-siokara .save-image {
 	color:#682;
+}
+
+.topic-wrap .siokara-thumbnail,
+.reply-wrap .siokara-thumbnail {
+	display:block;
 }
 
 /* thread image */
@@ -2435,6 +2442,13 @@ div.catalog-popup span {
 </html>
 </xsl:template>
 
+<!-- partial content: a comment -->
+<xsl:template match="futaba" mode="comment">
+<html>
+	<body><xsl:apply-templates select="."/></body>
+</html>
+</xsl:template>
+
 <!-- partial content: navigator -->
 <xsl:template match="futaba" mode="navigator">
 <html>
@@ -2666,8 +2680,15 @@ div.catalog-popup span {
 
 <xsl:template match="comment//a | email//a">
 <xsl:choose>
-<xsl:when test="contains(@class,'link-siokara') and @thumbnail">
-<a class="{@class}" href="{@href}" title="{@title}" target="_blank" data-basename="{@basename}" data-thumbnail-href="{@thumbnail}"><xsl:value-of select="."/></a>
+<xsl:when test="contains(@class,'link-siokara') and (not(@thumbnail) or name(..)='q')">
+<a class="{@class}" href="{@href}" title="{@title}" target="_blank" data-basename="{@basename}"><xsl:value-of select="."/></a>
+</xsl:when>
+<xsl:when test="contains(@class,'link-siokara') and @thumbnail and not(name(..)='q')">
+<div class="{@class}" data-thumbnail-href="{@thumbnail}">
+	<a class="lightbox" href="{@href}" title="{@title}" target="_blank" data-basename="{@basename}"><xsl:value-of select="."/></a>
+	<a class="lightbox siokara-thumbnail" href="{@href}" title="{@title}" target="_blank" data-basename="{@basename}"><img src="{$platform}-extension://{/futaba/meta/extension_id}/images/siokara-common.png"/></a>
+	<div>[<a class="js save-image" href="{@href}">保存する</a>]</div>
+</div>
 </xsl:when>
 <xsl:when test="contains(@class,'link-youtube') and not(name(..)='q')">
 <div class="inline-video-container">
@@ -2681,7 +2702,7 @@ div.catalog-popup span {
 	<div class="inline-video nico2" data-nico2-key="{@nico2-key}"></div>
 </div>
 </xsl:when>
-<xsl:when test="(contains(@class,'link-futaba') or contains(@class,'link-up') or contains(@class,'link-up-small')) and @thumbnail and not(name(..)='q')">
+<xsl:when test="(contains(@class,'link-futaba') or contains(@class,'link-up')) and @thumbnail and not(name(..)='q')">
 <a class="{@class}" href="{@href}" target="_blank"><xsl:value-of select="."/></a>
 <small class="inline-save-image-wrap"> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
 <a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/></a>

@@ -45,15 +45,13 @@ const CATALOG_COOKIE_LIFE_DAYS = 100;
 const CATALOG_POPUP_DELAY = 500;
 const CATALOG_POPUP_TEXT_WIDTH = 150;
 const CATALOG_POPUP_THUMBNAIL_ZOOM_FACTOR = 3;
-const IDEOGRAPH_CONVERSION_CONTENT = false;
-const IDEOGRAPH_CONVERSION_POST = false;
-const IDEOGRAPH_CONVERSION_UI = false;
 const FALLBACK_LAST_MODIFIED = 'Fri, 01 Jan 2010 00:00:00 GMT';
 const HEADER_MARGIN_BOTTOM = 16;
 const FALLBACK_JPEG_QUALITY = 0.8;
 const TEGAKI_CANVAS_WIDTH = 344;// original size: 344
 const TEGAKI_CANVAS_HEIGHT = 135;// original size: 135
 const INLINE_VIDEO_MAX_WIDTH = 720;
+const LAST_RELOAD_BUFFER_MSECS = 1000 * 30;
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
@@ -98,8 +96,9 @@ let catalogPopup;
 let urlStorage;
 let quotePopup;
 let autoTracker;
+let linkifier;
 
-// others
+// other runtime variables
 const siteInfo = {
 	server: '', board: '', resno: 0, summaryIndex: 0,
 	logSize: 10000,
@@ -140,6 +139,7 @@ let version = '0.0.1';
 let devMode = false;
 let viewportRect;
 let overrideUpfile;
+let lastReloadTimerID;
 let moderatePromise = Promise.resolve();
 
 /*
@@ -272,6 +272,7 @@ function transformWholeDocument (xsl) {
 	markStatistics = createMarkStatistics();
 	urlStorage = createUrlStorage();
 	xmlGenerator = createXMLGenerator();
+	linkifier = createLinkifier();
 
 	const generateResult = xmlGenerator.run(
 		bootVars.bodyHTML + bootVars.iframeSources,
@@ -279,11 +280,6 @@ function transformWholeDocument (xsl) {
 
 	try {
 		timingLogger.startTag('parsing xsl');
-
-		if (IDEOGRAPH_CONVERSION_UI) {
-			xsl = 新字体の漢字を舊字體に変換(xsl);
-		}
-
 		xsl = (new window.DOMParser()).parseFromString(xsl, "text/xml");
 		timingLogger.endTag();
 	}
@@ -1269,6 +1265,453 @@ function createResourceManager () {
 	};
 }
 
+function createLinkifier () {
+	// link target class
+	function LinkTarget (pattern, handler, options) {
+		options || (options = {});
+		this.pattern = pattern;
+		this.handler = handler;
+		this.className = options.className || 'link-external';
+		this.preferredScheme = options.preferredScheme || undefined;
+		this.overrideScheme = options.overrideScheme || undefined;
+		this.title = options.title || undefined;
+	}
+
+	LinkTarget.prototype.setupAnchor = function (re, anchor) {
+		const params = re
+			.slice(this.offset, this.offset + this.backrefLength)
+			.map(a => a == undefined ? '' : a);
+		const anchorProxy = anchor instanceof HTMLAnchorElement ?
+			{
+				setAttribute: (key, value) => {
+					if (key != 'className' && key != 'class' && key != 'href') {
+						anchor.setAttribute(`data-${key}`, value);
+					}
+					else {
+						anchor.setAttribute(key, value);
+					}
+				}
+			} : anchor;
+
+		if (this.className != undefined) {
+			anchorProxy.setAttribute('class', this.className);
+		}
+
+		if (this.title != undefined) {
+			anchorProxy.setAttribute('title', this.title);
+		}
+
+		let href = this.handler(params, anchorProxy);
+		if (this.overrideScheme != undefined) {
+			href = this.overrideScheme + '//' + href.replace(/^(?:[^:]+:)?\/\//, '');
+		}
+		else {
+			href = this.completeScheme(href);
+		}
+		anchorProxy.setAttribute('href', href);
+	};
+
+	LinkTarget.prototype.completeScheme = function (url) {
+		const defaultScheme = this.preferredScheme || 'http:';
+
+		// * (http) is default scheme
+		//
+		// www.example.net   -> (http)://www.example.net
+		// //www.example.net -> (http)://www.example.net
+		const re = /^([^:]+):/.exec(url);
+		if (!re) {
+			return defaultScheme + '//' + url.replace(/^\/+/, '');
+		}
+
+		// ://www.example.net  -> (http)://www.example.net
+		// p://www.example.net -> http://www.example.net
+		// s://www.example.net -> https://www.example.net
+		let scheme = defaultScheme;
+		if (/^h?t?t?p?s$/.test(re[1])) {
+			scheme = 'https:';
+		}
+		else if (/^h?t?t?p$/.test(re[1])) {
+			scheme = 'http:';
+		}
+
+		return scheme + url.replace(/^[^:]+:/, '');
+	}
+
+
+	// utility functions
+	function siokaraHandler (re, anchor, baseUrl) {
+		const [whole, fileId, extension] = re;
+
+		if (extension) {
+			anchor.setAttribute('basename', fileId + extension);
+			if (/\.(?:jpe?g|gif|png|webp|webm|mp4|mp3|ogg)$/.test(extension)) {
+				anchor.setAttribute(
+					'class',
+					`${this.className} incomplete-thumbnail lightbox`);
+				anchor.setAttribute(
+					'thumbnail',
+					this.completeScheme(`${baseUrl}misc/${fileId}.thumb.jpg`));
+			}
+			return `${baseUrl}src/${fileId}${extension}`;
+		}
+		else {
+			anchor.setAttribute('basename', fileId);
+			anchor.setAttribute('class', `${this.className} incomplete`);
+			return `${baseUrl}index.html`;
+		}
+	}
+
+	function upHandler (re, anchor, baseUrl) {
+		const [whole, scheme, fileId, extension] = re;
+
+		if (extension) {
+			anchor.setAttribute('basename', fileId + extension);
+
+			// inline lightbox
+			if (/\.(?:jpe?g|gif|png|webp|webm|mp4|mp3|ogg)$/.test(extension)) {
+				anchor.setAttribute(
+					'class',
+					`${this.className} lightbox`);
+			}
+
+			// if thumbnail supported, add attribute
+			if (/\.(?:jpe?g|gif|png|webp|webm|mp4)$/.test(extension)) {
+				const boardName = /\/(up2?)\/$/.exec(baseUrl)[1];
+				anchor.setAttribute(
+					'thumbnail',
+					`https://appsweets.net/thumbnail/${boardName}/${fileId}s.png`);
+			}
+
+			return `${scheme}${baseUrl}src/${fileId}${extension}`;
+		}
+		else {
+			anchor.setAttribute('basename', fileId);
+			anchor.setAttribute('class', `${this.className} incomplete`);
+			return `${scheme}${baseUrl}up.htm`;
+		}
+	}
+
+	function decodePercentEncode (text) {
+		try {
+			return text.replace(/(?:%[0-9a-f][0-9a-f])+/gi, $0 => decodeURIComponent($0));
+		}
+		catch (e) {
+			return text;
+		}
+	}
+
+	function reduceURL (url) {
+		const LIMIT = 100;
+		const seps = ['/', '&'];
+
+		if (url.length <= LIMIT) {
+			return url;
+		}
+
+		let re = /^([^:]+:\/\/[^\/]+\/)([^?]*)?(\?.*)?/.exec(url);
+		let result = re[1];
+		const components = [(re[2] || '').split(seps[0]), (re[3] || '').split(seps[1])];
+
+		components.forEach((cs, i) => {
+			if (i == 1 && components[0].length) return;
+
+			while (cs.length && result.length < LIMIT) {
+				result += cs[0];
+				if (cs.length > 1) {
+					result += seps[i];
+				}
+				cs.shift();
+			}
+
+			if (result.length >= LIMIT) {
+				const lastIndex = result.lastIndexOf(seps[i]);
+				if (lastIndex >= 0) {
+					cs.push(result.substring(lastIndex + 1));
+					result = result.substring(0, lastIndex + 1);
+				}
+			}
+		});
+
+		if (components[0].length || components[1].length) {
+			result += '...(省略)';
+		}
+
+		return result;
+	}
+
+	function findLinkTarget (re) {
+		let linkTarget;
+		linkTargets.some((a, i) => {
+			if (re[a.offset] != undefined && re[a.offset] != '') {
+				linkTarget = a;
+				return true;
+			}
+		});
+		return linkTarget;
+	}
+
+	// ported from https://github.com/twitter/twemoji/blob/gh-pages/2/twemoji.js
+	// from here:
+	const UFE0Fg = /\uFE0F/g
+	const U200D = String.fromCharCode(0x200D);
+
+	function grabTheRightIcon (rawText) {
+		// if variant is present as \uFE0F
+		return toCodePoint(rawText.indexOf(U200D) < 0 ?
+			rawText.replace(UFE0Fg, '') :
+			rawText
+		);
+	}
+
+	function toCodePoint (unicodeSurrogates, sep) {
+		let
+		r = [],
+			c = 0,
+			p = 0,
+			i = 0;
+		while (i < unicodeSurrogates.length) {
+			c = unicodeSurrogates.charCodeAt(i++);
+			if (p) {
+				r.push((0x10000 + ((p - 0xD800) << 10) + (c - 0xDC00)).toString(16));
+				p = 0;
+			} else if (0xD800 <= c && c <= 0xDBFF) {
+				p = c;
+			} else {
+				r.push(c.toString(16));
+			}
+		}
+		return r.join(sep || '-');
+	}
+	// ported from https://github.com/twitter/twemoji/blob/gh-pages/2/twemoji.js
+	// to here.
+
+	// constants
+	const linkTargets = [
+		new LinkTarget(
+			'(?:h?t?t?p?s?://)?(?:www\\.nijibox6\\.com/futabafiles/001/src/)?(sa\\d{4,})(\\.\\w+)?',
+			function (re, anchor) {
+				return siokaraHandler.call(
+					this, re, anchor, '//www.nijibox6.com/futabafiles/001/');
+			},
+			{
+				className: 'link-siokara',
+				title: '塩辛瓶 1ml',
+				overrideScheme: 'http:'
+			}
+		),
+		new LinkTarget(
+			'(?:h?t?t?p?s?://)?(?:www\\.nijibox2\\.com/futabafiles/003/src/)?(sp\\d{4,})(\\.\\w+)?',
+			function (re, anchor) {
+				return siokaraHandler.call(
+					this, re, anchor, '//www.nijibox2.com/futabafiles/003/');
+			},
+			{
+				className: 'link-siokara',
+				title: '塩辛瓶 3ml',
+				overrideScheme: 'http:'
+			}
+		),
+		new LinkTarget(
+			'(?:h?t?t?p?s?://)?(?:www\\.nijibox5\\.com/futabafiles/kobin/src/)?(ss\\d{4,})(\\.\\w+)?',
+			function (re, anchor) {
+				return siokaraHandler.call(
+					this, re, anchor, '//www.nijibox5.com/futabafiles/kobin/');
+			},
+			{
+				className: 'link-siokara',
+				title: '塩辛瓶 小瓶',
+				overrideScheme: 'http:'
+			}
+		),
+		new LinkTarget(
+			'(?:h?t?t?p?s?://)?(?:www\\.nijibox5\\.com/futabafiles/tubu/src/)?(su\\d{4,})(\\.\\w+)?',
+			function (re, anchor) {
+				return siokaraHandler.call(
+					this, re, anchor, '//www.nijibox5.com/futabafiles/tubu/');
+			},
+			{
+				className: 'link-siokara',
+				title: '塩辛瓶 塩粒',
+				overrideScheme: 'http:'
+			}
+		),
+		new LinkTarget(
+			'(?:h?t?t?p?s?://)?(?:www\\.nijibox6\\.com/futabafiles/mid/src/)?(sq\\d{4,})(\\.\\w+)?',
+			function (re, anchor) {
+				return siokaraHandler.call(
+					this, re, anchor, '//www.nijibox6.com/futabafiles/mid/');
+			},
+			{
+				className: 'link-siokara',
+				title: '塩辛瓶 中瓶',
+				overrideScheme: 'http:'
+			}
+		),
+		new LinkTarget(
+			'(?:h?t?t?p?s?://)?(?:www\\.nijibox2\\.com/futalog/src/)?((?:dec|jun|nov|may|img|dat|cgi|nne|id|jik|nar|oth)\\d{4,})\\.mht',
+			function (re, anchor) {
+				return 'http://www.nijibox2.com/futalog/src/' +
+					   re[1].replace('oth', 'other') + '.mht';
+			},
+			{
+				className: 'link-futalog',
+				title: 'ふたログ',
+				overrideScheme: 'http:'
+			}
+		),
+		new LinkTarget(
+			'(h?t?t?p?s?://)?(?:dec\\.2chan\\.net/up/src/)?(f\\d{4,})(\\.\\w+)?',
+			function (re, anchor) {
+				return upHandler.call(
+					this, re, anchor, 'dec.2chan.net/up/');
+			},
+			{
+				className: 'link-up',
+				title: 'あぷ',
+				preferredScheme: 'https:'
+			}
+		),
+		new LinkTarget(
+			'(h?t?t?p?s?://)?(?:dec\\.2chan\\.net/up2/src/)?(fu\\d{4,})(\\.\\w+)?',
+			function (re, anchor) {
+				return upHandler.call(
+					this, re, anchor, 'dec.2chan.net/up2/');
+			},
+			{
+				className: 'link-up',
+				title: 'あぷ小',
+				preferredScheme: 'https:'
+			}
+		),
+		new LinkTarget(
+			'(h?t?t?p?s?://)?[^.]+\\.2chan\\.net/[^/]+/src/\\d+\\.(?:jpe?g|gif|png|webp|webm|mp4)',
+			function (re, anchor) {
+				anchor.setAttribute(
+					'thumbnail',
+					this.completeScheme(re[0]
+						.replace('/src/', '/thumb/')
+						.replace(/\.[^.]+$/, 's.jpg')));
+				return re[0];
+			},
+			{
+				className: 'link-futaba lightbox',
+				preferredScheme: 'https:'
+			}
+		),
+		new LinkTarget(
+			'(?:h?t?t?p?s?://)?(' + [
+				'(?:(?:www|m)\\.)?youtube\\.com/[^/]+\\?(?:.*?v=([\\w\\-]+))',
+				'(?:(?:www|m)\\.)?youtube\\.com/(?:v|embed)/([\\w\\-]+)',
+				'youtu\\.be/([\\w\\-]+)'
+			].join('|') + ')(?:[?&]\\S+(?:=\\S*)?)*',
+			function (re, anchor) {
+				anchor.setAttribute('youtube-key', re[2] || re[3] || re[4]);
+				return re[0];
+			},
+			{
+				className: 'link-youtube',
+				title: 'YouTube',
+				overrideScheme: 'https:'
+			}
+		),
+		new LinkTarget(
+			'(?:h?t?t?p?s?://)?(' + [
+				'(?:[^.]+\\.)?nicovideo\\.jp/watch/(sm\\w+)',
+				'nico\\.ms/(sm\\w+)'
+			].join('|') + ')(?:[?&]\\S+(?:=\\S*)?)*',
+			function (re, anchor) {
+				anchor.setAttribute('nico2-key', re[2] || re[3]);
+				return re[0];
+			},
+			{
+				className: 'link-nico2',
+				title: 'ニコニコ動画',
+				overrideScheme: 'https:'
+			}
+		),
+		new LinkTarget(
+			'(?:h?t?t?p?s?://)?twitter\\.com/[^/]+/status/(\\d+)(?:[?&]\\S+(?:=\\S*)?)*',
+			function (re, anchor) {
+				anchor.setAttribute('tweet-id', re[1]);
+				return re[0];
+			},
+			{
+				className: 'link-twitter',
+				title: 'Twitter',
+				overrideScheme: 'https:'
+			}
+		),
+		new LinkTarget(
+			'(?:[^:\\s]+://|www\\.)(?:[^.]+\\.)+[^.]+(?::\\d+)?/\\S*',
+			function (re, anchor) {
+				return re[0];
+			},
+			{
+				className: 'link-external'
+			}
+		)
+	];
+
+	const linkTargetRegex = new RegExp(
+		'\\b(?:(' + linkTargets
+		.map((a, i) => {
+			const re = (a.pattern.replace(/\(\?/g, '')).match(/\(/g);
+			linkTargets[i].backrefLength = (re ? re.length : 0) + 1;
+			linkTargets[i].offset = i > 0 ?
+				linkTargets[i - 1].offset + linkTargets[i - 1].backrefLength :
+				1;
+			return a.pattern;
+		})
+		.join(')|(') + '))'
+	);
+
+	// public functions
+	function linkify (node, opts) {
+		opts = opts || {linkify: true, emojify: true};
+
+		const emojiRegex = typeof Akahuku == 'object' ? Akahuku.twemoji.regex : /\x00/;
+		const r = node.ownerDocument.createRange();
+		let re;
+		while (node.lastChild && node.lastChild.nodeType == 3) {
+			if (opts.linkify && (re = linkTargetRegex.exec(node.lastChild.nodeValue))) {
+				const linkTarget = findLinkTarget(re);
+				if (!linkTarget) break;
+
+				const anchor = node.ownerDocument[CRE]('a');
+				r.setStart(node.lastChild, re.index);
+				r.setEnd(node.lastChild, re.index + re[0].length);
+				r.surroundContents(anchor);
+
+				anchor.textContent = decodePercentEncode(anchor.textContent);
+				anchor.textContent = reduceURL(anchor.textContent);
+				linkTarget.setupAnchor(re, anchor);
+			}
+
+			else if (opts.emojify && (re = emojiRegex.exec(node.lastChild.nodeValue))) {
+				const emoji = node.ownerDocument[CRE]('emoji');
+
+				r.setStart(node.lastChild, re.index);
+				r.setEnd(node.lastChild, re.index + re[0].length);
+				r.surroundContents(emoji);
+
+				emoji.setAttribute('codepoints', grabTheRightIcon(re[0]));
+			}
+
+			else {
+				node.lastChild.nodeValue = node.lastChild.nodeValue.replace(
+					/[a-zA-Z0-9\u3040-\u30ff\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]{20}/g,
+					'$&\u00ad');
+				break;
+			}
+		}
+	}
+
+	// export
+	return {
+		linkify: linkify
+	}
+}
+
 function createXMLGenerator () {
 	/*
 	 * utility functions
@@ -1314,173 +1757,30 @@ function createXMLGenerator () {
 			};
 		}
 		else {
-			const refmap = {
-				amp: '&',
-				lt: '<',
-				gt: '>',
-				quot: '"',
-				apos: "'"
-			};
+			const refmap = {'&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"'};
 			return function (s) {
-				s = ('' + s)
-					// PHP's json_encode handles the following character references,
-					// so we need to solve them.
-					.replace(/&(amp|lt|gt|quot|apos);/g, ($0, $1) => refmap[$1]);
-
-				// Some UA convert a code point beyond BMP into surrogate pairs.
-				// This is an error for the standard, and it should be a single
-				// character reference.
-				s = resolveCharacterReference(s);
-
+				s = ('' + s).replace(/&(?:amp|lt|gt|quot);/g, $0 => refmap[$0]);
 				return xml.createTextNode(s);
 			};
 		}
-	}
-
-	function text (xml, s) {
-		return xml.createTextNode(
-			('' + s)
-			.replace(/&amp;/g, '&')
-			.replace(/&lt;/g, '<')
-			.replace(/&gt;/g, '>'));
 	}
 
 	function element (node, s) {
 		return node.appendChild(node.ownerDocument[CRE](s));
 	}
 
-	function setDefaultSubjectAndName (xml, metaNode, subHash, nameHash) {
+	function setDefaultSubjectAndName (xml, text, metaNode, subHash, nameHash) {
 		element(metaNode, 'sub_default')
-			.appendChild(text(xml, (Object.keys(subHash).sort(function (a, b) {
+			.appendChild(text((Object.keys(subHash).sort(function (a, b) {
 				return subHash[b] - subHash[a];
 			})[0] || '').replace(/^\s+|\s+$/g, '')));
 		element(metaNode, 'name_default')
-			.appendChild(text(xml, (Object.keys(nameHash).sort(function (a, b) {
+			.appendChild(text((Object.keys(nameHash).sort(function (a, b) {
 				return nameHash[b] - nameHash[a];
-		})[0] || '').replace(/^\s+|\s+$/g, '')));
+			})[0] || '').replace(/^\s+|\s+$/g, '')));
 	}
 
-	// ported from https://github.com/twitter/twemoji/blob/gh-pages/2/twemoji.js
-	const UFE0Fg = /\uFE0F/g
-	const U200D = String.fromCharCode(0x200D);
-	function grabTheRightIcon (rawText) {
-		// if variant is present as \uFE0F
-		return toCodePoint(rawText.indexOf(U200D) < 0 ?
-			rawText.replace(UFE0Fg, '') :
-			rawText
-		);
-	}
-	function toCodePoint (unicodeSurrogates, sep) {
-		let
-		r = [],
-			c = 0,
-			p = 0,
-			i = 0;
-		while (i < unicodeSurrogates.length) {
-			c = unicodeSurrogates.charCodeAt(i++);
-			if (p) {
-				r.push((0x10000 + ((p - 0xD800) << 10) + (c - 0xDC00)).toString(16));
-				p = 0;
-			} else if (0xD800 <= c && c <= 0xDBFF) {
-				p = c;
-			} else {
-				r.push(c.toString(16));
-			}
-		}
-		return r.join(sep || '-');
-	}
-
-	function linkify (node, opts) {
-		opts = opts || {linkify: true, emojify: true};
-		const emojiRegex = Akahuku.twemoji.regex;
-		let r = node.ownerDocument.createRange();
-		let re;
-		while (node.lastChild.nodeType == 3) {
-			if (opts.linkify && (re = linkTargetRegex.exec(node.lastChild.nodeValue))) {
-				let index = -1;
-				linkTargets.some((a, i) => {
-					if (re[a.offset] != undefined && re[a.offset] != '') {
-						index = i;
-						return true;
-					}
-				});
-				if (index < 0) break;
-
-				let anchor = node.ownerDocument[CRE]('a');
-				r.setStart(node.lastChild, re.index);
-				r.setEnd(node.lastChild, re.index + re[0].length);
-				r.surroundContents(anchor);
-
-				try {
-					anchor.textContent = anchor.textContent.replace(
-						/(?:%[0-9a-f][0-9a-f])+/gi,
-						$0 => decodeURIComponent($0)
-					);
-				}
-				catch (e) {}
-
-				anchor.textContent = reduceURL(anchor.textContent);
-				anchor.setAttribute('class', linkTargets[index].className);
-				anchor.setAttribute('href', linkTargets[index].getHref(re, anchor));
-			}
-			else if (opts.emojify && (re = emojiRegex.exec(node.lastChild.nodeValue))) {
-				let emoji = node.ownerDocument[CRE]('emoji');
-
-				r.setStart(node.lastChild, re.index);
-				r.setEnd(node.lastChild, re.index + re[0].length);
-				r.surroundContents(emoji);
-
-				emoji.setAttribute('codepoints', grabTheRightIcon(re[0]));
-			}
-			else {
-				node.lastChild.nodeValue = node.lastChild.nodeValue.replace(
-					/[a-zA-Z0-9\u3040-\u30ff\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]{20}/g,
-					'$&\u00ad');
-				break;
-			}
-		}
-	}
-
-	function reduceURL (url) {
-		const LIMIT = 100;
-		const seps = ['/', '&'];
-
-		if (url.length <= LIMIT) {
-			return url;
-		}
-
-		let re = /^([^:]+:\/\/[^\/]+\/)([^?]*)?(\?.*)?/.exec(url);
-		let result = re[1];
-		const components = [(re[2] || '').split(seps[0]), (re[3] || '').split(seps[1])];
-
-		components.forEach((cs, i) => {
-			if (i == 1 && components[0].length) return;
-
-			while (cs.length && result.length < LIMIT) {
-				result += cs[0];
-				if (cs.length > 1) {
-					result += seps[i];
-				}
-				cs.shift();
-			}
-
-			if (result.length >= LIMIT) {
-				const lastIndex = result.lastIndexOf(seps[i]);
-				if (lastIndex >= 0) {
-					cs.push(result.substring(lastIndex + 1));
-					result = result.substring(0, lastIndex + 1);
-				}
-			}
-		});
-
-		if (components[0].length || components[1].length) {
-			result += '...(省略)';
-		}
-
-		return result;
-	}
-
-	function pushComment (node, s) {
+	function pushComment (node, text, s) {
 		const stack = [node];
 		const regex = /<[^>]+>|[^<]+/g;
 		let re;
@@ -1493,7 +1793,7 @@ function createXMLGenerator () {
 				}
 				else {
 					if (re == '<br>') {
-						stack[0].appendChild(text(stack[0].ownerDocument, '\n'));
+						stack[0].appendChild(text('\n'));
 						stack[0].appendChild(element(stack[0], 'br'));
 					}
 					else if (re == '<font color="#789922">') {
@@ -1505,13 +1805,8 @@ function createXMLGenerator () {
 				}
 			}
 			else {
-				/*
-				re = re
-					.replace(/&#([0-9]+);/g, function ($0, $1) {return String.fromCharCode(parseInt($1, 10))})
-					.replace(/&#x([0-9a-f]+);/gi, function ($0, $1) {return String.fromCharCode(parseInt($1, 16))});
-				*/
-				stack[0].appendChild(text(stack[0].ownerDocument, re));
-				linkify(stack[0]);
+				stack[0].appendChild(text(re));
+				linkifier.linkify(stack[0]);
 			}
 		}
 	}
@@ -1562,38 +1857,65 @@ function createXMLGenerator () {
 		if (m == undefined) m = fromDate.getMinutes();
 
 		//
-		let expireDate = new Date(Y, M, D, h, m);
-		urlStorage.memo(window.location.href, expireDate.getTime());
+		const expireDate = new Date(Y, M, D, h, m);
 
+		let expireDateString;
 		let remains = expireDate.getTime() - fromDate.getTime();
 		if (remains < 0) {
-			return '?';
-		}
-
-		//
-		let remainsString = [];
-		[
-			[1000 * 60 * 60 * 24, '日',   true],
-			[1000 * 60 * 60,      '時間', h != undefined && m != undefined],
-			[1000 * 60,           '分',   h != undefined && m != undefined]
-		].forEach(unit => {
-			if (!unit[2]) return;
-			if (remains < unit[0]) return;
-
-			remainsString.push(Math.floor(remains / unit[0]) + unit[1]);
-			remains %= unit[0];
-		});
-
-		if (remainsString.length == 0) {
-			return 'まもなく';
+			expireDateString = '?';
 		}
 		else {
-			if (/日/.test(remainsString[0]) && remainsString.length > 1) {
-				remainsString[0] += 'と';
-			}
+			let remainsString = [];
+			[
+				[1000 * 60 * 60 * 24, '日',   true],
+				[1000 * 60 * 60,      '時間', h != undefined && m != undefined],
+				[1000 * 60,           '分',   h != undefined && m != undefined]
+			].forEach(unit => {
+				if (!unit[2]) return;
+				if (remains < unit[0]) return;
 
-			return `あと${remainsString.join('')}くらい`;
+				remainsString.push(Math.floor(remains / unit[0]) + unit[1]);
+				remains %= unit[0];
+			});
+
+			if (remainsString.length == 0) {
+				expireDateString = 'まもなく';
+			}
+			else {
+				if (/日/.test(remainsString[0]) && remainsString.length > 1) {
+					remainsString[0] += 'と';
+				}
+
+				expireDateString = `あと${remainsString.join('')}くらい`;
+			}
 		}
+
+		return {
+			base: fromDate,
+			at: expireDate,
+			string: expireDateString
+		};
+	}
+
+	function setLastReloadTime (expire) {
+		if (lastReloadTimerID) {
+			clearTimeout(lastReloadTimerID);
+			lastReloadTimerID = null;
+		}
+		if (!(expire instanceof Date)) return;
+
+		const lastReloadAt = new Date(expire.getTime() - LAST_RELOAD_BUFFER_MSECS);
+		const remainsMsecs = lastReloadAt.getTime() - Date.now();
+		if (remainsMsecs < 0) return;
+
+		lastReloadTimerID = setTimeout(() => {
+			lastReloadTimerID = null;
+			if (pageModes[0].mode != 'reply') return;
+			if (autoTracker.running) return;
+			commands.reload();
+		}, remainsMsecs);
+
+		console.log(`last reload timer will be invoked at ${lastReloadAt.toLocaleString()}`);
 	}
 
 	function parseMaxAttachSize (number, unit) {
@@ -1627,200 +1949,6 @@ function createXMLGenerator () {
 	}
 
 	/*
-	 * classes
-	 */
-
-	function LinkTarget (className, pattern, handler) {
-		this.className = className;
-		this.pattern = pattern;
-		this.handler = handler;
-	}
-	LinkTarget.prototype.getHref = function (re, anchor) {
-		return this.completeScheme(this.handler(
-			re.slice(this.offset, this.offset + this.backrefLength)
-			  .map(a => a == undefined ? '' : a),
-			anchor
-		));
-	};
-	LinkTarget.prototype.completeScheme = function (url) {
-		let scheme = /^[^:]+/.exec(url)[0];
-		if (/^h?t?t?p?s$/.test(scheme)) {
-			scheme = 'https';
-		}
-		else if (/^h?t?t?p?$/.test(scheme)) {
-			scheme = 'http';
-		}
-		url = url.replace(/^[^:]*:\/\//, `${scheme}://`);
-		return url;
-	};
-	LinkTarget.prototype.siokaraProc = function (re, anchor, baseUrl) {
-		if (re[2]) {
-			anchor.setAttribute('basename', re[1] + re[2]);
-			if (/\.(?:jpe?g|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
-				anchor.setAttribute('class', `${this.className} incomplete-siokara-thumbnail lightbox`);
-				anchor.setAttribute('thumbnail', `${baseUrl}misc/${re[1]}.thumb.jpg`);
-			}
-			return `${baseUrl}src/${re[1]}${re[2]}`;
-		}
-		else {
-			anchor.setAttribute('basename', re[1]);
-			anchor.setAttribute('class', `${this.className} incomplete`);
-			return `${baseUrl}index.html`;
-		}
-	};
-	LinkTarget.prototype.upProc = function (re, anchor, baseUrl) {
-		if (re[2]) {
-			// re[0] -> "fu99999.xxx"
-			// re[1] -> "fu99999"
-			// re[2] -> ".xxx"
-			anchor.setAttribute('basename', re[1] + re[2]);
-
-			// inline lightbox
-			if (/\.(?:jpe?g|gif|png|webp|webm|mp4|mp3|ogg)$/.test(re[2])) {
-				anchor.setAttribute(
-					'class',
-					`${this.className} lightbox`);
-
-			}
-
-			// if thumbnail supported, add attribute
-			if (/\.(?:jpe?g|gif|png|webp|webm|mp4)$/.test(re[2])) {
-				const boardName = /\/(up2?)\/$/.exec(baseUrl)[1];
-				anchor.setAttribute(
-					'thumbnail',
-					`https://appsweets.net/thumbnail/${boardName}/${re[1]}s.png`);
-			}
-
-			return `${baseUrl}src/${re[1]}${re[2]}`;
-		}
-		else {
-			anchor.setAttribute('basename', re[1]);
-			anchor.setAttribute('class', `${this.className} incomplete`);
-			return `${baseUrl}up.htm`;
-		}
-	};
-	const linkTargets = [
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox6\\.com/futabafiles/001/src/)?(sa\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 1ml');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox6.com/futabafiles/001/');
-			}
-		),
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox2\\.com/futabafiles/003/src/)?(sp\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 3ml');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox2.com/futabafiles/003/');
-			}
-		),
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox5\\.com/futabafiles/kobin/src/)?(ss\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 小瓶');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox5.com/futabafiles/kobin/');
-			}
-		),
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox5\\.com/futabafiles/tubu/src/)?(su\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 塩粒');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox5.com/futabafiles/tubu/');
-			}
-		),
-		new LinkTarget(
-			'link-siokara',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox6\\.com/futabafiles/mid/src/)?(sq\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', '塩辛瓶 中瓶');
-				return this.siokaraProc(re, anchor, 'http://www.nijibox6.com/futabafiles/mid/');
-			}
-		),
-		new LinkTarget(
-			'link-futalog',
-			'\\b((?:h?t?t?p?://)?(?:www\\.nijibox2\\.com/futalog/src/)?((?:dec|jun|nov|may|img|dat|cgi|nne|id|jik|nar|oth)\\d{4,})(\\.mht)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', 'ふたログ');
-				return 'http://www.nijibox2.com/futabalog/src/' +
-					   re[1].replace('oth', 'other') + '.mht';
-			}
-		),
-		new LinkTarget(
-			'link-up',
-			'\\b((?:h?t?t?p?s?://)?(?:dec\\.2chan\\.net/up/src/)?(f\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', 'あぷ');
-				return this.upProc(re, anchor, 'https://dec.2chan.net/up/');
-			}
-		),
-		new LinkTarget(
-			'link-up-small',
-			'\\b((?:h?t?t?p?s?://)?(?:dec\\.2chan\\.net/up/src/)?(fu\\d{4,})(\\.\\w+)?)',
-			function (re, anchor) {
-				anchor.setAttribute('title', 'あぷ小');
-				return this.upProc(re, anchor, 'https://dec.2chan.net/up2/');
-			}
-		),
-		new LinkTarget(
-			'link-youtube',
-			'\\b((?:h?t?t?p?s?://)?(' + [
-				'(?:www|m)\\.youtube\\.com/watch\?(?:.*?v=([\\w\\-]+))',
-				'www\\.youtube\\.com/(?:v|embed)/([\\w\\-]+)',
-				'youtu\\.be/([\\w\\-]+)'
-			].join('|') + ')\\S*)',
-			function (re, anchor) {
-				anchor.setAttribute('youtube-key', re[2] || re[3] || re[4]);
-				return `https://${re[1]}`;
-			}
-		),
-		new LinkTarget(
-			'link-nico2',
-			'\\b((?:h?t?t?p?s?://)?(([^.]+\\.)?nicovideo\\.jp/watch/(sm\\w+)\\S*))',
-			function (re, anchor) {
-				anchor.setAttribute('nico2-key', re[2]);
-				return `https://${re[1]}`;
-			}
-		),
-		new LinkTarget(
-			'link-futaba lightbox',
-			'\\b((?:h?t?t?p?s?://)?[^.]+\\.2chan\\.net/[^/]+/src/\\d+\\.(?:jpe?g|gif|png|webp|webm|mp4)\\S*)',
-			function (re, anchor) {
-				anchor.setAttribute(
-					'thumbnail',
-					re[0]
-						.replace('/src/', '/thumb/')
-						.replace(/\.(?:jpe?g|gif|png|webp|webm|mp4)/, 's.jpg'));
-				return re[0];
-			}
-		),
-		new LinkTarget(
-			'link-twitter link-external',
-			'\\b((?:h?t?t?p?s?://)?twitter\\.com/[^/]+/status/(\\d+)\\S*)',
-			function (re, anchor) {
-				anchor.setAttribute('tweet-id', re[1]);
-				return re[0];
-			}
-		),
-		new LinkTarget(
-			'link-external',
-			'\\b((\\w+)(://\\S+))',
-			function (re, anchor) {
-				return re[0];
-			}
-		)
-	];
-	const linkTargetRegex = new RegExp(linkTargets.map((a, i) => {
-		const re = (a.pattern.replace(/\(\?/g, '')).match(/\(/g);
-		linkTargets[i].backrefLength = re ? re.length : 0;
-		linkTargets[i].offset = i > 0 ? linkTargets[i - 1].offset + linkTargets[i - 1].backrefLength : 1;
-		return a.pattern;
-	}).join('|'));
-
-	/*
 	 * main functions
 	 */
 
@@ -1828,11 +1956,11 @@ function createXMLGenerator () {
 		timingLogger.startTag('createXMLGenerator#run');
 
 		const url = window.location.href;
-		const xml = document.implementation.createDocument(null, 'futaba', null);
-		const text = textFactory(xml);
 		const isReplyMode = pageModes[0].mode == 'reply';
 		const baseUrl = url;
 		const remainingRepliesContext = [];
+		const xml = createFutabaXML(isReplyMode ? 'reply' : 'summary');
+		const text = textFactory(xml);
 		const enclosureNode = xml.documentElement;
 		const metaNode = element(enclosureNode, 'meta');
 
@@ -1841,16 +1969,6 @@ function createXMLGenerator () {
 			maxReplies = 0x7fffffff;
 		}
 
-		// create fundamental nodes
-		element(metaNode, 'mode')
-			.appendChild(text(isReplyMode ? 'reply' : 'summary'));
-		element(metaNode, 'url')
-			.appendChild(text(url));
-		element(metaNode, 'version')
-			.appendChild(text(version));
-		element(metaNode, 'extension_id')
-			.appendChild(text(getExtensionId()));
-
 		// strip all control characters and newline characters:
 		// LF(U+000A), VT(U+000B), FF(U+000C), CR(U+000D),
 		// NEL(U+0085), LS(U+2028) and PS(U+2029)
@@ -1858,17 +1976,6 @@ function createXMLGenerator () {
 
 		// strip bidi control character references
 		content = content.replace(/[\u200e-\u200f\u202a-\u202e]/g, '');
-
-		// strip script tag and its contents
-		content = content.replace(/<script[^>]*>.*?<\/script>/gi, '');
-
-		// strip comments
-		//content = content.replace(/<!--.*?-->/g, ' ');
-
-		// experimental feature
-		if (IDEOGRAPH_CONVERSION_CONTENT) {
-			content = 新字体の漢字を舊字體に変換(content);
-		}
 
 		// base url
 		re = /<base[^>]+href="([^"]+)"/i.exec(content);
@@ -1889,14 +1996,13 @@ function createXMLGenerator () {
 		(function () {
 			const re = />([^<>]+)(＠ふたば)/.exec(content);
 			if (!re) return;
-			let title = re[1].replace(/二次元裏$/, `虹裏${siteInfo.server}`)
-				+ re[2];
+			let title = re[1].replace(/二次元裏$/, `虹裏${siteInfo.server}`) + re[2];
 			if (!isReplyMode && siteInfo.summaryIndex) {
 				title += ` [ページ ${siteInfo.summaryIndex}]`;
 			}
 			let titleNode = element(metaNode, 'title');
 			titleNode.appendChild(text(title));
-			linkify(titleNode, {linkify: false, emojify: true});
+			linkifier.linkify(titleNode, {linkify: false, emojify: true});
 		})();
 
 		// page notice
@@ -1937,7 +2043,13 @@ function createXMLGenerator () {
 
 				notice = stripTagsForNotice(notice);
 				element(noticesNode, 'notice').appendChild(text(notice));
-				noticeMarkups.push(notice);
+				noticeMarkups.push(
+					notice
+						.replace(/&nbsp;/g, ' ')
+						.replace(/>([^<]+)</g, ($0, content) => {
+							return '>' + content.replace(/\s+/g, ' ') + '<';
+						})
+				);
 			}
 
 			siteInfo.noticeNew = noticeMarkups
@@ -2182,12 +2294,20 @@ function createXMLGenerator () {
 			const maxReached = /<span\s+class=["']?maxres["']?[^>]*>[^<]+</i.test(topicInfo);
 			if (expires || expireWarn || maxReached) {
 				const expiresNode = element(topicNode, 'expires');
+				let expireDate;
 				if (expires) {
+					expireDate = getExpirationDate(expires[1]);
+
 					expiresNode.appendChild(text(expires[1]));
-					expiresNode.setAttribute('remains', getExpirationDate(expires[1]));
+					expiresNode.setAttribute('remains', expireDate.string);
+				}
+				if (expireDate) {
+					urlStorage.memo(url, expireDate.at.getTime());
+					setLastReloadTime(expireDate.at);
 				}
 				else {
-					urlStorage.memo(window.location.href, Date.now() + 1000 * 60 * 60 * 24);
+					urlStorage.memo(url, Date.now() + 1000 * 60 * 60 * 24);
+					setLastReloadTime();
 				}
 				if (expireWarn) {
 					expiresNode.setAttribute('warned', 'true');
@@ -2258,7 +2378,7 @@ function createXMLGenerator () {
 			if (re) {
 				const emailNode = element(topicNode, 'email');
 				emailNode.appendChild(text(stripTags(re[1])));
-				linkify(emailNode);
+				linkifier.linkify(emailNode);
 				if (isReplyMode && /ID表示/i.test(re[1])) {
 					siteInfo.idDisplay = true;
 				}
@@ -2350,7 +2470,7 @@ function createXMLGenerator () {
 			}
 
 			// comment
-			pushComment(element(topicNode, 'comment'), topic);
+			pushComment(element(topicNode, 'comment'), text, topic);
 
 			/*
 			 * replies
@@ -2394,7 +2514,7 @@ function createXMLGenerator () {
 			result.repliesNode.setAttribute("hidden", hiddenRepliesCount);
 		}
 
-		setDefaultSubjectAndName(xml, metaNode, siteInfo.subHash, siteInfo.nameHash);
+		setDefaultSubjectAndName(xml, text, metaNode, siteInfo.subHash, siteInfo.nameHash);
 
 		timingLogger.endTag();
 		return {
@@ -2535,7 +2655,7 @@ function createXMLGenerator () {
 			if (re) {
 				const emailNode = element(replyNode, 'email');
 				emailNode.appendChild(text(stripTags(re[1])));
-				linkify(emailNode);
+				linkifier.linkify(emailNode);
 			}
 
 			// src & thumbnail url
@@ -2585,10 +2705,30 @@ function createXMLGenerator () {
 			}
 
 			// comment
-			//if (repliesCount == 0) {
-			//	comment += '';
-			//}
-			pushComment(element(replyNode, 'comment'), comment);
+			/*
+			if (true) {
+				let extraTester = '';
+				switch (repliesCount) {
+				case 0:
+					extraTester = '\nfu25455';
+					break;
+				case 1:
+					extraTester = '\n<br><font color="#789922">&gt;fu25455</font>';
+					break;
+				case 2:
+					extraTester = '\nfu25455.jpg';
+					break;
+				case 3:
+					extraTester = '\n<br><font color="#789922">&gt;fu25455.jpg</font>';
+					break;
+				}
+				pushComment(element(replyNode, 'comment'), text, comment + extraTester);
+			}
+			else {
+				pushComment(element(replyNode, 'comment'), text, comment);
+			}
+			*/
+			pushComment(element(replyNode, 'comment'), text, comment);
 		}
 
 		return {
@@ -2603,20 +2743,11 @@ function createXMLGenerator () {
 		timingLogger.startTag('createXMLGenerator#runFromJson');
 
 		const url = window.location.href;
-		const xml = document.implementation.createDocument(null, 'futaba', null);
-		const text = textFactory(xml, true);
 		const baseUrl = url;
+		const xml = createFutabaXML('reply');
+		const text = textFactory(xml);
 		const enclosureNode = xml.documentElement;
 		const metaNode = element(enclosureNode, 'meta');
-
-		element(metaNode, 'mode')
-			.appendChild(text('reply'));
-		element(metaNode, 'url')
-			.appendChild(text(url));
-		element(metaNode, 'version')
-			.appendChild(text(version));
-		element(metaNode, 'extension_id')
-			.appendChild(text(getExtensionId()));
 
 		/*
 		 * thread meta informations
@@ -2734,7 +2865,7 @@ function createXMLGenerator () {
 			if (reply.email != '') {
 				const emailNode = element(replyNode, 'email');
 				emailNode.appendChild(text(stripTags(reply.email)));
-				linkify(emailNode);
+				linkifier.linkify(emailNode);
 			}
 
 			// src & thumbnail url
@@ -2768,12 +2899,12 @@ function createXMLGenerator () {
 				}
 			}
 
-			pushComment(element(replyNode, 'comment'), reply.com);
+			pushComment(element(replyNode, 'comment'), text, reply.com);
 		}
 
 		repliesNode.setAttribute("total", offset);
 		repliesNode.setAttribute("hidden", hiddenRepliesCount);
-		setDefaultSubjectAndName(xml, metaNode, siteInfo.subHash, siteInfo.nameHash);
+		setDefaultSubjectAndName(xml, text, metaNode, siteInfo.subHash, siteInfo.nameHash);
 
 		return {
 			delta: offset - hiddenRepliesCount,
@@ -2788,7 +2919,8 @@ function createXMLGenerator () {
 
 		function main () {
 			timingLogger.startTag('creating fragment of replies');
-			const xml = document.implementation.createDocument(null, 'futaba', null);
+			const xml = createFutabaXML('reply');
+			const text = textFactory(xml);
 			const result = fetchReplies(
 				context[0].content,
 				context[0].regex,
@@ -2800,7 +2932,7 @@ function createXMLGenerator () {
 
 			result.repliesNode.setAttribute("total", result.repliesCount);
 			result.repliesNode.setAttribute("hidden", context[0].repliesCount);
-			setDefaultSubjectAndName(xml, element(xml.documentElement, 'meta'), siteInfo.subHash, siteInfo.nameHash);
+			setDefaultSubjectAndName(xml, text, element(xml.documentElement, 'meta'), siteInfo.subHash, siteInfo.nameHash);
 			timingLogger.endTag();
 
 			timingLogger.startTag('intermediate call back');
@@ -4882,31 +5014,9 @@ function createSelectionMenu () {
 			el.setSelectionRange(el.value.length, el.value.length);
 		}
 		else {
-			regalizeComment(el);
+			regalizeEditable(el);
 			document.execCommand('selectAll', false, null);
 			document.getSelection().getRangeAt(0).collapse(false);
-		}
-	}
-
-	function regalizeComment (el) {
-		const r = document.createRange();
-		let div;
-		while ((div = el.querySelector('div'))) {
-			r.selectNodeContents(div);
-			/*
-			 * ...<br><div>+++</div>    -->  ...<br>+++
-			 * ...<div>+++</div>        -->  ...<br>+++     (new BR inserted)
-			 * ...<br><div><br></div>   -->  ...<br><br>+++
-			 * ...<div><br></div>  -->  -->  ...<br>+++
-			 */
-			const prevBreak = div.previousSibling && div.previousSibling.nodeName == 'BR';
-			const nextBreak = div.firstChild && div.firstChild.nodeName == 'BR';
-			if (!prevBreak && !nextBreak) {
-				div.parentNode.insertBefore(document[CRE]('br'), div);
-			}
-
-			div.parentNode.insertBefore(r.extractContents(), div);
-			div.parentNode.removeChild(div);
 		}
 	}
 
@@ -5104,9 +5214,9 @@ function createHistoryStateWrapper (popstateHandler) {
 
 function createTransport () {
 	/*
-	 * - postBase (post, delete, moderate)
-	 * - reloadBase (reload)
-	 * - reloadCatalogBase (reload)
+	 * - postBase(post, delete, moderate)
+	 * - reloadBase(reload)
+	 * - reloadCatalogBase(reload)
 	 */
 	const transports = {};
 	const lastUsedTime = {};
@@ -5426,6 +5536,20 @@ function createAutoTracker () {
 	};
 }
 
+function createFutabaXML (mode) {
+	const xml = document.implementation.createDocument(null, 'futaba', null);
+	const meta = xml.documentElement.appendChild(xml[CRE]('meta'));
+	meta.appendChild(xml[CRE]('mode'))
+		.appendChild(xml.createTextNode(mode));
+	meta.appendChild(xml[CRE]('url'))
+		.appendChild(xml.createTextNode(window.location.href));
+	meta.appendChild(xml[CRE]('version'))
+		.appendChild(xml.createTextNode(version));
+	meta.appendChild(xml[CRE]('extension_id'))
+		.appendChild(xml.createTextNode(getExtensionId()));
+	return xml;
+}
+
 /*
  * <<<1 page set-up functions
  */
@@ -5603,22 +5727,28 @@ function setupWindowResizeEvent (frequencyMsecs, handler) {
 function setupPostFormItemEvent (items) {
 	const timers = {};
 	const debugLines = [];
+	const cache = {};
 
 	function updateInfoCore (result, item) {
 		const el = $(item.id);
 		if (!el) return result;
 
-		const span = $('comment-info-details').appendChild(document[CRE]('span'));
-		const lines = getContentsFromEditable(el).value.replace(/[\r\n\s]+$/, '').split(/\r?\n/);
+		const cacheEntry = cache[item.id] && cache[item.id].html == el.innerHTML ?
+			cache[item.id] : null;
+		const contents = cacheEntry ?
+			cacheEntry.contents :
+			getContentsFromEditable(el).value;
+
+		const lines = contents.replace(/[\r\n\s]+$/, '').split(/\r?\n/);
 		const bytes = lines.join('\r\n').replace(/[^\u0001-\u007f\uff61-\uff9f]/g, '__').length;
 		const linesOvered = item.lines ? lines.length > item.lines : false;
 		const bytesOvered = item.bytes ? bytes > item.bytes : false;
 
+		const span = $('comment-info-details').appendChild(document[CRE]('span'));
 		if (linesOvered || bytesOvered) {
 			span.classList.add('warn');
 			result = true;
 		}
-
 		$t(span, [
 			item.head  ? `${item.head}:` : '',
 			item.lines ? `${lines.length}/${item.lines}行` : '',
@@ -5626,6 +5756,11 @@ function setupPostFormItemEvent (items) {
 			item.bytes ? `${bytes}/${item.bytes}` : '',
 			item.lines ? ')' : ''
 		].join(''));
+
+		cache[item.id] = {
+			html: el.innerHTML,
+			contents: contents
+		};
 
 		return result;
 	}
@@ -5654,6 +5789,11 @@ function setupPostFormItemEvent (items) {
 			});
 			debugLines.length = 0;
 		}
+
+		cache[com.id] = {
+			html: com.innerHTML,
+			contents: contents.value
+		};
 
 		$('com2').value = contents.value;
 		com.style.height = '';
@@ -6034,12 +6174,16 @@ function setupWheelReload () {
 
 	function handler (e) {
 		if (transport.isRunning()) {
-			preventDefault(e);
 			return;
 		}
 
 		if (e.target.classList.contains('dialog-content-wrap')) {
 			preventDefault(e);
+			return;
+		}
+
+		if (e.target.closest('#panel-aside-wrap')) {
+			e.stopPropagation();
 			return;
 		}
 
@@ -7045,10 +7189,6 @@ function modalDialog (opts) {
 				let f;
 
 				try {
-					if (IDEOGRAPH_CONVERSION_UI) {
-						xsl = 新字体の漢字を舊字體に変換(xsl);
-					}
-
 					xsl = (new window.DOMParser()).parseFromString(xsl, "text/xml");
 				}
 				catch (e) {
@@ -7433,11 +7573,9 @@ function getDOMFromString (s) {
 	try {
 		return (new window.DOMParser()).parseFromString(
 			s.replace(/\r?\n/g, ' ')
-			.replace(/<script[^>]*>.*?<\/script>/gi, '')
-			.replace(/<img[^>]*>/gi, function ($0) {
-				return $0.replace(/\bsrc=/g, 'data-src=')
-			})
-			, 'text/html');
+				.replace(/<script[^>]*>.*?<\/script>/gi, '')
+				.replace(/<img[^>]*>/gi, $0 => $0.replace(/\bsrc=/g, 'data-src=')),
+			'text/html');
 	}
 	catch (e) {
 		console.error(`${APP_NAME}: getDOMFromString failed: ${e.stack}`);
@@ -7749,10 +7887,7 @@ function commentToString (container) {
 	container = sanitizeComment(container);
 
 	const iterator = document.createNodeIterator(
-		container,
-		window.NodeFilter.SHOW_ELEMENT | window.NodeFilter.SHOW_TEXT,
-		null, false);
-
+		container, window.NodeFilter.SHOW_ELEMENT | window.NodeFilter.SHOW_TEXT);
 	const result = [];
 	let currentNode;
 	while ((currentNode = iterator.nextNode())) {
@@ -7871,35 +8006,56 @@ function getReadableSize (size) {
 		'iB';
 }
 
+function regalizeEditable (el) {
+	const r = document.createRange();
+	let div;
+	while ((div = el.querySelector('div'))) {
+		r.selectNodeContents(div);
+		/*
+		 * ...<br><div>+++</div>    -->  ...<br>+++
+		 * ...<div>+++</div>        -->  ...<br>+++     (new BR inserted)
+		 * ...<br><div><br></div>   -->  ...<br><br>+++
+		 * ...<div><br></div>  -->  -->  ...<br>+++
+		 */
+		const prevBreak = div.previousSibling && div.previousSibling.nodeName == 'BR';
+		const nextBreak = div.firstChild && div.firstChild.nodeName == 'BR';
+		if (!prevBreak && !nextBreak) {
+			div.parentNode.insertBefore(document[CRE]('br'), div);
+		}
+
+		div.parentNode.insertBefore(r.extractContents(), div);
+		div.parentNode.removeChild(div);
+	}
+	return el;
+}
+
 function getContentsFromEditable (el) {
 	let value, debugInfo;
 	if ('value' in el) {
 		value = el.value;
 	}
 	else {
-		const div = document[CRE]('div');
+		const div = regalizeEditable(el.cloneNode(true));
+		const iterator = document.createNodeIterator(
+			div, window.NodeFilter.SHOW_ELEMENT | window.NodeFilter.SHOW_TEXT);
+		const result = [];
+		let current;
+		while ((current = iterator.nextNode())) {
+			switch (current.nodeType) {
+			case 1:
+				current.nodeName == 'BR' && result.push('\n');
+				break;
+			case 3:
+				result.push(current.nodeValue);
+				break;
+			}
+		}
 
-		// Insert newlines around block elements.
-		// This code may be a little heuristic.
-		let html = el.innerHTML;
-		html = html.replace(/<br[^>\/]*\/?>(<\/div[^>]*>)/gi, '$1');
-		html = html.replace(/^<div[^>]*>/i, '');
-		html = html.replace(/<\/div[^>]*>/gi, '');
-		html = html.replace(/<div[^>]*>/gi, '\n');
-		div.innerHTML = html;
-
-		// innerText is important to preserve newline.
-		// On the other hand, textContent drops all newlines.
-		value = div.innerText;
-
-		// Trim all leading spaces
-		value = value.replace(/^\s+/g, '');
+		value = result.join('').replace(/^\s+|\s+$/g, '');
 
 		debugInfo = [
 			`*** original html ***`,
 			`"${el.innerHTML}"`,
-			`--- modified html ---`,
-			`"${html}"`,
 			`--- result text ---`,
 			`"${value}"`
 		].join('\n');
@@ -7936,11 +8092,14 @@ function displayInlineVideo (anchor) {
 		video[i] = props[i];
 	}
 	video.style.maxWidth = `${INLINE_VIDEO_MAX_WIDTH}px`;
+	video.style.width = '100%';
 
 	let thumbnail = $qs('img', anchor);
 	// video file on siokara
 	if (/\/\/www\.nijibox\d+\.com\//.test(anchor.href)) {
 		/*
+		 * with thumbnail:
+		 * ---------------
 		 * div.link-siokara
 		 *   a.lightbox
 		 *     #text
@@ -7950,24 +8109,32 @@ function displayInlineVideo (anchor) {
 		 *   div
 		 *     [保存する]
 		 */
+		/*
+		 * without thumbnail:
+		 * ------------------
+		 * a.link-siokara.lightbox
+		 *   #text
+		 */
 		thumbnail = $qs('img', anchor.parentNode);
-		anchor = thumbnail.parentNode;
-		anchor.parentNode.insertBefore(video, anchor);
-		thumbnail.classList.add('hide');
-		video.style.width = '100%';
+		if (thumbnail) {
+			anchor = thumbnail.parentNode;
+			thumbnail.classList.add('hide');
+			anchor.parentNode.insertBefore(video, anchor);
+		}
+		else {
+			anchor.appendChild(video);
+		}
 	}
 	// video file on futaba
 	else if (thumbnail) {
 		thumbnail.classList.add('hide');
 		anchor.parentNode.insertBefore(video, anchor);
-		video.style.width = '100%';
 	}
 	// other
 	else {
 		const container = anchor.parentNode.insertBefore(
 			document[CRE]('div'), anchor.nextSibling);
 		container.appendChild(video);
-		video.style.width = '100%';
 	}
 }
 
@@ -7987,10 +8154,16 @@ function displayInlineAudio (anchor) {
 		audio[i] = props[i];
 	}
 
-	const thumbnail = $qs('img', anchor.parentNode);
-	anchor = thumbnail.parentNode;
-	anchor.parentNode.insertBefore(audio, anchor);
-	thumbnail.classList.add('hide');
+	if (anchor.classList.contains('link-up') || anchor.classList.contains('link-up-small')) {
+		anchor.parentNode.insertBefore(audio, anchor);
+		anchor.classList.add('hide');
+	}
+	else {
+		const thumbnail = $qs('img', anchor.parentNode);
+		anchor = thumbnail.parentNode;
+		anchor.parentNode.insertBefore(audio, anchor);
+		thumbnail.classList.add('hide');
+	}
 }
 
 function isHighSurrogate (ch) {
@@ -8011,49 +8184,59 @@ function isSurrogate (ch) {
 	return isHighSurrogate(ch) || isLowSurrogate(ch);
 }
 
-function resolveCharacterReference (s) {
-	// resolve character reference
-	s = s.replace(/&(?:#(x[0-9a-f]+|[0-9]+)|([0-9a-z]+));?/gi, ($0, $1, $2) => {
-		if ($1 != undefined) {
-			if ($1.charAt(0).toLowerCase() == 'x') {
-				$1 = parseInt($1.substring(1), 16);
-			}
-			else {
-				$1 = parseInt($1, 10);
-			}
+const resolveCharacterReference = (() => {
+	const cache = {};
 
-			try {
-				return String.fromCodePoint($1);
-			}
-			catch (err) {
-				return '';
-			}
-		}
-		else if ($2 != undefined) {
-			const source = `&${$2};`;
-			let converter = $('charref-converter');
-			if (converter) {
-				converter.innerHTML = source;
-				return converter.textContent;
-			}
+	return function (s) {
+		s = s.replace(/&(?:#(x[0-9a-f]+|[0-9]+)|([0-9a-z]+));?/gi, ($0, $1, $2) => {
+			if ($1 != undefined) {
+				if ($1.charAt(0).toLowerCase() == 'x') {
+					$1 = parseInt($1.substring(1), 16);
+				}
+				else {
+					$1 = parseInt($1, 10);
+				}
 
-			try {
+				try {
+					return String.fromCodePoint($1);
+				}
+				catch (err) {
+					return '';
+				}
+			}
+			else if ($2 != undefined) {
+				const source = `&${$2};`;
+
+				if (source in cache) {
+					return cache[source];
+				}
+
+				// for after transform is complete
+				let converter = $('charref-converter');
+				if (converter) {
+					converter.innerHTML = source;
+					return cache[source] = converter.textContent;
+				}
+
+				// for boot time
 				converter = document.body.appendChild(document[CRE]('div'));
-				converter.innerHTML = source;
-				return converter.textContent;
+				try {
+					converter.innerHTML = source;
+					return cache[source] = converter.textContent;
+				}
+				finally {
+					converter.parentNode.removeChild(converter);
+				}
 			}
-			finally {
-				converter.parentNode.removeChild(converter);
-			}
-		}
-	});
+		});
 
-	// fold continuous Nonspacing Marks
-	// Firefox does not support following regexp!
-	//s = s.replace(/(\p{gc=Mn})\1+/ug, '$1');
+		// fold continuous Nonspacing Marks
+		// Firefox does not support following regexp!
+		//s = s.replace(/(\p{gc=Mn})\1+/ug, '$1');
 
-	return s;
-}
+		return s;
+	};
+})();
 
 function dumpDebugText (text) {
 	if (!devMode) return;
@@ -8180,14 +8363,41 @@ function populateFileFormItems (form, callback) {
 }
 
 function postBase (type, form) { /*returns promise*/
+	function getVersion () {
+		let app;
+		const ua = navigator.appVersion;
+		if (typeof InstallTrigger == 'object') {
+			app = 'Firefox';
+		}
+		else if (/\bvivaldi\/\d+(?:\.\d+)*/i.test(ua)) {
+			app = 'Vivaldi';
+		}
+		else if (/\bopr\/\d+(?:\.\d+)*/i.test(ua)) {
+			app = 'Opera';
+		}
+		else if (/\bchromium\/\d+(?:\.\d+)*/i.test(ua)) {
+			app = 'Chromium';
+		}
+		else {
+			app = 'Chrome';
+		}
+		return `akahukuplus/${version} on ${app} Browser(${navigator.platform}, ${navigator.deviceMemory}GB, ${navigator.hardwareConcurrency}CPUs)`;
+	}
+
 	function getIconvPayload (form) {
 		const payload = {};
 
 		populateTextFormItems(form, node => {
 			let content = node.value;
 
-			if (IDEOGRAPH_CONVERSION_POST) {
+			if (/![旧舊]字[体體]!/.test($('email').value)) {
 				content = 新字体の漢字を舊字體に変換(content);
+				if (node.id == 'email') {
+					content = content.replace(/![旧舊]字[体體]!\s*/g, '');
+				}
+			}
+			if (node.id == 'com2') {
+				content = content.replace(/!version!\s*$/g, getVersion());
 			}
 
 			payload[node.name] = content;
@@ -8553,21 +8763,27 @@ function reloadBase (type, opts) { /*returns promise*/
 
 				timingLogger.startTag('parsing html');
 				doc = xhr.responseText;
+
 				doc = doc.replace(
 					/>([^<]+)</g,
-					($0, $1) => {
-						$1 = resolveCharacterReference($1);
-						$1 = $1.replace(/</g, '&lt;')
+					($0, content) => {
+						content = resolveCharacterReference(content)
+							.replace(/&/g, '&amp;')
+							.replace(/</g, '&lt;')
 							.replace(/>/g, '&gt;');
-						return `>${$1}<`;
+						return `>${content}<`;
 					});
 				doc = doc.replace(
 					/(<a\s+href="mailto:)([^"]+)("[^>]*>)/gi,
-					($0, $1, $2, $3) => {
-						$2 = resolveCharacterReference($2);
-						$2 = $2.replace(/"/g, '&quot;');
-						return `${$1}${$2}${$3}`;
+					($0, head, content, bottom) => {
+						content = resolveCharacterReference(content)
+							.replace(/&/g, '&amp;')
+							.replace(/"/g, '&quot;')
+							.replace(/</g, '&lt;')
+							.replace(/>/g, '&gt;');
+						return `${head}${content}${bottom}`;
 					});
+
 				doc = getDOMFromString(doc);
 				timingLogger.endTag();
 
@@ -8691,31 +8907,28 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 
 				timingLogger.startTag('parsing json');
 				try {
-					const refmap = {
-						amp: '&',
-						lt: '<',
-						gt: '>',
-						quot: '"',
-						apos: "'"
-					};
-
 					doc = xhr.responseText;
+
 					doc = JSON.parse(doc, (key, value) => {
-						if (typeof value == 'string') {
+						if (typeof value != 'string') return value;
 
-							// PHP's json_encode handles the following character references,
-							// so we need to solve them.
-							value = value.replace(/&(amp|quot|apos);/g, ($0, $1) => refmap[$1]);
-
-							// Some UA convert a code point beyond BMP into surrogate pairs.
-							// This is an error for the standard, and it should be a single
-							// character reference.
-							value = resolveCharacterReference(value);
-
-							// experimental feature
-							if (IDEOGRAPH_CONVERSION_CONTENT) {
-								value = 新字体の漢字を舊字體に変換(value);
+						const value2 = value.replace(
+							/(^|>)([^<]+)($|<)/g,
+							($0, head, content, bottom) => {
+								content = resolveCharacterReference(content)
+									.replace(/&/g, '&amp;')
+									.replace(/</g, '&lt;')
+									.replace(/>/g, '&gt;');
+								return `${head}${content}${bottom}`;
 							}
+						);
+						if (value2 != value) {
+							console.log([
+								'*** replace in json ***',
+								` value: "${value}"`,
+								`value2: "${value2}"`,
+							].join('\n'));
+							value = value2;
 						}
 
 						return value;
@@ -8775,11 +8988,6 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 			let doc;
 			if (xhr.status == 200) {
 				doc = xhr.responseText;
-
-				// experimental feature
-				if (IDEOGRAPH_CONVERSION_CONTENT) {
-					doc = 新字体の漢字を舊字體に変換(doc);
-				}
 
 				const re = /<script[^>]+>var\s+ret\s*=JSON\.parse\('([^<]+)'\)/.exec(doc);
 				if (re) {
@@ -8856,9 +9064,9 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 function modifyPage () {
 	adjustReplyWidth();
 	extractTweets();
-	extractSiokaraThumbnails();
+	replaceSiokaraThumbnails();
 	extractNico2();
-	extractIncompleteFiles();
+	completeDefectiveLinks();
 }
 
 function extractTweets () {
@@ -8910,101 +9118,157 @@ function extractTweets () {
 	setTimeout(extractTweets, 991);
 }
 
-function extractIncompleteFiles () {
-	const files = $qsa('.incomplete');
+function completeDefectiveLinks () {
+	const files = $qsa('.link-up.incomplete, .link-siokara.incomplete');
 	if (files.length == 0) return;
 
-	function getHandler (node) {
-		return function (data) {
-			if (data) {
-				if (data.url) {
-					empty(node);
-					node.href = data.url;
-					node.appendChild(document.createTextNode(data.base));
-				}
+	function completeUpLink (node) {
+		const [base] = /^fu?\d+/.exec(node.getAttribute('data-basename'));
+		const board = /^fu/.test(base) ? 'up2' : 'up';
+		return fetch(`//appsweets.net/thumbnail/${board}/${base}s.js`)
+		.then(response => response.json())
+		.then(data => {
+			if (!data) {
+				throw new Error('サムネイルサーバから正しいデータが返されませんでした');
+			}
 
-				if (/\.(?:jpe?g|gif|png|webp|webm|mp4|mp3|ogg)$/.test(data.url)) {
-					node.classList.add('lightbox');
-				}
+			// prevent from infinite loop
+			if (!/^fu?\d+\..+$/.test(data.name)) {
+				throw new Error(`補完結果が不正です: "${data.name}"`);
+			}
 
-				if (node.parentNode.nodeName != 'Q' && data.thumbnail) {
-					const div = document[CRE]('div');
-					div.className = 'link-siokara';
+			// set up internal partial XML
+			const xml = createFutabaXML(pageModes[0].mode);
+			const comment = xml.documentElement.appendChild(xml[CRE]('comment'));
+			const parent = node.closest('q') ?
+				comment.appendChild(xml[CRE]('q')) :
+				comment;
+			parent.appendChild(xml.createTextNode(data.name));
+			linkifier.linkify(parent);
+			xsltProcessor.setParameter(null, 'render_mode', 'comment');
 
-					const r = document.createRange();
-					r.selectNode(node);
-					r.surroundContents(div);
-					node.classList.remove('link-siokara');
+			// XSL transform
+			const fragment = fixFragment(xsltProcessor.transformToFragment(xml, document));
 
-					const thumbDiv = div.appendChild(document[CRE]('div'));
-					const thumbAnchor = node.cloneNode();
-					thumbAnchor.classList.add('siokara-thumbnail');
-					thumbDiv.appendChild(thumbAnchor);
-					const img = thumbAnchor.appendChild(document[CRE]('img'));
-					img.src = data.thumbnail;
+			// apply transform result
+			if (parent == comment) {
+				/*
+				 * fragment:
+				 *
+				 * #fragment
+				 *   <a class="link-up">...</a>
+				 *   <small> - [保存する]</small>
+				 *   <br>
+				 *   <a class="link-up"><img src="#"></a>
+				 */
 
-					const saveDiv = div.appendChild(document[CRE]('div'));
-					saveDiv.appendChild(document.createTextNode('['));
-					const saveAnchor = saveDiv.appendChild(document[CRE]('a'));
-					saveAnchor.className = 'js save-image';
-					saveAnchor.href = data.url;
-					saveAnchor.textContent = '保存する';
-					saveDiv.appendChild(document.createTextNode(']'));
-				}
+				// we can add the fragment itself
+				node.parentNode.insertBefore(fragment, node);
 			}
 			else {
+				/*
+				 * fragment:
+				 *
+				 * #fragment
+				 *   <q>
+				 *     <a class="link-up">...</a>
+				 *   </q>
+				 */
+
+				// we have to pick the anchor up
+				node.parentNode.insertBefore($qs('a', fragment), node);
+			}
+			node.parentNode.removeChild(node);
+		})
+		.catch(err => {
+			console.error(err.stack);
+			const span = node.appendChild(document[CRE]('span'));
+			span.className = 'link-completion-notice';
+			span.textContent = '(補完失敗)';
+			span.title = err.message;
+		})
+		.finally(() => {
+			node = null;
+		});
+	}
+
+	function getSiokaraHandler (node) {
+		return function (data) {
+			if (!data || !/^s[a-z]\d+\..+$/.test(data.base)) {
 				const span = node.appendChild(document[CRE]('span'));
 				span.className = 'link-completion-notice';
 				span.textContent = '(補完失敗)';
+				span.title = 'バッググラウンドから正しいデータが返されませんでした';
+				node = null;
+				return;
 			}
+
+			// set up internal partial XML
+			const xml = createFutabaXML(pageModes[0].mode);
+			const comment = xml.documentElement.appendChild(xml[CRE]('comment'));
+			comment.appendChild(xml.createTextNode(data.base));
+			linkifier.linkify(comment);
+			xsltProcessor.setParameter(null, 'render_mode', 'comment');
+
+			// XSL transform
+			const fragment = fixFragment(xsltProcessor.transformToFragment(xml, document));
+			const newNode = $qs('.link-siokara', fragment);
+			if (!newNode) {
+				const span = node.appendChild(document[CRE]('span'));
+				span.className = 'link-completion-notice';
+				span.textContent = '(補完失敗)';
+				span.title = 'XSLT 再変換の結果がフラグメントを含んでいません';
+				node = null;
+				return;
+			}
+
+			// some adjustments
+			if (/\.(webm|mp4|mp3|ogg)$/.test(data.url)) {
+				data.thumbnail = chrome.extension.getURL('images/siokara-video.png');
+			}
+			$qsa('img', newNode).forEach(img => {
+				img.src = data.thumbnail;
+			});
+			newNode.classList.remove('incomplete');
+
+			// apply transform result
+			node.parentNode.insertBefore(newNode, node);
+			node.parentNode.removeChild(node);
 			node = null;
 		}
 	}
 
 	for (let i = 0; i < files.length && i < 10; i++) {
 		const id = files[i].getAttribute('data-basename');
-		id && sendToBackend(
-			'complete',
-			{url:files[i].href, id:id},
-			getHandler(files[i]));
+		if (/^fu?\d+/.test(id)) {
+			completeUpLink(files[i]);
+		}
+		else if (/^s[a-z]\d+/.test(id)) {
+			sendToBackend(
+				'complete',
+				{url:files[i].href, id:id},
+				getSiokaraHandler(files[i]));
+		}
 		files[i].classList.remove('incomplete');
 	}
 
-	setTimeout(extractIncompleteFiles, 907);
+	setTimeout(completeDefectiveLinks, 907);
 }
 
-function extractSiokaraThumbnails () {
-	const files = $qsa(':not(q) > .incomplete-siokara-thumbnail');
+function replaceSiokaraThumbnails () {
+	const files = $qsa('.link-siokara.incomplete-thumbnail');
 	if (files.length == 0) return;
 
 	function getHandler (node) {
 		return function (data) {
-			if (!data && /\.(webm|mp4|mp3|ogg)$/.test(node.href)) {
+			if (!data && /\.(webm|mp4|mp3|ogg)$/.test($qs('a', node).href)) {
 				data = chrome.extension.getURL('images/siokara-video.png');
 			}
 			if (data) {
-				const div = document[CRE]('div');
-				div.className = 'link-siokara';
-
-				const r = document.createRange();
-				r.selectNode(node);
-				r.surroundContents(div);
-				node.classList.remove('link-siokara');
-
-				const thumbDiv = div.appendChild(document[CRE]('div'));
-				const thumbAnchor = node.cloneNode();
-				thumbAnchor.classList.add('siokara-thumbnail');
-				thumbDiv.appendChild(thumbAnchor);
-				const img = thumbAnchor.appendChild(document[CRE]('img'));
-				img.src = data;
-
-				const saveDiv = div.appendChild(document[CRE]('div'));
-				saveDiv.appendChild(document.createTextNode('['));
-				const saveAnchor = saveDiv.appendChild(document[CRE]('a'));
-				saveAnchor.className = 'js save-image';
-				saveAnchor.href = node.href;
-				saveAnchor.textContent = '保存する';
-				saveDiv.appendChild(document.createTextNode(']'));
+				const thumbnailImage = $qs('img', node);
+				if (thumbnailImage) {
+					thumbnailImage.src = data;
+				}
 			}
 			node = null;
 		}
@@ -9018,25 +9282,27 @@ function extractSiokaraThumbnails () {
 				{url: thumbHref},
 				getHandler(files[i]));
 		}
-		files[i].classList.remove('incomplete-siokara-thumbnail');
+		files[i].classList.remove('incomplete-thumbnail');
 	}
 
-	setTimeout(extractSiokaraThumbnails, 919);
+	setTimeout(replaceSiokaraThumbnails, 919);
 }
 
 function extractNico2 () {
-	const files = $qsa('.inline-video.nico2[data-nico2-key]');
+	const KEY_NAME = 'data-nico2-key';
+	const files = $qsa(`.inline-video.nico2[${KEY_NAME}]`);
 	if (files.length == 0) return;
 
 	for (let i = 0; i < files.length && i < 10; i++) {
-		const key = files[i].getAttribute('data-nico2-key');
-		const scriptNode = files[i].appendChild(document[CRE]('script'));
-		scriptNode.type = 'text/javascript';
+		const key = files[i].getAttribute(KEY_NAME);
+		const scriptNode = files[i].parentNode.insertBefore(document[CRE]('script'), files[i]);
+		scriptNode.type = 'application/javascript';
 		scriptNode.src = `https://embed.nicovideo.jp/watch/${key}/script?w=640&h=360`;
 		scriptNode.onload = function () {
 			this.parentNode.removeChild(this);
 		};
-		files[i].removeAttribute('data-nico2-key');
+		files[i].removeAttribute(KEY_NAME);
+		files[i].parentNode.removeChild(files[i]);
 	}
 
 	setTimeout(extractNico2, 911);
@@ -11063,22 +11329,20 @@ const commands = {
 				itemsNode.setAttribute('prefix', 'config-item.');
 
 				const config = storage.config;
-				const f = IDEOGRAPH_CONVERSION_UI ?
-					新字体の漢字を舊字體に変換 : s => s;
 				for (let i in config) {
 					const item = itemsNode.appendChild(xml[CRE]('item'));
 					item.setAttribute('internal', i);
-					item.setAttribute('name', f(config[i].name));
+					item.setAttribute('name', config[i].name);
 					item.setAttribute('value', config[i].value);
 					item.setAttribute('type', config[i].type);
-					'desc' in config[i] && item.setAttribute('desc', f(config[i].desc));
+					'desc' in config[i] && item.setAttribute('desc', config[i].desc);
 					'min' in config[i] && item.setAttribute('min', config[i].min);
 					'max' in config[i] && item.setAttribute('max', config[i].max);
 
 					if ('list' in config[i]) {
 						for (let j in config[i].list) {
 							const li = item.appendChild(xml[CRE]('li'));
-							li.textContent = f(config[i].list[j]);
+							li.textContent = config[i].list[j];
 							li.setAttribute('value', j);
 							j == config[i].value && li.setAttribute('selected', 'true');
 						}
@@ -11140,10 +11404,7 @@ const commands = {
 
 			if (xhr.status < 200 || xhr.status >= 300) return;
 
-			let doc = getDOMFromString(
-				IDEOGRAPH_CONVERSION_UI ?
-					新字体の漢字を舊字體に変換(xhr.responseText) :
-					xhr.responseText);
+			let doc = getDOMFromString(xhr.responseText);
 
 			modalDialog({
 				title: 'del の申請',
@@ -11812,11 +12073,20 @@ Promise.all([
 				resolve(false);
 			}
 			else {
-				bootVars.bodyHTML = document.documentElement[IHTML];
-				document.body[IHTML] =
-					`${APP_NAME}: ` +
-					`ページを再構成しています。ちょっと待ってね。`;
-				resolve(true);
+				const html = document.documentElement[IHTML];
+				document.body[IHTML] = `${APP_NAME}: ページを再構成しています。ちょっと待ってね。`;
+				setTimeout(html => {
+					bootVars.bodyHTML = html
+						.replace(/<script[^>]*>.*?<\/script>/gi, '')
+						.replace(/>([^<]+)</g, ($0, content) => {
+							content = resolveCharacterReference(content)
+								.replace(/</g, '&lt;')
+								.replace(/>/g, '&gt;');
+							return `>${content}<`;
+						});
+
+					resolve(true);
+				}, 0, html);
 			}
 		}
 
