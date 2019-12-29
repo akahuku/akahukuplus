@@ -51,7 +51,7 @@ const FALLBACK_JPEG_QUALITY = 0.8;
 const TEGAKI_CANVAS_WIDTH = 344;// original size: 344
 const TEGAKI_CANVAS_HEIGHT = 135;// original size: 135
 const INLINE_VIDEO_MAX_WIDTH = 720;
-const LAST_RELOAD_BUFFER_MSECS = 1000 * 30;
+const QUICK_MODERATE_REASON_CODE = 110;
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
@@ -95,7 +95,8 @@ let sounds;
 let catalogPopup;
 let urlStorage;
 let quotePopup;
-let autoTracker;
+let activeTracker;
+let passiveTracker;
 let linkifier;
 
 // other runtime variables
@@ -139,7 +140,6 @@ let version = '0.0.1';
 let devMode = false;
 let viewportRect;
 let overrideUpfile;
-let lastReloadTimerID;
 let moderatePromise = Promise.resolve();
 
 /*
@@ -273,6 +273,7 @@ function transformWholeDocument (xsl) {
 	urlStorage = createUrlStorage();
 	xmlGenerator = createXMLGenerator();
 	linkifier = createLinkifier();
+	passiveTracker = createPassiveTracker();
 
 	const generateResult = xmlGenerator.run(
 		bootVars.bodyHTML + bootVars.iframeSources,
@@ -380,7 +381,7 @@ function transformWholeDocument (xsl) {
 	timingLogger.forceEndTag();
 	timingLogger.locked = true;
 
-	processRemainingReplies(generateResult.remainingRepliesContext);
+	processRemainingReplies(null, generateResult.remainingRepliesContext);
 }
 
 function install (mode) {
@@ -490,7 +491,7 @@ function install (mode) {
 		.add('#search-item', (e, t) => {
 			const number = t.getAttribute('data-number');
 			if (!number) return;
-			const wrapper = $qs([
+			let wrapper = $qs([
 				`article .topic-wrap[data-number="${number}"]`,
 				`article .reply-wrap > [data-number="${number}"]`
 			].join(','));
@@ -522,7 +523,12 @@ function install (mode) {
 		})
 
 		.add('.del', (e, t) => {
-			commands.openModerateDialog(e, t);
+			if (storage.config.quick_moderation.value) {
+				commands.quickModerate(e, t);
+			}
+			else {
+				commands.openModerateDialog(e, t);
+			}
 		})
 		.add('.postno', (e, t) => {
 			const wrap = getWrapElement(t);
@@ -826,7 +832,7 @@ function install (mode) {
 	 * auto-reloder
 	 */
 
-	autoTracker = createAutoTracker();
+	activeTracker = createActiveTracker();
 
 	/*
 	 * restore cookie value
@@ -1812,52 +1818,61 @@ function createXMLGenerator () {
 	}
 
 	function getExpirationDate (s, fromDate) {
-		let Y, M, D, h, m;
+		let Y, M, D, h, m, expireDate;
 
 		if (!(fromDate instanceof Date)) {
 			fromDate = new Date;
 		}
 
-		//
-		if (s.match(/(\d{4})年/)) {
-			Y = RegExp.$1 - 0;
+		if (s instanceof Date) {
+			expireDate = s;
+			Y = expireDate.getFullYear();
+			M = expireDate.getMonth();
+			D = expireDate.getDate();
+			h = expireDate.getHours();
+			m = expireDate.getMinutes();
 		}
-		else if (s.match(/(\d{2})年/)) {
-			Y = 2000 + (RegExp.$1 - 0);
-		}
-		if (s.match(/(\d+)月/)) {
-			M = RegExp.$1 - 1;
-		}
-		if (s.match(/(\d+)日/)) {
-			D = RegExp.$1 - 0;
-		}
-		if (s.match(/(\d+):(\d+)/)) {
-			h = RegExp.$1 - 0;
-			m = RegExp.$2 - 0;
-		}
+		else {
+			//
+			if (s.match(/(\d{4})年/)) {
+				Y = RegExp.$1 - 0;
+			}
+			else if (s.match(/(\d{2})年/)) {
+				Y = 2000 + (RegExp.$1 - 0);
+			}
+			if (s.match(/(\d+)月/)) {
+				M = RegExp.$1 - 1;
+			}
+			if (s.match(/(\d+)日/)) {
+				D = RegExp.$1 - 0;
+			}
+			if (s.match(/(\d+):(\d+)/)) {
+				h = RegExp.$1 - 0;
+				m = RegExp.$2 - 0;
+			}
 
-		// 23:00 -> 01:00頃消えます: treat as next day
-		if (h != undefined && h < fromDate.getHours() && D == undefined) {
-			D = fromDate.getDate() + 1;
-		}
-		// 31日 -> 1日頃消えます: treat as next month
-		if (D != undefined && D < fromDate.getDate() && M == undefined) {
-			M = fromDate.getMonth() + 1;
-		}
-		// 12月 -> 1月頃消えます: treat as next year
-		if (M != undefined && M < fromDate.getMonth() && Y == undefined) {
-			Y = fromDate.getFullYear() + 1;
-		}
+			// 23:00 -> 01:00頃消えます: treat as next day
+			/*if (h != undefined && h < fromDate.getHours() && D == undefined) {
+				D = fromDate.getDate() + 1;
+			}*/
+			// 31日 -> 1日頃消えます: treat as next month
+			if (D != undefined && D < fromDate.getDate() && M == undefined) {
+				M = fromDate.getMonth() + 1;
+			}
+			// 12月 -> 1月頃消えます: treat as next year
+			if (M != undefined && M < fromDate.getMonth() && Y == undefined) {
+				Y = fromDate.getFullYear() + 1;
+			}
 
-		//
-		if (Y == undefined) Y = fromDate.getFullYear();
-		if (M == undefined) M = fromDate.getMonth();
-		if (D == undefined) D = fromDate.getDate();
-		if (h == undefined) h = fromDate.getHours();
-		if (m == undefined) m = fromDate.getMinutes();
-
-		//
-		const expireDate = new Date(Y, M, D, h, m);
+			//
+			expireDate = new Date(
+				Y == undefined ? fromDate.getFullYear() : Y,
+				M == undefined ? fromDate.getMonth() : M,
+				D == undefined ? fromDate.getDate() : D,
+				h == undefined ? fromDate.getHours() : h,
+				m == undefined ? fromDate.getMinutes() : m
+			);
+		}
 
 		let expireDateString;
 		let remains = expireDate.getTime() - fromDate.getTime();
@@ -1895,27 +1910,6 @@ function createXMLGenerator () {
 			at: expireDate,
 			string: expireDateString
 		};
-	}
-
-	function setLastReloadTime (expire) {
-		if (lastReloadTimerID) {
-			clearTimeout(lastReloadTimerID);
-			lastReloadTimerID = null;
-		}
-		if (!(expire instanceof Date)) return;
-
-		const lastReloadAt = new Date(expire.getTime() - LAST_RELOAD_BUFFER_MSECS);
-		const remainsMsecs = lastReloadAt.getTime() - Date.now();
-		if (remainsMsecs < 0) return;
-
-		lastReloadTimerID = setTimeout(() => {
-			lastReloadTimerID = null;
-			if (pageModes[0].mode != 'reply') return;
-			if (autoTracker.running) return;
-			commands.reload();
-		}, remainsMsecs);
-
-		console.log(`last reload timer will be invoked at ${lastReloadAt.toLocaleString()}`);
 	}
 
 	function parseMaxAttachSize (number, unit) {
@@ -2148,17 +2142,17 @@ function createXMLGenerator () {
 			while ((ads = adsRegex.exec(content))) {
 				let width, height, src, re;
 
-				re = /width\s*=\s*["']?\s*(\d+)/i.exec(ads[1]);
+				re = /width="(\d+)/i.exec(ads[1]);
 				if (re) {
 					width = re[1] - 0;
 				}
 
-				re = /height\s*=\s*["']?\s*(\d+)/i.exec(ads[1]);
+				re = /height="(\d+)/i.exec(ads[1]);
 				if (re) {
 					height = re[1] - 0;
 				}
 
-				re = /src\s*=\s*["']?\s*([^"'>\s]+)/i.exec(ads[1]);
+				re = /src="([^"]+)/i.exec(ads[1]);
 				if (re) {
 					src = re[1];
 				}
@@ -2271,7 +2265,7 @@ function createXMLGenerator () {
 				htmlref = /\b(res\/(\d+)\.htm|futaba\.php\?res=(\d+))/.exec(window.location.href);
 			}
 			else {
-				htmlref = /<a href=['"]?(res\/(\d+)\.htm|futaba\.php\?res=(\d+))[^>]*>/i.exec(topicInfo);
+				htmlref = /<a href="(res\/(\d+)\.htm|futaba\.php\?res=(\d+))[^>]*>/i.exec(topicInfo);
 			}
 			if (!htmlref) continue;
 
@@ -2291,7 +2285,7 @@ function createXMLGenerator () {
 			// expiration date
 			const expires = /<(?:small|span)[^>]*>([^<]+?頃消えます)<\/(?:small|span)>/i.exec(topicInfo);
 			const expireWarn = /<font[^>]+><b>このスレは古いので、/i.test(topicInfo);
-			const maxReached = /<span\s+class=["']?maxres["']?[^>]*>[^<]+</i.test(topicInfo);
+			const maxReached = /<span\s+class="maxres"[^>]*>[^<]+</i.test(topicInfo);
 			if (expires || expireWarn || maxReached) {
 				const expiresNode = element(topicNode, 'expires');
 				let expireDate;
@@ -2303,11 +2297,11 @@ function createXMLGenerator () {
 				}
 				if (expireDate) {
 					urlStorage.memo(url, expireDate.at.getTime());
-					setLastReloadTime(expireDate.at);
+					passiveTracker.update(expireDate.at);
 				}
 				else {
 					urlStorage.memo(url, Date.now() + 1000 * 60 * 60 * 24);
-					setLastReloadTime();
+					passiveTracker.update();
 				}
 				if (expireWarn) {
 					expiresNode.setAttribute('warned', 'true');
@@ -2385,7 +2379,7 @@ function createXMLGenerator () {
 			}
 
 			// そうだね (that's right)
-			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
+			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
 			if (re) {
 				const sodaneNode = element(topicNode, 'sodane');
 				if (/x0$/.test(re[1])) {
@@ -2594,7 +2588,7 @@ function createXMLGenerator () {
 			}
 
 			// そうだね (that's right)
-			re = /<a[^>]+class=["']?sod["']?[^>]*>([^<]+)<\/a>/i.exec(info);
+			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(info);
 			if (re) {
 				const sodaneNode = element(replyNode, 'sodane');
 				if (/x0$/.test(re[1])) {
@@ -2710,16 +2704,28 @@ function createXMLGenerator () {
 				let extraTester = '';
 				switch (repliesCount) {
 				case 0:
-					extraTester = '\nfu25455';
+					extraTester = [
+						'\n',
+						'su3524582.mp3',
+						'su3524582.mp3',
+						'<font color="#789922">&gt;su3524582.mp3'
+					].join('<br>');
 					break;
 				case 1:
-					extraTester = '\n<br><font color="#789922">&gt;fu25455</font>';
+					extraTester = [
+						'\n',
+						'fu25616.mp3',
+						'fu25616.mp3',
+						'<font color="#789922">&gt;fu25616.mp3</font>'
+					].join('<br>');
 					break;
 				case 2:
-					extraTester = '\nfu25455.jpg';
-					break;
-				case 3:
-					extraTester = '\n<br><font color="#789922">&gt;fu25455.jpg</font>';
+					extraTester = [
+						'\n',
+						'https://img.2chan.net/b/src/1577371181511.webm',
+						'https://img.2chan.net/b/src/1577371181511.webm',
+						'<font color="#789922">&gt;https://img.2chan.net/b/src/1577371181511.webm</font>'
+					].join('<br>');
 					break;
 				}
 				pushComment(element(replyNode, 'comment'), text, comment + extraTester);
@@ -2755,6 +2761,22 @@ function createXMLGenerator () {
 
 		const threadNode = element(enclosureNode, 'thread');
 		threadNode.setAttribute('url', baseUrl);
+
+		/*
+		 * topic informations
+		 */
+
+		const topicNode = element(threadNode, 'topic');
+		const expiresNode = element(topicNode, 'expires');
+		const expireDate = getExpirationDate(new Date(content.dielong));
+		expiresNode.appendChild(text(`${content.die}頃消えます`));
+		expiresNode.setAttribute('remains', expireDate.string);
+		urlStorage.memo(url, expireDate.at.getTime());
+		passiveTracker.update(expireDate.at);
+
+		if (content.maxres && content.maxres != '') {
+			expiresNode.setAttribute('maxreached', 'true');
+		}
 
 		/*
 		 * replies
@@ -3126,6 +3148,11 @@ function createPersistentStorage () {
 			name:'自動追尾時のサンプルレス数',
 			desc:'待機時間を算出するために参照する既存レス群のサンプル数',
 			min:3,max:30
+		},
+		quick_moderation: {
+			type:'bool',
+			value:true,
+			name:'del リンククリックで直接 del を送信する'
 		}
 	};
 	let runtime = {
@@ -3137,9 +3164,13 @@ function createPersistentStorage () {
 		},
 		catalog: {
 			sortOrder: 'default'
+		},
+		media: {
+			volume: 0.2
 		}
 	};
 	let onChanged;
+	let saveRuntimeTimer;
 
 	function validate (name, value) {
 		if (!(name in data)) return;
@@ -3191,7 +3222,15 @@ function createPersistentStorage () {
 	}
 
 	function saveRuntime () {
-		set({runtime: runtime});
+		if (saveRuntimeTimer) {
+			clearTimeout(saveRuntimeTimer);
+		}
+		saveRuntimeTimer = setTimeout(() => {
+			saveRuntimeTimer = undefined;
+			set({runtime: runtime}).then(() => {
+				console.log('runtime saved');
+			});
+		}, 1000);
 	}
 
 	function assignConfig (storage) {
@@ -3233,19 +3272,16 @@ function createPersistentStorage () {
 	}
 
 	function set (items) {
-		try {
+		return new Promise(resolve => {
 			chrome.storage.onChanged.removeListener(handleChanged);
 			chrome.storage.sync.set(items, () => {
 				if (chrome.runtime.lastError) {
 					console.error(`${APP_NAME}: storage#set: ${chrome.runtime.lastError.message}`);
 				}
 				chrome.storage.onChanged.addListener(handleChanged);
+				resolve();
 			});
-		}
-		catch (err) {
-			console.error(`${APP_NAME}: storage#set: ${err.stack}`);
-			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
-		}
+		});
 	}
 
 	function handleChanged (changes, areaName) {
@@ -5344,7 +5380,7 @@ function createScrollManager (frequencyMsecs) {
 	};
 }
 
-function createAutoTracker () {
+function createActiveTracker () {
 	const TIMER1_FREQ_MIN = Math.max(1000 * 5, NETWORK_ACCESS_MIN_INTERVAL);
 	const TIMER1_FREQ_MAX = 1000 * 60 * 5;
 	const TIMER2_FREQ = 1000 * 3;
@@ -5434,15 +5470,15 @@ function createAutoTracker () {
 
 		const intervals = [];
 		for (let i = 0; i < postTimes.length - 1; i++) {
-			intervals.push(postTimes[i + 1].getTime() - postTimes[i].getTime());
+			intervals.push(Math.max(1, postTimes[i + 1].getTime() - postTimes[i].getTime()));
 		}
 
-		if ((intervals.length == 0 || median == 0) && !lastMedian) {
+		if (intervals.length == 0 && !lastMedian) {
 			median = DEFAULT_MEDIAN;
 			logs.push(`frequency median set to default ${median}.`);
 		}
 		else if (referencedReplyNumber == lastReferencedReplyNumber) {
-			median = lastMedian * 2;
+			median = lastMedian * 1.25;
 			logs.push(`number of replies has not changed. use the previous value: ${median}`);
 		}
 		else {
@@ -5495,7 +5531,7 @@ function createAutoTracker () {
 					}
 					else {
 						timer1 = undefined;
-						console.log(`autoTracker: timer cleared. reason: unusual http status (${reloadStatus.lastStatus})`);
+						console.log(`activeTracker: timer cleared. reason: unusual http status (${reloadStatus.lastStatus})`);
 					}
 				});
 			}
@@ -5506,7 +5542,7 @@ function createAutoTracker () {
 			}
 			else {
 				timer1 = undefined;
-				console.log(`autoTracker: timer cleared. reason: not a reply mode (${pageModes[0].mode})`);
+				console.log(`activeTracker: timer cleared. reason: not a reply mode (${pageModes[0].mode})`);
 			}
 		}, computeTrackFrequency());
 	}
@@ -5533,6 +5569,61 @@ function createAutoTracker () {
 		stop: stop,
 		afterPost: afterPost,
 		get running () {return !!timer1}
+	};
+}
+
+function createPassiveTracker () {
+	const THRESHOLD_INTERVAL_MSECS = 1000 * 10;
+
+	let expireDate;
+	let timerID;
+
+	function next () {
+		console.log('passiveTracker#next');
+		const isValidStatus = /^[23]..$/.test(reloadStatus.lastStatus);
+		const isMaxresReached = !!$qs('.expire-maxreached:not(.hide)');
+
+		timerID = undefined;
+
+		if (!isMaxresReached && isValidStatus) {
+			update(expireDate);
+		}
+		else {
+			console.log(`passiveTracker#next: terminated.`);
+		}
+	}
+
+	function timer () {
+		console.log('passiveTracker#timer');
+		if (pageModes[0].mode != 'reply' || activeTracker.running) {
+			next();
+		}
+		else {
+			commands.reload({isAutotrack: true}).then(next);
+		}
+	}
+
+	function update (ed) {
+		if (!(ed instanceof Date)) return;
+		if (pageModes[pageModes.length - 1].mode != 'reply') return;
+
+		expireDate = ed;
+
+		if (timerID) return;
+
+		console.log('passiveTracker#update');
+		const interval = Math.floor((expireDate.getTime() - Date.now()) / 2);
+		if (interval >= THRESHOLD_INTERVAL_MSECS) {
+			timerID = setTimeout(timer, interval);
+			console.log(`passiveTracker#update: timer set at ${(new Date(Date.now() + interval)).toLocaleString()} (${interval / 1000} secs)`);
+		}
+		else {
+			console.log(`passiveTracker#update: terminated.`);
+		}
+	}
+
+	return {
+		update: update
 	};
 }
 
@@ -7105,8 +7196,9 @@ function modalDialog (opts) {
 	let isPending = false;
 	let scrollTop = docScrollTop();
 
-	function getRemoteController () {
+	function getRemoteController (type) {
 		return {
+			get type () {return type},
 			get content () {return content},
 			get isPending () {return isPending},
 			set isPending (v) {isPending = !!v},
@@ -7115,7 +7207,10 @@ function modalDialog (opts) {
 			enableButtons: enableButtons,
 			disableButtonsWithout: disableButtonsWithout,
 			initFromXML: initFromXML,
-			close: leave
+			close: () => {
+				isPending = false;
+				leave();
+			}
 		};
 	}
 
@@ -7135,7 +7230,7 @@ function modalDialog (opts) {
 		empty(content);
 		initTitle(opts.title);
 		initButtons(opts.buttons);
-		opts.oninit && opts.oninit(getRemoteController());
+		opts.oninit && opts.oninit(getRemoteController('init'));
 		startTransition();
 	}
 
@@ -7246,7 +7341,7 @@ function modalDialog (opts) {
 		contentWrap.addEventListener(MMOVE_EVENT_NAME, handleMouseCancel, false);
 		contentWrap.addEventListener('mouseup', handleMouseCancel, false);
 
-		opts.onopen && opts.onopen(getRemoteController());
+		opts.onopen && opts.onopen(getRemoteController('open'));
 		state = 'running';
 
 		setTimeout(function () {
@@ -7287,7 +7382,7 @@ function modalDialog (opts) {
 		if (state != 'running') return;
 		if (isDisabled(e.target)) return;
 		disableButtonsWithout('apply');
-		opts.onapply && opts.onapply(getRemoteController());
+		opts.onapply && opts.onapply(getRemoteController('apply'));
 	}
 
 	function handleOk (e) {
@@ -7297,7 +7392,7 @@ function modalDialog (opts) {
 
 		let canLeave = true;
 		if (opts.onok) {
-			if (opts.onok(getRemoteController()) === false) {
+			if (opts.onok(getRemoteController('ok')) === false) {
 				canLeave = false;
 			}
 		}
@@ -7316,7 +7411,7 @@ function modalDialog (opts) {
 
 		let canLeave = true;
 		if (opts.oncancel) {
-			if (opts.oncancel(getRemoteController()) === false) {
+			if (opts.oncancel(getRemoteController('cancel')) === false) {
 				canLeave = false;
 			}
 		}
@@ -7876,7 +7971,15 @@ function sanitizeComment (commentNode) {
 			node);
 	});
 
-	$qsa('video,audio,iframe,.inline-save-image-wrap', result).forEach(node => {
+	const strippedItems = [
+		'video',
+		'audio',
+		'iframe',
+		'.inline-save-image-wrap',
+		'.siokara-media-container',
+		'.up-media-container'
+	];
+	$qsa(strippedItems.join(','), result).forEach(node => {
 		node.parentNode && node.parentNode.removeChild(node);
 	});
 
@@ -8011,15 +8114,10 @@ function regalizeEditable (el) {
 	let div;
 	while ((div = el.querySelector('div'))) {
 		r.selectNodeContents(div);
-		/*
-		 * ...<br><div>+++</div>    -->  ...<br>+++
-		 * ...<div>+++</div>        -->  ...<br>+++     (new BR inserted)
-		 * ...<br><div><br></div>   -->  ...<br><br>+++
-		 * ...<div><br></div>  -->  -->  ...<br>+++
-		 */
 		const prevBreak = div.previousSibling && div.previousSibling.nodeName == 'BR';
-		const nextBreak = div.firstChild && div.firstChild.nodeName == 'BR';
-		if (!prevBreak && !nextBreak) {
+		//const nextBreak = div.firstChild && div.firstChild.nodeName == 'BR';
+		//if (!prevBreak && !nextBreak) {
+		if (!prevBreak) {
 			div.parentNode.insertBefore(document[CRE]('br'), div);
 		}
 
@@ -8076,93 +8174,191 @@ function setContentsToEditable (el, s) {
 }
 
 function displayInlineVideo (anchor) {
-	if ($qs('video', anchor.parentNode)) return;
+	function createMedia () {
+		const media = document[CRE]('video');
+		const props = {
+			autoplay: true,
+			controls: true,
+			loop: false,
+			muted: false,
+			src: anchor.href,
+			volume: storage.runtime.media.volume
+		};
 
-	const video = document[CRE]('video');
-	const props = {
-		autoplay: true,
-		controls: true,
-		//loop: true,
-		muted: false,
-		src: anchor.href,
-		volume: 0.2
-	};
+		for (let i in props) {
+			media[i] = props[i];
+		}
+		media.style.maxWidth = `${INLINE_VIDEO_MAX_WIDTH}px`;
+		media.style.width = '100%';
+		media.addEventListener('volumechange', e => {
+			storage.runtime.media.volume = e.target.volume;
+			storage.saveRuntime();
+		});
 
-	for (let i in props) {
-		video[i] = props[i];
+		return media;
 	}
-	video.style.maxWidth = `${INLINE_VIDEO_MAX_WIDTH}px`;
-	video.style.width = '100%';
 
-	let thumbnail = $qs('img', anchor);
-	// video file on siokara
-	if (/\/\/www\.nijibox\d+\.com\//.test(anchor.href)) {
-		/*
-		 * with thumbnail:
-		 * ---------------
-		 * div.link-siokara
-		 *   a.lightbox
-		 *     #text
-		 *   div
-		 *     a.lightbox.siokara-thumbnail
-		 *       img
-		 *   div
-		 *     [保存する]
-		 */
-		/*
-		 * without thumbnail:
-		 * ------------------
-		 * a.link-siokara.lightbox
-		 *   #text
-		 */
-		thumbnail = $qs('img', anchor.parentNode);
-		if (thumbnail) {
-			anchor = thumbnail.parentNode;
-			thumbnail.classList.add('hide');
-			anchor.parentNode.insertBefore(video, anchor);
+	let parent;
+
+	// siokara video
+	if ((parent = anchor.closest('.link-siokara'))) {
+		const firstAnchor = $qs('a', parent);
+		const thumbContainer = $qs('.siokara-thumbnail', parent);
+
+		if (firstAnchor && thumbContainer) {
+			if ($qs('video', parent)) {
+				$qsa('.siokara-media-container', parent).forEach(node => {
+					node.parentNode.removeChild(node);
+				});
+				thumbContainer.classList.remove('hide');
+			}
+			else {
+				const mediaContainer = document[CRE]('div');
+				thumbContainer.classList.add('hide');
+				firstAnchor.parentNode.insertBefore(mediaContainer, firstAnchor.nextSibling);
+				mediaContainer.className = 'siokara-media-container';
+				mediaContainer.appendChild(createMedia());
+			}
+		}
+		else if (anchor.closest('q')) {
+			if ($qs('video', anchor)) {
+				$qsa('.siokara-media-container', parent).forEach(node => {
+					node.parentNode.removeChild(node);
+				});
+			}
+			else {
+				const mediaContainer = document[CRE]('div');
+				anchor.appendChild(mediaContainer);
+				mediaContainer.className = 'siokara-media-container';
+				mediaContainer.appendChild(createMedia());
+			}
+		}
+	}
+
+	// up video
+	else if ((parent = anchor.closest('.link-up, .link-futaba'))) {
+		let thumbContainer = anchor;
+
+		if (!$qs('img', anchor)) {
+			thumbContainer = thumbContainer.nextSibling;
+			while (thumbContainer) {
+				if (thumbContainer.nodeName == 'A' && thumbContainer.href == anchor.href) {
+					break;
+				}
+				thumbContainer = thumbContainer.nextSibling;
+			}
+		}
+
+		if (thumbContainer) {
+			if (thumbContainer.previousSibling.nodeName == 'VIDEO') {
+				thumbContainer.parentNode.removeChild(thumbContainer.previousSibling);
+				thumbContainer.classList.remove('hide');
+			}
+			else {
+				thumbContainer.classList.add('hide');
+				thumbContainer.parentNode.insertBefore(createMedia(), thumbContainer);
+			}
 		}
 		else {
-			anchor.appendChild(video);
+			const quote = anchor.closest('q');
+			if (!quote) return;
+			if (quote.nextSibling && quote.nextSibling.nodeName == 'VIDEO') {
+				quote.parentNode.removeChild(quote.nextSibling);
+			}
+			else {
+				quote.parentNode.insertBefore(createMedia(), quote.nextSibling);
+			}
 		}
 	}
-	// video file on futaba
-	else if (thumbnail) {
-		thumbnail.classList.add('hide');
-		anchor.parentNode.insertBefore(video, anchor);
-	}
-	// other
-	else {
-		const container = anchor.parentNode.insertBefore(
-			document[CRE]('div'), anchor.nextSibling);
-		container.appendChild(video);
+
+	// topic video
+	else if ((parent = anchor.closest('a'))) {
+		const thumbContainer = $qs('img', parent);
+		if (parent.previousSibling && parent.previousSibling.nodeName == 'VIDEO') {
+			parent.parentNode.removeChild(parent.previousSibling);
+			thumbContainer.classList.remove('hide');
+		}
+		else {
+			const mediaContainer = document[CRE]('div');
+			thumbContainer.classList.add('hide');
+			parent.parentNode.insertBefore(createMedia(), parent);
+		}
 	}
 }
 
 function displayInlineAudio (anchor) {
-	if ($qs('audio', anchor.parentNode)) return;
+	function createMedia () {
+		const media = document[CRE]('audio');
+		const props = {
+			autoplay: true,
+			controls: true,
+			loop: false,
+			muted: false,
+			src: anchor.href,
+			volume: storage.runtime.media.volume
+		};
 
-	const audio = document[CRE]('audio');
-	const props = {
-		autoplay: true,
-		controls: true,
-		muted: false,
-		src: anchor.href,
-		volume: 0.2
-	};
+		for (let i in props) {
+			media[i] = props[i];
+		}
+		media.addEventListener('volumechange', e => {
+			storage.runtime.media.volume = e.target.volume;
+			storage.saveRuntime();
+		});
 
-	for (let i in props) {
-		audio[i] = props[i];
+		return media;
 	}
 
-	if (anchor.classList.contains('link-up') || anchor.classList.contains('link-up-small')) {
-		anchor.parentNode.insertBefore(audio, anchor);
-		anchor.classList.add('hide');
+	let parent;
+
+	// siokara audio
+	if ((parent = anchor.closest('.link-siokara'))) {
+		const firstAnchor = $qs('a', parent);
+		const thumbContainer = $qs('.siokara-thumbnail', parent);
+
+		if (firstAnchor && thumbContainer) {
+			if ($qs('audio', parent)) {
+				$qsa('.siokara-media-container', parent).forEach(node => {
+					node.parentNode.removeChild(node);
+				});
+				thumbContainer.classList.remove('hide');
+			}
+			else {
+				const mediaContainer = document[CRE]('div');
+				thumbContainer.classList.add('hide');
+				firstAnchor.parentNode.insertBefore(mediaContainer, firstAnchor.nextSibling);
+				mediaContainer.className = 'siokara-media-container';
+				mediaContainer.appendChild(createMedia());
+			}
+		}
+		else if (anchor.closest('q')) {
+			if ($qs('audio', anchor)) {
+				$qsa('.siokara-media-container', parent).forEach(node => {
+					node.parentNode.removeChild(node);
+				});
+			}
+			else {
+				const mediaContainer = document[CRE]('div');
+				anchor.appendChild(mediaContainer);
+				mediaContainer.className = 'siokara-media-container';
+				mediaContainer.appendChild(createMedia());
+			}
+		}
 	}
-	else {
-		const thumbnail = $qs('img', anchor.parentNode);
-		anchor = thumbnail.parentNode;
-		anchor.parentNode.insertBefore(audio, anchor);
-		thumbnail.classList.add('hide');
+
+	// up audio
+	else if ((parent = anchor.closest('.link-up'))) {
+		const neighbor = anchor.nextElementSibling;
+
+		if (neighbor && neighbor.classList.contains('up-media-container')) {
+			neighbor.parentNode.removeChild(neighbor);
+		}
+		else {
+			const mediaContainer = document[CRE]('div');
+			anchor.parentNode.insertBefore(mediaContainer, neighbor);
+			mediaContainer.className = 'up-media-container';
+			mediaContainer.appendChild(createMedia());
+		}
 	}
 }
 
@@ -8325,6 +8521,48 @@ const 新字体の漢字を舊字體に変換 = (function () {
 ]', 'g');
 	return s => ('' + s).replace(key, $0 => map[$0]);
 })();
+
+function registerModeration (anchor, reason, waitDelay) {
+	const postNumber = getPostNumber(anchor);
+	if (!postNumber) return;
+
+	anchor.classList.add('posted');
+
+	moderatePromise = moderatePromise.then(async () => {
+		const url = `${location.protocol}//${location.host}/del.php`;
+		const opts = {
+			method: 'POST',
+			body: new URLSearchParams({
+				mode: 'post',
+				b: siteInfo.board,
+				d: postNumber,
+				reason: reason,
+				responsemode: 'ajax'
+			})
+		};
+
+		let text;
+		try {
+			const response = await fetch(url, opts);
+			if (response.ok) {
+				text = (new TextDecoder('Shift_JIS'))
+					.decode(await response.arrayBuffer());
+			}
+			else {
+				text = `${response.status} ${response.statusText}`;
+			}
+		}
+		catch (err) {
+			text = err.message;
+		}
+
+		anchor.setAttribute('title', `del済み (${text})`);
+		anchor.removeAttribute('data-busy');
+		console.log(`${(new Date).toLocaleString()}: moderated for ${postNumber}.`);
+
+		return delay(waitDelay || 1000 * 10);
+	});
+}
 
 /*
  * <<<1 functions for posting
@@ -9748,8 +9986,10 @@ function stripTextNodes (container) {
 	}
 }
 
-function processRemainingReplies (context, lowBoundNumber, callback) {
+function processRemainingReplies (opts, context, lowBoundNumber, callback) {
 	let maxReplies;
+
+	opts || (opts = {});
 
 	// 'read more' function in reply mode, process whole new replies
 	if (typeof lowBoundNumber == 'number') {
@@ -9828,7 +10068,7 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 
 					callback && callback(newStat);
 
-					scrollToNewReplies(() => {
+					scrollToNewReplies(opts.isAutotrack, () => {
 						updateIdFrequency(newStat);
 						modifyPage();
 					});
@@ -9857,7 +10097,12 @@ function processRemainingReplies (context, lowBoundNumber, callback) {
 	);
 }
 
-function scrollToNewReplies (callback) {
+function scrollToNewReplies (isAutotrack, callback) {
+	if (isAutotrack) {
+		callback && callback();
+		return;
+	}
+
 	const rule = getRule();
 	if (!rule) {
 		callback && callback();
@@ -10481,7 +10726,7 @@ const commands = {
 			transport.release(TRANSPORT_TYPE);
 		});
 	},
-	reloadReplies: function () {
+	reloadReplies: function (opts) {
 		const TRANSPORT_TYPE = 'reload-replies';
 
 		if (transport.isRunning(TRANSPORT_TYPE)) {
@@ -10498,6 +10743,7 @@ const commands = {
 			return Promise.resolve();
 		}
 
+		opts || (opts = {});
 		timingLogger.reset().startTag('reloading replies');
 		setBottomStatus('読み込み中...', true);
 		removeRule();
@@ -10575,6 +10821,7 @@ const commands = {
 
 			// process remaiing replies
 			processRemainingReplies(
+				opts,
 				result.remainingRepliesContext,
 				getLastReplyNumber(),
 				newStat => {
@@ -10627,7 +10874,7 @@ const commands = {
 			}
 		});
 	},
-	reloadRepliesViaAPI: function (skipHead) {
+	reloadRepliesViaAPI: function (opts) {
 		const TRANSPORT_MAIN_TYPE = 'reload-replies';
 		const TRANSPORT_SUB_TYPE = 'reload-replies-api';
 
@@ -10645,6 +10892,7 @@ const commands = {
 			return Promise.resolve();
 		}
 
+		opts || (opts = {});
 		timingLogger.reset().startTag('reloading replies via API');
 		setBottomStatus('読み込み中...', true);
 		removeRule();
@@ -10653,7 +10901,7 @@ const commands = {
 		dumpDebugText();
 
 		let p;
-		if (skipHead) {
+		if (opts.skipHead) {
 			p = Promise.resolve({
 				doc: null,
 				now: Date.now(),
@@ -10720,7 +10968,7 @@ const commands = {
 					setBottomStatus(bottomMessage);
 					//console.log(bottomMessage);
 
-					scrollToNewReplies(() => {
+					scrollToNewReplies(opts.isAutotrack, () => {
 						updateIdFrequency(newStat);
 						updateSodanesViaAPI(doc.sd);
 						modifyPage();
@@ -11149,12 +11397,12 @@ const commands = {
 						if (storage.config.full_reload_after_post.value) {
 							reloadStatus.lastReloaded = Date.now();
 							return commands.reloadReplies().then(() => {
-								return autoTracker.afterPost();
+								return activeTracker.afterPost();
 							});
 						}
 						else {
-							return commands.reload(true).then(() => {
-								return autoTracker.afterPost();
+							return commands.reload({skipHead:true}).then(() => {
+								return activeTracker.afterPost();
 							});
 						}
 					}
@@ -11235,6 +11483,13 @@ const commands = {
 			mimeType: getImageMimeType(href),
 			anchorId: id
 		});
+	},
+	quickModerate: (e, anchor) => {
+		if (!anchor) return;
+		if (anchor.getAttribute('data-busy')) return;
+
+		anchor.setAttribute('data-busy', '1');
+		registerModeration(anchor, QUICK_MODERATE_REASON_CODE, 1000 * 5);
 	},
 
 	/*
@@ -11387,140 +11642,116 @@ const commands = {
 		});
 	},
 	openModerateDialog: (e, anchor) => {
-		if (!anchor || anchor.getAttribute('data-busy')) return;
+		if (!anchor) return;
+		if (anchor.getAttribute('data-busy')) return;
 
 		const postNumber = getPostNumber(anchor);
 		if (!postNumber) return;
 
 		anchor.setAttribute('data-busy', '1');
 
+		async function load (url, opts) {
+			const response = await fetch(url, opts);
+			if (!response.ok) {
+				throw new Error(`${response.status} ${response.statusText}`);
+			}
+
+			return (new TextDecoder('Shift_JIS')).decode(await response.arrayBuffer());
+		}
+
+		function modalDialogP (opts) {
+			return new Promise(resolve => {
+				opts.onapply = opts.onok = opts.oncancel = dialog => {
+					dialog.isPending = true;
+					resolve(dialog);
+				};
+				modalDialog(opts);
+			});
+		}
+
 		const baseUrl = `${location.protocol}//${location.host}/`;
-		const moderatorUrl = `${baseUrl}del.php?b=${siteInfo.board}&d=${getPostNumber(anchor)}`;
-		let xhr = transport.create();
-		xhr.open('GET', moderatorUrl);
-		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
-		xhr.onload = () => {
-			anchor.removeAttribute('data-busy');
 
-			if (xhr.status < 200 || xhr.status >= 300) return;
+		load(`${baseUrl}del.php?b=${siteInfo.board}&d=${postNumber}`)
+		.then(text => modalDialogP({
+			title: 'del の申請',
+			buttons: 'ok, cancel',
+			oninit: dialog => {
+				const xml = document.implementation.createDocument(null, 'dialog', null);
+				dialog.initFromXML(xml, 'moderate-dialog');
+			},
+			onopen: dialog => {
+				const moderateTarget = $qs('.moderate-target', dialog.content);
+				if (moderateTarget) {
+					let wrapElement = getWrapElement(anchor);
+					if (wrapElement) {
+						wrapElement = sanitizeComment(wrapElement);
 
-			let doc = getDOMFromString(xhr.responseText);
+						// replace anchors to text
+						$qsa('a', wrapElement).forEach(node => {
+							node.parentNode.replaceChild(
+								document.createTextNode(node.textContent),
+								node);
+						});
 
-			modalDialog({
-				title: 'del の申請',
-				buttons: 'ok, cancel',
-				oninit: dialog => {
-					const xml = document.implementation.createDocument(null, 'dialog', null);
-					dialog.initFromXML(xml, 'moderate-dialog');
-				},
-				onopen: dialog => {
-					const moderateTarget = $qs('.moderate-target', dialog.content);
-					if (moderateTarget) {
-						let wrapElement = getWrapElement(anchor);
-						if (wrapElement) {
-							wrapElement = sanitizeComment(wrapElement);
-
-							// replace anchors to text
-							$qsa('a', wrapElement).forEach(node => {
-								node.parentNode.replaceChild(
-									document.createTextNode(node.textContent),
-									node);
-							});
-
-							moderateTarget.appendChild(wrapElement);
-						}
+						moderateTarget.appendChild(wrapElement);
 					}
+				}
 
-					let form = $qs('form[method="POST"]', doc);
-					const moderateList = $qs('.moderate-form', dialog.content);
-					if (form && moderateList) {
-						form = form.cloneNode(true);
-
-						form.action = resolveRelativePath(form.getAttribute('action'), baseUrl);
-						// strip submit buttons
-						$qsa('input[type="submit"]', form).forEach(node => {
-							node.parentNode.removeChild(node);
-						});
-
-						// strip tab borders
-						$qsa('table[border]', form).forEach(node => {
-							node.removeAttribute('border');
-						});
-
-						// make reason-text clickable
-						$qsa('input[type="radio"][name="reason"]', form).forEach(node => {
-							const r = node.ownerDocument.createRange();
-							const label = node.ownerDocument[CRE]('label');
-							r.setStartBefore(node);
-							r.setEndAfter(node.nextSibling);
-							r.surroundContents(label);
-						});
-
-						// select last used reason, if available
-						if (storage.runtime.del.lastReason) {
-							const node = $qs(`input[type="radio"][value="${storage.runtime.del.lastReason}"`, form);
-							if (node) {
-								node.checked = true;
-							}
-						}
-
-						moderateList.appendChild(form);
-					}
-				},
-				onok: dialog => {
-					const TRANSPORT_TYPE = 'moderate';
-					let form = $qs('form', dialog.content);
-					if (!form) return;
-
-					form = form.cloneNode(true);
-
-					$qsa('input[type="radio"]:checked', form).forEach(node => {
-						storage.runtime.del.lastReason = node.value;
-						storage.saveRuntime();
+				const doc = getDOMFromString(text);
+				const form = $qs('form[method="POST"]', doc);
+				const moderateList = $qs('.moderate-form', dialog.content);
+				if (form && moderateList) {
+					// strip submit buttons
+					$qsa('input[type="submit"]', form).forEach(node => {
+						node.parentNode.removeChild(node);
 					});
 
-					const no = $qs('input[name="d"]', form).value;
-					moderatePromise = moderatePromise.then(() => {
-						return postBase(TRANSPORT_TYPE, form).then(response => {
-							response = response.replace(/\r\n|\r|\n/g, '\t');
-							const result = parseModerateResponse(response);
+					// strip tab borders
+					$qsa('table[border]', form).forEach(node => {
+						node.removeAttribute('border');
+					});
 
-							if (!result.registered) {
-								throw new Error(result.error || 'なんかエラー？');
-							}
+					// make reason-text clickable
+					$qsa('input[type="radio"][name="reason"]', form).forEach(node => {
+						const r = node.ownerDocument.createRange();
+						const label = node.ownerDocument[CRE]('label');
+						r.setStartBefore(node);
+						r.setEndAfter(node.nextSibling);
+						r.surroundContents(label);
+					});
 
-							console.log(`${APP_NAME}: moderation for No.${no} completed.`);
-						})
-						.catch(err => {
-							console.error(`${APP_NAME}: moderation for No.${no} failed: ${err.stack}`);
-						})
-						.finally(() => {
-							const target = $qs([
-								`article .topic-wrap[data-number="${no}"]`,
-								`article .reply-wrap > [data-number="${no}"]`
-							].join(','));
-							const delLink = $qs('.del', target);
-							if (delLink) {
-								delLink.classList.add('posted');
-								delLink.setAttribute('title', 'del済み');
-							}
+					// select last used reason, if available
+					if (storage.runtime.del.lastReason) {
+						const node = $qs(`input[type="radio"][value="${storage.runtime.del.lastReason}"`, form);
+						if (node) {
+							node.checked = true;
+						}
+					}
 
-							form = null;
-							transport.release(TRANSPORT_TYPE);
-						});
-					})
-					.then(() => delay(1000 * 10));
+					moderateList.appendChild(form);
 				}
-			});
-		};
-		xhr.onerror = () => {
+			}
+		}))
+		.then(dialog => {
+			if (dialog.type == 'ok') {
+				const form = $qs('form', dialog.content);
+
+				$qsa('input[type="radio"]:checked', form).forEach(node => {
+					storage.runtime.del.lastReason = node.value;
+					storage.saveRuntime();
+				});
+
+				registerModeration(anchor, $qs('input[name="reason"]', form).value);
+			}
+
+			dialog.close();
+		})
+		.catch(err => {
+			console.error(err);
+		})
+		.finally(() => {
 			anchor.removeAttribute('data-busy');
-		};
-		xhr.onloadend = () => {
-			xhr = null;
-		};
-		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
-		xhr.send();
+		});
 	},
 	openHelpDialog: (e, anchor) => {
 		modalDialog({
@@ -11804,11 +12035,11 @@ const commands = {
 	 */
 
 	registerTrack: function () {
-		if (autoTracker.running) {
-			autoTracker.stop();
+		if (activeTracker.running) {
+			activeTracker.stop();
 		}
 		else {
-			autoTracker.start();
+			activeTracker.start();
 		}
 	},
 
