@@ -2276,6 +2276,10 @@ function createXMLGenerator () {
 			const threadNode = element(enclosureNode, 'thread');
 			threadNode.setAttribute('url', resolveRelativePath(htmlref[1], baseUrl));
 
+			let threadExpireDate;
+			let threadImageNumber;
+			let threadComment;
+
 			/*
 			 * topic informations
 			 */
@@ -2291,17 +2295,15 @@ function createXMLGenerator () {
 				let expireDate;
 				if (expires) {
 					expireDate = getExpirationDate(expires[1]);
-
 					expiresNode.appendChild(text(expires[1]));
 					expiresNode.setAttribute('remains', expireDate.string);
 				}
 				if (expireDate) {
-					urlStorage.memo(url, expireDate.at.getTime());
+					threadExpireDate = expireDate.at.getTime();
 					passiveTracker.update(expireDate.at);
 				}
 				else {
-					urlStorage.memo(url, Date.now() + 1000 * 60 * 60 * 24);
-					passiveTracker.update();
+					threadExpireDate = Date.now() + 1000 * 60 * 60 * 24;
 				}
 				if (expireWarn) {
 					expiresNode.setAttribute('warned', 'true');
@@ -2412,6 +2414,8 @@ function createXMLGenerator () {
 			if (imagehref) {
 				const imageNode = element(topicNode, 'image');
 				const srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				threadImageNumber = /\/src\/(\d+)/.exec(srcUrl)[1] - 0;
+
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
@@ -2465,6 +2469,14 @@ function createXMLGenerator () {
 
 			// comment
 			pushComment(element(topicNode, 'comment'), text, topic);
+
+			// memory some topic infomations
+			urlStorage.memo(threadExpireDate, item => {
+				if (threadImageNumber) {
+					item.image = threadImageNumber;
+				}
+				item.comment = topicNode.querySelector('comment').textContent;
+			});
 
 			/*
 			 * replies
@@ -2771,7 +2783,7 @@ function createXMLGenerator () {
 		const expireDate = getExpirationDate(new Date(content.dielong));
 		expiresNode.appendChild(text(`${content.die}頃消えます`));
 		expiresNode.setAttribute('remains', expireDate.string);
-		urlStorage.memo(url, expireDate.at.getTime());
+		urlStorage.memo(expireDate.at.getTime());
 		passiveTracker.update(expireDate.at);
 
 		if (content.maxres && content.maxres != '') {
@@ -4111,6 +4123,20 @@ function createUrlStorage () {
 					return;
 				}
 
+				/*
+				if (devMode) {
+					const buffer = result.openedThreads.map(item => {
+						const expire = new Date(item.expire);
+						const [server, board, number] = item.key.split('-');
+						const count = item.count;
+						const image = item.image;
+						const comment = item.comment;
+						return `${server}.2chan.net/${board}/res/${number}.htm (${count}): ${expire.toLocaleString()}: ${comment}`
+					});
+					console.log(buffer.join('\n'));
+				}
+				*/
+
 				const now = Date.now();
 				result.openedThreads = result.openedThreads.filter(item => item.expire > now);
 				callback(result.openedThreads);
@@ -4145,25 +4171,38 @@ function createUrlStorage () {
 		return result;
 	}
 
-	function getKey (url) {
+	function getKey () {
 		return siteInfo.resno ?
 			`${siteInfo.server}-${siteInfo.board}-${siteInfo.resno}` :
 			null;
 	}
 
-	function memo (url, expire) {
-		const key = getKey(url);
+	function memo (expire, callback) {
+		const key = getKey();
 		if (!key) return;
 
 		loadSlot(slot => {
 			const index = indexOf(slot, key);
+			let item;
+
 			if (index >= 0) {
-				slot[index].expire = expire;
-				slot[index].count++;
+				item = slot[index];
+				item.expire = expire;
+				item.count++;
 			}
 			else {
-				slot.push({expire: expire, key: key, count: 1});
+				item = {expire: expire, key: key, count: 1};
+				slot.push(item);
 			}
+
+			if (typeof callback == 'function') {
+				try {
+					callback(item);
+				}
+				catch (err) {
+				}
+			}
+
 			saveSlot(slot);
 		});
 	}
@@ -5381,17 +5420,25 @@ function createScrollManager (frequencyMsecs) {
 }
 
 function createActiveTracker () {
-	const TIMER1_FREQ_MIN = Math.max(1000 * 5, NETWORK_ACCESS_MIN_INTERVAL);
+	const DEFAULT_MEDIAN = 1000 * 6;
+	const MEDIAN_MAX = 1000 * 60;
+	const TIMER1_FREQ_MIN = Math.max(1000 * 10, NETWORK_ACCESS_MIN_INTERVAL);
 	const TIMER1_FREQ_MAX = 1000 * 60 * 5;
 	const TIMER2_FREQ = 1000 * 3;
-	const DEFAULT_MEDIAN = 15 * 1000;
 
-	let timer1;
+	let currentState;
 	let timer2;
 	let baseTime;
 	let waitSeconds;
 	let lastMedian;
 	let lastReferencedReplyNumber;
+
+	function l (s) {
+		if (!devMode) return;
+		const now = new Date;
+		const time = `${now.toLocaleTimeString()}.${now.getMilliseconds()}`;
+		console.log(`${time}: ${s}`);
+	}
 
 	function getTimeSpanText (span) {
 		const text = [];
@@ -5419,36 +5466,82 @@ function createActiveTracker () {
 	}
 
 	function updateTrackingLink (restSeconds, ratio) {
-		const text = getTimeSpanText(restSeconds);
-		$qsa('a[href="#track"]').forEach(node => {
-			$t(node, `自動追尾中`);
-		});
+		restSeconds = Math.max(0, restSeconds);
+		const text = getTimeSpanText(Math.floor(restSeconds));
+		const width = Math.floor($('reload-anchor').offsetWidth * Math.max(0, ratio));
 		$qsa('.track-indicator').forEach(node => {
-			node.style.transitionDuration = ratio == 1 ? '.25s' : '1s';
-			node.style.width = `${$('reload-anchor').offsetWidth * ratio}px`;
-			node.title = `あと ${text} で更新します`;
+			if (document.hidden) {
+				node.style.transitionProperty = 'none';
+				node.style.transitionDuration = '0s';
+			}
+			else {
+				node.style.transitionProperty = '';
+				node.style.transitionDuration = '2.5s';
+			}
+			node.style.width = `${width}px`;
+			node.title = text != '0秒' ?
+				`あと ${text} くらいで更新します` :
+				`まもなく更新します`;
 		});
 	}
 
-	function startTimer2 (rest) {
-		baseTime = Date.now();
-		waitSeconds = rest;
-		updateTrackingLink(rest, 1);
-		if (!timer2) {
-			timer2 = setInterval(function intervalIndicator () {
-				const elapsedSeconds = (Date.now() - baseTime) / 1000;
-				const restSeconds = Math.floor(waitSeconds - elapsedSeconds);
-				if (restSeconds >= 0) {
-					updateTrackingLink(restSeconds, restSeconds / waitSeconds);
-				}
-				else {
-					stopTimer2();
-				}
-			}, TIMER2_FREQ);
+	function startTimer2 () {
+		if (timer2) {
+			return;
 		}
+
+		l('activeTracker#startTimer2');
+		timer2 = setInterval(() => {
+			if (currentState != 'running') {
+				return;
+			}
+
+			const elapsedSeconds = (Date.now() - baseTime) / 1000;
+			const restSeconds = waitSeconds - elapsedSeconds;
+			const width = $qs('.track-indicator').offsetWidth;
+			if (restSeconds >= 0 || width > 0) {
+				updateTrackingLink(restSeconds, restSeconds / waitSeconds);
+				return;
+			}
+
+			setCurrentState('reloading');
+			if (pageModes[0].mode == 'reply') {
+				commands.reload().then(() => {
+					const isValidStatus = /^[23]..$/.test(reloadStatus.lastStatus);
+					const isMaxresReached = !!$qs('.expire-maxreached:not(.hide)');
+					if (!isMaxresReached && isValidStatus) {
+						setCurrentState();
+						start();
+					}
+					else {
+						stopTimer2();
+						setCurrentState();
+						l([
+							`activeTracker:`,
+							`timer cleared.`,
+							`reason: unusual http status (${reloadStatus.lastStatus})`
+						].join(' '));
+					}
+				});
+			}
+			else if (pageModes.length >= 2 && pageModes[1].mode == 'reply') {
+				setCurrentState();
+				start();
+			}
+			else {
+				stopTimer2();
+				setCurrentState();
+				l([
+					`activeTracker:`,
+					`timer cleared.`,
+					`reason: not a reply mode (${pageModes[0].mode})`
+				].join(' '));
+			}
+		}, TIMER2_FREQ);
 	}
 
 	function stopTimer2 () {
+		l('activeTracker#stopTimer2');
 		if (timer2) {
 			clearInterval(timer2);
 			timer2 = undefined;
@@ -5479,22 +5572,36 @@ function createActiveTracker () {
 		}
 		else if (referencedReplyNumber == lastReferencedReplyNumber) {
 			median = lastMedian * 1.25;
-			logs.push(`number of replies has not changed. use the previous value: ${median}`);
+			median = Math.floor(median / 1000) * 1000;
+			median = Math.min(median, MEDIAN_MAX);
+			logs.push(`number of replies has not changed. use the previous median value: ${lastMedian} -> ${median}`);
 		}
 		else {
 			intervals.sort((a, b) => a - b);
 			const medianIndex = Math.floor(intervals.length / 2);
-			median = (intervals.length % 2) ?
+			const tempMedian = (intervals.length % 2) ?
 				intervals[medianIndex] :
 				(intervals[medianIndex - 1] + intervals[medianIndex]) / 2;
+
+			if (isNaN(lastMedian)) {
+				median = tempMedian;
+			}
+			else {
+				median = (lastMedian + tempMedian) / 2;
+			}
+
+			median = Math.floor(median / 1000) * 1000;
+			median = Math.min(median, MEDIAN_MAX);
 			
 			logs.push(
-				`  postTimes: ${postTimes.map(a => a.getTime()).join(', ')}`,
+				`  postTimes: ${postTimes.map(a => a.toLocaleTimeString()).join(', ')}`,
 				`  intervals: ${intervals.map(a => `${getTimeSpanText(a / 1000)}`).join(', ')}`,
 				`medianIndex: ${medianIndex}`,
-				`     median: ${median} - ${getTimeSpanText(median / 1000)}`,
 				` multiplier: ${storage.config.autotrack_expect_replies.value}`,
-				`   sampling: ${storage.config.autotrack_sampling_replies.value}`
+				`   sampling: ${storage.config.autotrack_sampling_replies.value}`,
+				` lastMedian: ${lastMedian} - ${getTimeSpanText(lastMedian / 1000)}`,
+				` tempMedian: ${tempMedian} - ${getTimeSpanText(tempMedian / 1000)}`,
+				`     median: ${median} - ${getTimeSpanText(median / 1000)}`
 			);
 		}
 
@@ -5503,72 +5610,62 @@ function createActiveTracker () {
 		result = Math.max(result, TIMER1_FREQ_MIN);
 		lastMedian = median;
 		lastReferencedReplyNumber = referencedReplyNumber;
-		startTimer2(Math.floor(result / 1000));
 
 		logs.push(
-			`result: ${result} - ${getTimeSpanText(result / 1000)}`,
-			`result for display: ${Math.floor(result / 1000)}`
+			`----`,
+			`result wait msecs: ${result} - ${getTimeSpanText(result / 1000)}`
 		);
-		devMode && console.log(logs.join('\n'));
+		l(logs.join('\n'));
 
 		return result;
 	}
 
-	function start () {
-		if (timer1) return;
-
-		timer1 = setTimeout(function autoTrackHandler () {
-			stopTimer2();
-
-			if (pageModes[0].mode == 'reply') {
-				commands.reload().then(() => {
-					const isValidStatus = /^[23]..$/.test(reloadStatus.lastStatus);
-					const isMaxresReached = !!$qs('.expire-maxreached:not(.hide)');
-					if (!isMaxresReached && isValidStatus) {
-						timer1 = setTimeout(
-							autoTrackHandler,
-							computeTrackFrequency());
-					}
-					else {
-						timer1 = undefined;
-						console.log(`activeTracker: timer cleared. reason: unusual http status (${reloadStatus.lastStatus})`);
-					}
-				});
-			}
-			else if (pageModes.length >= 2 && pageModes[1].mode == 'reply') {
-				timer1 = setTimeout(
-					autoTrackHandler,
-					computeTrackFrequency());
-			}
-			else {
-				timer1 = undefined;
-				console.log(`activeTracker: timer cleared. reason: not a reply mode (${pageModes[0].mode})`);
-			}
-		}, computeTrackFrequency());
+	function setCurrentState (state) {
+		currentState = state;
 	}
 
-	function stop (keepLastVars) {
-		if (!timer1) return;
+	function start () {
+		if (currentState) return;
 
-		clearTimeout(timer1);
-		timer1 = undefined;
-		if (!keepLastVars) {
-			lastMedian = lastReferencedReplyNumber = 0;
-		}
+		setCurrentState('preparing');
+
+		$qsa('a[href="#track"]').forEach(node => {
+			$t(node, `自動追尾中`);
+		});
+
+		const indicator = $qs('.track-indicator');
+		indicator.style.transitionDuration = '.25s';
+		indicator.style.width = `${$('reload-anchor').offsetWidth}px`;
+		transitionendp(indicator, 1000 * 0.25).then(() => {
+			setCurrentState('running');
+			const restMsecs = computeTrackFrequency();
+			baseTime = Date.now();
+			waitSeconds = restMsecs / 1000;
+			startTimer2();
+		})
+	}
+
+	function stop () {
+		if (!currentState) return;
+
+		currentState = undefined;
+		lastMedian = lastReferencedReplyNumber = 0;
 		stopTimer2();
 	}
 
-	function afterPost () {
-		if (!timer1) return;
-		stop(true);
+	function reset () {
+		l('activeTracker#reset');
+		if (currentState != 'running') return;
+
+		setCurrentState();
 		start();
 	}
 
 	return {
 		start: start,
 		stop: stop,
-		afterPost: afterPost,
-		get running () {return !!timer1}
+		reset: reset,
+		get running () {return !!currentState}
 	};
 }
 
@@ -9160,6 +9257,7 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 								return `${head}${content}${bottom}`;
 							}
 						);
+						/*
 						if (value2 != value) {
 							console.log([
 								'*** replace in json ***',
@@ -9168,8 +9266,9 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 							].join('\n'));
 							value = value2;
 						}
-
 						return value;
+						*/
+						return value2;
 					});
 				}
 				catch (e) {
@@ -11397,12 +11496,12 @@ const commands = {
 						if (storage.config.full_reload_after_post.value) {
 							reloadStatus.lastReloaded = Date.now();
 							return commands.reloadReplies().then(() => {
-								return activeTracker.afterPost();
+								return activeTracker.reset();
 							});
 						}
 						else {
 							return commands.reload({skipHead:true}).then(() => {
-								return activeTracker.afterPost();
+								return activeTracker.reset();
 							});
 						}
 					}
