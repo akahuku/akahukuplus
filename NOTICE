@@ -7,10 +7,6 @@ copyright 2018 akahuku, akahuku@gmail.com
 
 This product includes the following libraries and materials:
 
-* kosian - Library for abstracting browser extension
-
-  <https://github.com/akahuku/kosian>
-
 * blowfish - Javascript Blowfish Library
 
   <https://github.com/takezoh/blowfish.js>
@@ -35,6 +31,6 @@ This product includes the following libraries and materials:
 
   <https://github.com/cemerick/jsdifflib>
 
-* extend1.mp3
+* several sound effects
 
   <https://soundeffect-lab.info/>

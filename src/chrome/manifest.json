@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "__MSG_akahukuplus_name__",
-	"short_name": "__MSG_akahukuplus_name__",
+	"short_name": "__MSG_akahukuplus_shortname__",
 	"version": "0.0.1",
 	"description": "__MSG_akahukuplus_desc__",
 	"default_locale": "ja",

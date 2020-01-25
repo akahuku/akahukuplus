@@ -98,6 +98,7 @@ let quotePopup;
 let activeTracker;
 let passiveTracker;
 let linkifier;
+let titleIndicator;
 
 // other runtime variables
 const siteInfo = {
@@ -829,10 +830,16 @@ function install (mode) {
 	selectionMenu = createSelectionMenu();
 
 	/*
-	 * auto-reloder
+	 * thread tracker
 	 */
 
 	activeTracker = createActiveTracker();
+
+	/*
+	 * title indicator
+	 */
+
+	titleIndicator = createTitleIndicator();
 
 	/*
 	 * restore cookie value
@@ -921,7 +928,7 @@ function install (mode) {
 				clearTimeout(frameOutTimer);
 				frameOutTimer = null;
 			}
-			commands.activatePostForm();
+			commands.activatePostForm('postform-wrap#mouseenter');
 		});
 		$('postform-wrap').addEventListener('mouseleave', e => {
 			if (frameOutTimer) return;
@@ -969,6 +976,7 @@ function install (mode) {
 		identified: createSound('identified'),
 		detectNewMark: createSound('new-mark'),
 		imageSaved: createSound('image-saved'),
+		trackerWorked: createSound('tracker-worked')
 	};
 
 	/*
@@ -1946,7 +1954,7 @@ function createXMLGenerator () {
 	 * main functions
 	 */
 
-	function run (content, maxReplies) {
+	function run (content, maxReplies, isAfterPost) {
 		timingLogger.startTag('createXMLGenerator#run');
 
 		const url = window.location.href;
@@ -2277,8 +2285,6 @@ function createXMLGenerator () {
 			threadNode.setAttribute('url', resolveRelativePath(htmlref[1], baseUrl));
 
 			let threadExpireDate;
-			let threadImageNumber;
-			let threadComment;
 
 			/*
 			 * topic informations
@@ -2414,8 +2420,6 @@ function createXMLGenerator () {
 			if (imagehref) {
 				const imageNode = element(topicNode, 'image');
 				const srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
-				threadImageNumber = /\/src\/(\d+)/.exec(srcUrl)[1] - 0;
-
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
@@ -2471,11 +2475,12 @@ function createXMLGenerator () {
 			pushComment(element(topicNode, 'comment'), text, topic);
 
 			// memory some topic infomations
-			urlStorage.memo(threadExpireDate, item => {
-				if (threadImageNumber) {
-					item.image = threadImageNumber;
+			urlStorage.memo(item => {
+				item.expire = threadExpireDate;
+				if (isAfterPost) {
+					item.count--;
+					item.post++;
 				}
-				item.comment = topicNode.querySelector('comment').textContent;
 			});
 
 			/*
@@ -2757,7 +2762,7 @@ function createXMLGenerator () {
 		}
 	}
 
-	function runFromJson (content, hiddenRepliesCount) {
+	function runFromJson (content, hiddenRepliesCount, isAfterPost) {
 		timingLogger.startTag('createXMLGenerator#runFromJson');
 
 		const url = window.location.href;
@@ -2783,7 +2788,13 @@ function createXMLGenerator () {
 		const expireDate = getExpirationDate(new Date(content.dielong));
 		expiresNode.appendChild(text(`${content.die}頃消えます`));
 		expiresNode.setAttribute('remains', expireDate.string);
-		urlStorage.memo(expireDate.at.getTime());
+		urlStorage.memo(item => {
+			item.expire = expireDate.at.getTime();
+			if (isAfterPost) {
+				item.count--;
+				item.post++;
+			}
+		});
 		passiveTracker.update(expireDate.at);
 
 		if (content.maxres && content.maxres != '') {
@@ -3239,9 +3250,7 @@ function createPersistentStorage () {
 		}
 		saveRuntimeTimer = setTimeout(() => {
 			saveRuntimeTimer = undefined;
-			set({runtime: runtime}).then(() => {
-				console.log('runtime saved');
-			});
+			set({runtime: runtime});
 		}, 1000);
 	}
 
@@ -4128,10 +4137,7 @@ function createUrlStorage () {
 					const buffer = result.openedThreads.map(item => {
 						const expire = new Date(item.expire);
 						const [server, board, number] = item.key.split('-');
-						const count = item.count;
-						const image = item.image;
-						const comment = item.comment;
-						return `${server}.2chan.net/${board}/res/${number}.htm (${count}): ${expire.toLocaleString()}: ${comment}`
+						return `${server}.2chan.net/${board}/res/${number}.htm (count: ${item.count}, post: ${item.post}, expire: ${expire.toLocaleString()})`
 					});
 					console.log(buffer.join('\n'));
 				}
@@ -4153,11 +4159,30 @@ function createUrlStorage () {
 			storage.set({
 				openedThreads: slot
 			});
+
 		}
 		catch (err) {
 			console.error(`${APP_NAME}: saveSlot: ${err.stack}`);
 			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
 		}
+
+		/*
+		 * cookie cathists, catviews structure is
+		 *
+		 * histories      := historyEntries "/" hiddenEntries
+		 * historyEntries := ( entry ( "-" entry)* )?
+		 * hiddenEntries  := ( entry ( "-" entry)* )?
+		 * entry          := [0-9]+
+		 */
+
+		const catviews = slot.reduce((result, item) => {
+			const [server, board, number] = item.key.split('-');
+			if (server == siteInfo.server && board == siteInfo.board) {
+				result.push(number);
+			}
+			return result;
+		}, []).join('-');
+		setBoardCookie('catviews', `${catviews}/`, 100);
 	}
 
 	function indexOf (slot, key) {
@@ -4177,7 +4202,7 @@ function createUrlStorage () {
 			null;
 	}
 
-	function memo (expire, callback) {
+	function memo (callback) {
 		const key = getKey();
 		if (!key) return;
 
@@ -4187,11 +4212,10 @@ function createUrlStorage () {
 
 			if (index >= 0) {
 				item = slot[index];
-				item.expire = expire;
 				item.count++;
 			}
 			else {
-				item = {expire: expire, key: key, count: 1};
+				item = {expire: null, key: key, count: 1, post: 0};
 				slot.push(item);
 			}
 
@@ -4201,6 +4225,18 @@ function createUrlStorage () {
 				}
 				catch (err) {
 				}
+				/*
+				if (devMode) {
+					const buffer = [item].map(item => {
+						const expire = item.expire ?
+							(new Date(item.expire)).toLocaleString() :
+							'(N/A)';
+						const [server, board, number] = item.key.split('-');
+						return `${server}.2chan.net/${board}/res/${number}.htm (count: ${item.count}, post: ${item.post}, expire: ${expire})`
+					});
+					console.log(`urlStorage: ${buffer.join('\n')}`);
+				}
+				*/
 			}
 
 			saveSlot(slot);
@@ -4214,14 +4250,14 @@ function createUrlStorage () {
 				slot.forEach(item => {
 					const key = item.key.split('-');
 					if (siteInfo.server == key[0] && siteInfo.board == key[1]) {
-						result[key[2]] = item.count;
+						result[key[2]] = item;
 					}
 				});
 
 				/*
-				 * result is key(threadNumber) - value (count) object like: {
-				 *   '0000000001': 1,
-				 *   '0000000002': 1,
+				 * result is key(threadNumber) - value (object) object like: {
+				 *   '0000000001': { ... },
+				 *   '0000000002': { ... },
 				 *        :
 				 *        :
 				 * }
@@ -4975,7 +5011,7 @@ function createSelectionMenu () {
 		switch (key) {
 		case 'quote':
 		case 'pull':
-			commands.activatePostForm();
+			commands.activatePostForm(`quote popup (${key})`);
 			quote($('com'), text, /^quote\b/.test(key));
 			break;
 		case 'join':
@@ -5007,7 +5043,7 @@ function createSelectionMenu () {
 								.join(''))
 							.join('');
 
-						commands.activatePostForm().then(() => {
+						commands.activatePostForm(`quote popup (${key})`).then(() => {
 							quote(com, result, false);
 						});
 					}
@@ -5028,9 +5064,6 @@ function createSelectionMenu () {
 				}
 				else if (WasaviExtensionWrapper.IS_GECKO) {
 					setClipboardGecko(quoted);
-				}
-				else {
-					backend.setClipboard(quoted);
 				}
 			}
 			break;
@@ -5441,6 +5474,10 @@ function createActiveTracker () {
 	}
 
 	function getTimeSpanText (span) {
+		if (isNaN(span)) {
+			return '(N/A)';
+		}
+
 		const text = [];
 		if (span >= 3600) {
 			text.push(`${Math.floor(span / 3600)}時間`);
@@ -5460,6 +5497,7 @@ function createActiveTracker () {
 			$t(node, '自動追尾');
 		});
 		$qsa('.track-indicator').forEach(node => {
+			node.style.transitionProperty = '';
 			node.style.transitionDuration = '.25s';
 			node.style.width = '0px';
 		});
@@ -5470,14 +5508,14 @@ function createActiveTracker () {
 		const text = getTimeSpanText(Math.floor(restSeconds));
 		const width = Math.floor($('reload-anchor').offsetWidth * Math.max(0, ratio));
 		$qsa('.track-indicator').forEach(node => {
-			if (document.hidden) {
+			//if (document.hidden) {
 				node.style.transitionProperty = 'none';
 				node.style.transitionDuration = '0s';
-			}
-			else {
-				node.style.transitionProperty = '';
-				node.style.transitionDuration = '2.5s';
-			}
+			//}
+			//else {
+			//	node.style.transitionProperty = '';
+			//	node.style.transitionDuration = '2.5s';
+			//}
 			node.style.width = `${width}px`;
 			node.title = text != '0秒' ?
 				`あと ${text} くらいで更新します` :
@@ -5586,8 +5624,15 @@ function createActiveTracker () {
 			if (isNaN(lastMedian)) {
 				median = tempMedian;
 			}
+			else if (isNaN(tempMedian)) {
+				median = lastMedian * 1.25;
+			}
 			else {
 				median = (lastMedian + tempMedian) / 2;
+			}
+
+			if (isNaN(median)) {
+				median = DEFAULT_MEDIAN;
 			}
 
 			median = Math.floor(median / 1000) * 1000;
@@ -5634,6 +5679,7 @@ function createActiveTracker () {
 		});
 
 		const indicator = $qs('.track-indicator');
+		indicator.style.transitionProperty = '';
 		indicator.style.transitionDuration = '.25s';
 		indicator.style.width = `${$('reload-anchor').offsetWidth}px`;
 		transitionendp(indicator, 1000 * 0.25).then(() => {
@@ -5676,7 +5722,6 @@ function createPassiveTracker () {
 	let timerID;
 
 	function next () {
-		console.log('passiveTracker#next');
 		const isValidStatus = /^[23]..$/.test(reloadStatus.lastStatus);
 		const isMaxresReached = !!$qs('.expire-maxreached:not(.hide)');
 
@@ -5685,13 +5730,9 @@ function createPassiveTracker () {
 		if (!isMaxresReached && isValidStatus) {
 			update(expireDate);
 		}
-		else {
-			console.log(`passiveTracker#next: terminated.`);
-		}
 	}
 
 	function timer () {
-		console.log('passiveTracker#timer');
 		if (pageModes[0].mode != 'reply' || activeTracker.running) {
 			next();
 		}
@@ -5708,19 +5749,64 @@ function createPassiveTracker () {
 
 		if (timerID) return;
 
-		console.log('passiveTracker#update');
 		const interval = Math.floor((expireDate.getTime() - Date.now()) / 2);
 		if (interval >= THRESHOLD_INTERVAL_MSECS) {
 			timerID = setTimeout(timer, interval);
-			console.log(`passiveTracker#update: timer set at ${(new Date(Date.now() + interval)).toLocaleString()} (${interval / 1000} secs)`);
-		}
-		else {
-			console.log(`passiveTracker#update: terminated.`);
 		}
 	}
 
 	return {
 		update: update
+	};
+}
+
+function createTitleIndicator () {
+	const BLINK_MAX = 1000 * 60 * 2;
+
+	let timer;
+	let originalTitle;
+	let blinkCount;
+
+	function handleVisibilityChange () {
+		if (!document.hidden) {
+			stopBlink();
+		}
+	}
+
+	function handleTimer () {
+		if (blinkCount >= BLINK_MAX) {
+			stopBlink();
+			return;
+		}
+
+		document.title = blinkCount++ % 2 == 0 ?
+			originalTitle :
+			'!更新!';
+	}
+
+	function startBlink () {
+		if (timer) return;
+		if (!document.hidden) return;
+
+		originalTitle = document.title;
+		blinkCount = 0;
+		timer = setInterval(handleTimer, 500);
+		sounds.trackerWorked.play();
+	}
+
+	function stopBlink () {
+		if (!timer) return;
+
+		clearInterval(timer);
+		timer = undefined;
+		document.title = originalTitle;
+	}
+
+	document.addEventListener('visibilitychange', handleVisibilityChange);
+
+	return {
+		startBlink: startBlink,
+		stopBlink: stopBlink
 	};
 }
 
@@ -6244,7 +6330,7 @@ function setupPostFormItemEvent (items) {
 
 		register('dnd', () => {
 			if (!$('postform-wrap').classList.contains('hover')) {
-				commands.activatePostForm();
+				commands.activatePostForm('postform-wrap#dragover');
 			}
 			$('postform-drop-indicator').classList.remove('hide');
 		});
@@ -7956,14 +8042,7 @@ function getImageName (href, targetNode) {
 }
 
 function getWrapElement (element) {
-	for (; element; element = element.parentNode) {
-		if (element.classList.contains('topic-wrap')
-		|| element.classList.contains('reply-wrap')) {
-			return element;
-		}
-	}
-
-	return null;
+	return element ? element.closest('.topic-wrap, .reply-wrap') : null;
 }
 
 function getPostNumber (element) {
@@ -8063,9 +8142,12 @@ function sanitizeComment (commentNode) {
 	const result = commentNode.cloneNode(true);
 
 	$qsa('.link-siokara', result).forEach(node => {
-		node.parentNode.replaceChild(
-			document.createTextNode($qs('a', node).textContent),
-			node);
+		const anchor = node.nodeName == 'A' ? node : $qs('a', node);
+		if (anchor) {
+			node.parentNode.replaceChild(
+				document.createTextNode(anchor.textContent),
+				node);
+		}
 	});
 
 	const strippedItems = [
@@ -8659,6 +8741,46 @@ function registerModeration (anchor, reason, waitDelay) {
 
 		return delay(waitDelay || 1000 * 10);
 	});
+}
+
+function mergeDeep (target, source) {
+	function isArray (a) {
+		return Array.isArray(a);
+	}
+
+	function isObject (a) {
+		return a && typeof a == 'object';
+	}
+
+	if (!isObject(target)) return source;
+	if (!isObject(source)) return target;
+
+	for (const key in source) {
+		const t = target[key];
+		const s = source[key];
+
+		// array
+		if (isArray(s)) {
+			if (isArray(t)) {
+				target[key] = t.concat(s);
+			}
+			else {
+				target[key] = [].concat(s);
+			}
+		}
+
+		// object
+		else if (isObject(s)) {
+			target[key] = mergeDeep(Object.assign({}, t), s);
+		}
+
+		// other stuff
+		else {
+			target[key] = s;
+		}
+	}
+
+	return target;
 }
 
 /*
@@ -9988,33 +10110,36 @@ function updateSodanesViaAPI (data) {
 	if (!data) return;
 
 	for (let number in data) {
-		const selector = [
-			`article .topic-wrap[data-number="${number}"]`,
-			`article .reply-wrap > [data-number="${number}"]`
-		].join(',');
+		const sodaneNode = $(`sodane_${number}`) || $qs([
+			`article .topic-wrap[data-number="${number}"] .sodane`,
+			`article .topic-wrap[data-number="${number}"] .sodane-null`,
+			`article .reply-wrap > [data-number="${number}"] .sodane`,
+			`article .reply-wrap > [data-number="${number}"] .sodane-null`
+		].join(','));
+		if (!sodaneNode) {
+			continue;
+		}
+
+		if (!sodaneNode.id) {
+			sodaneNode.id = `sodane_${number}`;
+		}
+
 		const sodaneValue = data[number] - 0;
+		const re = /\d+$/.exec(sodaneNode.textContent);
 
-		for (const node of $qsa(selector)) {
-			const sodaneNode = $qs('.sodane, .sodane-null', node);
-			if (!sodaneNode) {
-				continue;
-			}
+		if (re && re[0] - 0 == sodaneValue) {
+			continue;
+		}
 
-			const re = /\d+$/.exec(sodaneNode.textContent);
-			if (re && re[0] - 0 == sodaneValue) {
-				continue;
-			}
-
-			if (sodaneValue) {
-				$t(sodaneNode, `そうだね × ${sodaneValue}`);
-				sodaneNode.classList.remove('sodane-null');
-				sodaneNode.classList.add('sodane');
-			}
-			else {
-				$t(sodaneNode, '＋');
-				sodaneNode.classList.add('sodane-null');
-				sodaneNode.classList.remove('sodane');
-			}
+		if (sodaneValue) {
+			$t(sodaneNode, `そうだね × ${sodaneValue}`);
+			sodaneNode.classList.remove('sodane-null');
+			sodaneNode.classList.add('sodane');
+		}
+		else {
+			$t(sodaneNode, '＋');
+			sodaneNode.classList.add('sodane-null');
+			sodaneNode.classList.remove('sodane');
 		}
 	}
 }
@@ -10163,6 +10288,7 @@ function processRemainingReplies (opts, context, lowBoundNumber, callback) {
 					if ($qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)')) {
 						markStatistics.updatePanelView(newStat);
 					}
+					titleIndicator.startBlink();
 					markStatistics.updatePostformView(newStat);
 
 					callback && callback(newStat);
@@ -10359,7 +10485,7 @@ function doDisplayThumbnail (thumbWrap, thumb, media) { /*returns promise*/
 		thumb.height = canvas.height;
 		thumb.src = canvas.toDataURL();
 
-		commands.activatePostForm()
+		commands.activatePostForm('doDisplayThumbnail')
 	});
 }
 
@@ -10594,7 +10720,8 @@ const commands = {
 	 * general functionalities
 	 */
 
-	activatePostForm: function () { /*returns promise*/
+	activatePostForm: function (reason) { /*returns promise*/
+		devMode && console.log(`activatePostForm: reason: ${reason || '(N/A)'}`);
 		catalogPopup.deleteAll();
 		$('com').focus();
 		const postformWrap = $('postform-wrap');
@@ -10848,6 +10975,7 @@ const commands = {
 		removeRule();
 		markStatistics.resetPostformView();
 		reloadStatus.lastRepliesCount = getRepliesCount();
+		titleIndicator.stopBlink();
 		dumpDebugText();
 
 		return reloadBase(TRANSPORT_TYPE)
@@ -10890,7 +11018,7 @@ const commands = {
 			timingLogger.startTag('generate internal xml for topic block');
 			try {
 				timingLogger.startTag('generate');
-				result = xmlGenerator.run(doc.documentElement[IHTML], 0);
+				result = xmlGenerator.run(doc.documentElement[IHTML], 0, !!opts.isAfterPost);
 				timingLogger.endTag();
 
 				timingLogger.startTag('applying data bindings');
@@ -10997,6 +11125,7 @@ const commands = {
 		removeRule();
 		markStatistics.resetPostformView();
 		reloadStatus.lastRepliesCount = getRepliesCount();
+		titleIndicator.stopBlink();
 		dumpDebugText();
 
 		let p;
@@ -11040,7 +11169,10 @@ const commands = {
 			return reloadBaseViaAPI('')
 			.then(reloadResult => {
 				const {doc, now, status} = reloadResult;
-				const result = xmlGenerator.runFromJson(doc, $qs('article .replies').childElementCount);
+				const result = xmlGenerator.runFromJson(
+					doc,
+					$qs('article .replies').childElementCount,
+					!!opts.isAfterPost);
 
 				xsltProcessor.setParameter(null, 'render_mode', 'replies');
 				const container = getReplyContainer();
@@ -11055,6 +11187,7 @@ const commands = {
 					if ($qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)')) {
 						markStatistics.updatePanelView(newStat);
 					}
+					titleIndicator.startBlink();
 					markStatistics.updatePostformView(newStat);
 
 					const message = `新着 ${newStat.delta.total} レス`;
@@ -11110,7 +11243,10 @@ const commands = {
 			'#catalog-order-old': {n:2, key:'old'},
 			'#catalog-order-most': {n:3, key:'most'},
 			'#catalog-order-less': {n:4, key:'less'},
-			'#catalog-order-hist': {n:9, key:'hist'}
+			'#catalog-order-trend': {n:5, key:'trend'},
+			//'#catalog-order-view': {n:7, key:'view'},
+			'#catalog-order-sodane': {n:8, key:'sodane'},
+			'#catalog-order-hist': {n:7, key:'hist'}
 		};
 
 		const p = $qs('#catalog .catalog-options a.active');
@@ -11192,21 +11328,40 @@ const commands = {
 			const cellImageWidth = Math.floor(CATALOG_THUMB_WIDTH * storage.config.catalog_thumbnail_scale.value);
 			const cellImageHeight = Math.floor(CATALOG_THUMB_HEIGHT * storage.config.catalog_thumbnail_scale.value);
 			const anchorWidth = cellImageWidth + CATALOG_ANCHOR_PADDING;
-			const horzActual = $qsa('table[align="center"] tr:first-child td', doc).length;
-			const vertActual = $qsa('table[align="center"] tr', doc).length;
 			const currentCs = getCatalogSettings();
 			const newIndicator = wrap.childNodes.length ? 'new' : '';
 			const newClass = wrap.childNodes.length ? 'new' : '';
 
 			let insertee = wrap.firstChild;
 
-			if (horzActual == 0) {
-				// invalid width of catalog: it may be that futaba server has stopped
-				// and the CDN(CloudFlare) has returnd an error page.
-				console.error(`${APP_NAME}: failed to retrieve catalog content: ${doc.title}`);
-			}
-			else {
-				wrap.style.maxWidth = ((anchorWidth + CATALOG_ANCHOR_MARGIN) * horzActual) + 'px';
+			wrap.style.maxWidth = `${((anchorWidth + CATALOG_ANCHOR_MARGIN) * currentCs[0])}px`;
+
+			/*
+			 * in history sort, bring posted threads to the top
+			 */
+
+			if (sortType.n == 7) {
+				let first = $qs('table[align="center"] td a', doc);
+				if (first) {
+					first = first.parentNode;
+
+					$qsa('table[align="center"] td a', doc).forEach(node => {
+						const href = /res\/(\d+)\.htm/.exec(node.getAttribute('href'));
+						if (!href) return;
+						const number = href[1] - 0;
+						if (!(number in openedThreads)) return;
+						if (openedThreads[number].post <= 0) return;
+
+						node = node.parentNode;
+						if (node == first) {
+							first = node.nextSibling;
+						}
+						else {
+							node.parentNode.removeChild(node);
+							first.parentNode.insertBefore(node, first);
+						}
+					});
+				}
 			}
 
 			/*
@@ -11224,7 +11379,7 @@ const commands = {
 				// number of replies
 				from = $qs('font', node.parentNode);
 				if (from) {
-					repliesCount = from.textContent - 0;
+					repliesCount = from.textContent;
 				}
 
 				// find anchor already exists
@@ -11238,9 +11393,13 @@ const commands = {
 
 					// update reply number and class name
 					const info = $qs('.info', anchor);
-					const oldRepliesCount = info.firstChild.textContent - 0;
+					let oldRepliesCount = info.firstChild.textContent;
 					info.firstChild.textContent = repliesCount;
-					if (repliesCount != oldRepliesCount) {
+					if (!isNaN(repliesCount - 0)
+					&&  !isNaN(oldRepliesCount - 0)
+					&&  repliesCount != oldRepliesCount) {
+						repliesCount -= 0;
+						oldRepliesCount -= 0;
 						anchor.className = repliesCount > CATALOG_LONG_CLASS_THRESHOLD ? 'long' : '';
 						info.lastChild.textContent =
 							(repliesCount > oldRepliesCount ? '+' : '') +
@@ -11389,7 +11548,8 @@ const commands = {
 					}
 				}
 				break;
-			// new, most, less, hist
+
+			// new, most, less, trend, sodane, hist
 			default:
 				{
 					while (insertee) {
@@ -11404,7 +11564,18 @@ const commands = {
 						imageNumber -= 0;
 
 						if (threadNumber in openedThreads) {
-							node.classList.add('soft-visited');
+							if (sortType.n == 7) {
+								if (openedThreads[threadNumber].post <= 0) {
+									node.classList.add('soft-link');
+									node.classList.remove('soft-visited');
+								}
+								else {
+									node.classList.add('soft-visited');
+								}
+							}
+							else {
+								node.classList.add('soft-visited');
+							}
 						}
 					}
 				}
@@ -11495,12 +11666,12 @@ const commands = {
 					case 'reply':
 						if (storage.config.full_reload_after_post.value) {
 							reloadStatus.lastReloaded = Date.now();
-							return commands.reloadReplies().then(() => {
+							return commands.reloadReplies({isAfterPost: true}).then(() => {
 								return activeTracker.reset();
 							});
 						}
 						else {
-							return commands.reload({skipHead:true}).then(() => {
+							return commands.reload({skipHead:true, isAfterPost: true}).then(() => {
 								return activeTracker.reset();
 							});
 						}
@@ -12210,7 +12381,7 @@ const commands = {
 		});
 	},
 	searchCatalog: function () {
-		const currentMode = $qs('#catalog .catalog-options a.active');
+		let currentMode = $qs('#catalog .catalog-options a.active');
 		if (!currentMode) return;
 
 		let re = currentMode = /#catalog-order-(\w+)/.exec(currentMode.href);
@@ -12366,22 +12537,28 @@ timingLogger.startTag('waiting multiple promise completion');
 Promise.all([
 	// settings loader promise
 	new Promise(resolve => {
-		chrome.storage.sync.get(
-			{
-				version: '0.0.1',
-				migrated: false,
-				notices: {},
-				config: storage.getAllConfigDefault(),
-				runtime: storage.runtime
-			},
-			result => {
-				if (chrome.runtime.lastError) {
-					throw new Error(chrome.runtime.lastError.message);
-				}
-
-				resolve(result);
+		const defaultStorage = {
+			version: '0.0.1',
+			migrated: false,
+			notices: {},
+			config: storage.getAllConfigDefault(),
+			runtime: storage.runtime
+		};
+		chrome.storage.sync.get(defaultStorage, result => {
+			if (chrome.runtime.lastError) {
+				throw new Error(chrome.runtime.lastError.message);
 			}
-		);
+
+			/*
+			 * if a default key-value set is specified, the result must be merged.
+			 * but firefox does not do. (2020-01)
+			 */
+			if (WasaviExtensionWrapper.IS_GECKO) {
+				result = mergeDeep(defaultStorage, result);
+			}
+
+			resolve(result);
+		});
 	}),
 
 	// backend connector promise

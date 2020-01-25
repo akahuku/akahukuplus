@@ -1,12 +1,12 @@
 /**
- * wasavi: vi clone implemented in javascript
+ * akahukuplus
  * =============================================================================
- *
  *
  * @author akahuku@gmail.com
  */
+
 /**
- * Copyright 2012-2017 akahuku, akahuku@gmail.com
+ * Copyright 2012-2020 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,9 +30,9 @@
 	/* >>> */
 
 	/* <<<1 vars */
-	var extensionName = 'wasavi';
-	var externalFrameURL = 'http://wasavi.appsweets.net/';
-	var externalSecureFrameURL = 'https://wasavi.appsweets.net/';
+	let extensionName = 'akahukuplus';
+	let externalFrameURL = 'http://wasavi.appsweets.net/';
+	let externalSecureFrameURL = 'https://wasavi.appsweets.net/';
 	/* >>> */
 
 	/**
@@ -87,8 +87,8 @@
 		get name () {return extensionName},
 		isTopFrame: function () {return global.window == window.top},
 		postMessage: function (data, callback) {
-			var type;
-			var requestNumber = this.getNewRequestNumber();
+			let type;
+			let requestNumber = this.getNewRequestNumber();
 
 			data || (data = {});
 
@@ -124,9 +124,8 @@
 		setMessageListener: function (handler) {},
 		addMessageListener: function (handler) {},
 		removeMessageListener: function (handler) {},
-		runCallback: function () {
-			var args = Array.prototype.slice.call(arguments);
-			var callback = args.shift();
+		runCallback: function (...args) {
+			let callback = args.shift();
 			if (typeof callback != 'function') {
 				return;
 			}
@@ -142,35 +141,12 @@
 			return this.requestNumber;
 		},
 		getMessage: function (messageId) {},
-		setClipboard: function (data) {
-			if (IS_GECKO) {
-				let buffer = document.getElementById('wasavi_fx_clip');
-				buffer.value = data;
-				buffer.focus();
-				buffer.select();
-				document.execCommand('cut');
-			}
-			else {
-				this.postMessage({type:'set-clipboard', data:data});
-			}
-		},
-		getClipboard: function () {
-			var self = this;
-			var args = Array.prototype.slice.call(arguments);
-			var callback = args.shift();
-			this.postMessage({type:'get-clipboard'}, function (req) {
-				let clipboardData = (req && req.data || '').replace(/\r\n/g, '\n');
-				args.unshift(clipboardData);
-				callback.apply(null, args);
-			});
-		},
 		getPageContextScriptSrc: function (path) {
 			return '';
 		},
-		ensureRun: function () {
-			var args = Array.prototype.slice.call(arguments);
-			var callback = args.shift();
-			var doc;
+		ensureRun: function (...args) {
+			let callback = args.shift();
+			let doc;
 			try {
 				doc = document;
 				doc.body;
@@ -220,8 +196,7 @@
 	function ChromeExtensionWrapper () {
 		ExtensionWrapper.apply(this, arguments);
 
-		var that = this;
-		var onMessageHandlers = [];
+		let onMessageHandlers = [];
 
 		function handleMessage (req, sender, response) {
 			for (const handler of onMessageHandlers) {
@@ -259,13 +234,13 @@
 			onMessageHandlers = [handler];
 		};
 		this.addMessageListener = function (handler) {
-			var index = onMessageHandlers.indexOf(handler);
+			const index = onMessageHandlers.indexOf(handler);
 			if (index < 0) {
 				onMessageHandlers.push(handler);
 			}
 		};
 		this.removeMessageListener = function (handler) {
-			var index = onMessageHandlers.indexOf(handler);
+			const index = onMessageHandlers.indexOf(handler);
 			if (index >= 0) {
 				onMessageHandlers.splice(index, 1);
 			}
@@ -288,7 +263,7 @@
 
 	/* <<<1 bootstrap */
 	ExtensionWrapper.urlInfo.isExternal &&
-		document.documentElement.setAttribute('data-wasavi-present', 1);
+		document.documentElement.setAttribute('data-akahukuplus-present', 1);
 	global.WasaviExtensionWrapper = ExtensionWrapper;
 	/* >>> */
 

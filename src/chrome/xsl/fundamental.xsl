@@ -1862,13 +1862,14 @@ article.summary .replies {
 	margin:0 0 2px 0;
 }
 
-#catalog .catalog-threads-wrap a:link { background-color:#ffe; }
-#catalog .catalog-threads-wrap a:visited,
+#catalog .catalog-threads-wrap a:link,
+#catalog .catalog-threads-wrap a.soft-link { background-color:#ffe; }
+#catalog .catalog-threads-wrap a:visited:not(.soft-link),
 #catalog .catalog-threads-wrap a.soft-visited { background-color:#f0e0d6; border-color:#f0e0d6; border-style:solid; }
 #catalog .catalog-threads-wrap a:active { background-color:#ea8; }
 #catalog .catalog-threads-wrap a.new { background-color:#cfc; border-color:#cfc; }
 #catalog .catalog-threads-wrap a.long { background-color:#c9e6e9; border-color:#c9e6e9; }
-#catalog .catalog-threads-wrap a.warned { border:2px solid #d00; padding:1px; }
+#catalog .catalog-threads-wrap a.warned { border:2px solid #d00 !important; padding:1px; }
 
 #catalog .catalog-threads-wrap .text {
 	white-space:nowrap;
@@ -2081,6 +2082,8 @@ div.catalog-popup span {
 					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='old'    ))}" href="#catalog-order-old">古順</a></span
 					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='most'   ))}" href="#catalog-order-most">多順</a></span
 					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='less'   ))}" href="#catalog-order-less">少順</a></span
+					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='trend'  ))}" href="#catalog-order-trend">勢順</a></span
+					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='sodane' ))}" href="#catalog-order-sodane">そ順</a></span
 					><span><a class="catalog-order js {substring('active',1,6*number($sort_order='hist'   ))}" href="#catalog-order-hist">履歴</a></span>
 				</div>
 				<div>
@@ -2105,6 +2108,8 @@ div.catalog-popup span {
 				<div class="{substring('hide',1,4*number($sort_order!='old'    ))}" id="catalog-threads-wrap-old"></div>
 				<div class="{substring('hide',1,4*number($sort_order!='most'   ))}" id="catalog-threads-wrap-most"></div>
 				<div class="{substring('hide',1,4*number($sort_order!='less'   ))}" id="catalog-threads-wrap-less"></div>
+				<div class="{substring('hide',1,4*number($sort_order!='trend'  ))}" id="catalog-threads-wrap-trend"></div>
+				<div class="{substring('hide',1,4*number($sort_order!='sodane' ))}" id="catalog-threads-wrap-sodane"></div>
 				<div class="{substring('hide',1,4*number($sort_order!='hist'   ))}" id="catalog-threads-wrap-hist"></div>
 			</div>
 			<hr/>
