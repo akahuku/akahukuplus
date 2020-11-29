@@ -2582,7 +2582,7 @@ div.catalog-popup span {
 		<xsl:if test="image">
 			<div class="reply-image">
 				<a class="js lightbox" href="{image}" target="_blank">
-					<img src="{thumb}" width="{thumb/@width}" height="{thumb/@height}"/>
+					<img src="{thumb}" width="{thumb/@width}" height="{thumb/@height}" loading="lazy"/>
 					<br/>
 					<xsl:value-of select="image/@base_name"/>
 				</a>

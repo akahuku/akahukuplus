@@ -105,6 +105,7 @@ const siteInfo = {
 	server: '', board: '', resno: 0, summaryIndex: 0,
 	logSize: 10000,
 	maxAttachSize: 0,
+	maxReplies: -1,
 	minThreadLifeTime: 0,
 	lastModified: 0,
 	subHash: {},
@@ -991,7 +992,7 @@ function install (mode) {
 	// pseudo mousehoverin/mousehoverout events for search item
 	// on reply search panel and statistics panel
 	setupSearchResultPopup();
-	
+
 	/*
 	 * catalog popup
 	 */
@@ -2035,6 +2036,12 @@ function createXMLGenerator () {
 				if (notice.match(/(\d+)\s*(KB|MB)/)) {
 					siteInfo.maxAttachSize = parseMaxAttachSize(RegExp.$1, RegExp.$2);
 					element(metaNode, 'maxattachsize').appendChild(text(siteInfo.maxAttachSize));
+				}
+
+				// max number of replies
+				if (notice.match(/スレッド最大\s*(\d+)\s*レス/)) {
+					siteInfo.maxReplies = RegExp.$1 - 0;
+					element(metaNode, 'maxReplies').appendChild(text(siteInfo.maxReplies));
 				}
 
 				// min life time of thread
@@ -3176,6 +3183,11 @@ function createPersistentStorage () {
 			type:'bool',
 			value:true,
 			name:'del リンククリックで直接 del を送信する'
+		},
+		osaka_conversion: {
+			type:'bool',
+			value:true,
+			name:'なりきり関西人'
 		}
 	};
 	let runtime = {
@@ -5508,14 +5520,8 @@ function createActiveTracker () {
 		const text = getTimeSpanText(Math.floor(restSeconds));
 		const width = Math.floor($('reload-anchor').offsetWidth * Math.max(0, ratio));
 		$qsa('.track-indicator').forEach(node => {
-			//if (document.hidden) {
-				node.style.transitionProperty = 'none';
-				node.style.transitionDuration = '0s';
-			//}
-			//else {
-			//	node.style.transitionProperty = '';
-			//	node.style.transitionDuration = '2.5s';
-			//}
+			node.style.transitionProperty = 'none';
+			node.style.transitionDuration = '0s';
 			node.style.width = `${width}px`;
 			node.title = text != '0秒' ?
 				`あと ${text} くらいで更新します` :
@@ -5536,9 +5542,8 @@ function createActiveTracker () {
 
 			const elapsedSeconds = (Date.now() - baseTime) / 1000;
 			const restSeconds = waitSeconds - elapsedSeconds;
-			const width = $qs('.track-indicator').offsetWidth;
-			if (restSeconds >= 0 || width > 0) {
-				updateTrackingLink(restSeconds, restSeconds / waitSeconds);
+			updateTrackingLink(restSeconds, restSeconds / waitSeconds);
+			if ($qs('.track-indicator').offsetWidth > 0) {
 				return;
 			}
 
@@ -5546,8 +5551,11 @@ function createActiveTracker () {
 			if (pageModes[0].mode == 'reply') {
 				commands.reload().then(() => {
 					const isValidStatus = /^[23]..$/.test(reloadStatus.lastStatus);
-					const isMaxresReached = !!$qs('.expire-maxreached:not(.hide)');
-					if (!isMaxresReached && isValidStatus) {
+					const isMaxresReached =
+						!!$qs('.expire-maxreached:not(.hide)')
+						|| siteInfo.maxReplies >= 0 && $qsa('.replies .reply-wrap').length >= siteInfo.maxReplies;
+
+					if (isValidStatus && !isMaxresReached) {
 						setCurrentState();
 						start();
 					}
@@ -5637,7 +5645,7 @@ function createActiveTracker () {
 
 			median = Math.floor(median / 1000) * 1000;
 			median = Math.min(median, MEDIAN_MAX);
-			
+
 			logs.push(
 				`  postTimes: ${postTimes.map(a => a.toLocaleTimeString()).join(', ')}`,
 				`  intervals: ${intervals.map(a => `${getTimeSpanText(a / 1000)}`).join(', ')}`,
@@ -5716,25 +5724,28 @@ function createActiveTracker () {
 }
 
 function createPassiveTracker () {
-	const THRESHOLD_INTERVAL_MSECS = 1000 * 10;
+	const THRESHOLD_INTERVAL_MSECS = 1000 * 30;
 
 	let expireDate;
 	let timerID;
 
 	function next () {
 		const isValidStatus = /^[23]..$/.test(reloadStatus.lastStatus);
-		const isMaxresReached = !!$qs('.expire-maxreached:not(.hide)');
+		const isMaxresReached =
+			!!$qs('.expire-maxreached:not(.hide)')
+			|| siteInfo.maxReplies >= 0 && $qsa('.replies .reply-wrap').length >= siteInfo.maxReplies;
 
 		timerID = undefined;
 
-		if (!isMaxresReached && isValidStatus) {
+		if (isValidStatus && !isMaxresReached) {
 			update(expireDate);
 		}
 	}
 
 	function timer () {
 		if (pageModes[0].mode != 'reply' || activeTracker.running) {
-			next();
+			timerID = undefined;
+			update(expireDate);
 		}
 		else {
 			commands.reload({isAutotrack: true}).then(next);
@@ -5749,10 +5760,11 @@ function createPassiveTracker () {
 
 		if (timerID) return;
 
-		const interval = Math.floor((expireDate.getTime() - Date.now()) / 2);
-		if (interval >= THRESHOLD_INTERVAL_MSECS) {
-			timerID = setTimeout(timer, interval);
-		}
+		const interval = Math.max(
+			THRESHOLD_INTERVAL_MSECS,
+			Math.floor((expireDate.getTime() - Date.now()) / 2));
+
+		timerID = setTimeout(timer, interval);
 	}
 
 	return {
@@ -6091,10 +6103,12 @@ function setupPostFormItemEvent (items) {
 			clearTimeout(timers[tag]);
 			delete timers[tag];
 		}
-		timers[tag] = setTimeout(e => {
-			delete timers[tag];
-			fn(e);
-		}, 50, e);
+		if (typeof fn == 'function') {
+			timers[tag] = setTimeout(e => {
+				delete timers[tag];
+				fn(e);
+			}, 50, e);
+		}
 	}
 
 	function isFileElementReady () {
@@ -6332,7 +6346,9 @@ function setupPostFormItemEvent (items) {
 			if (!$('postform-wrap').classList.contains('hover')) {
 				commands.activatePostForm('postform-wrap#dragover');
 			}
-			$('postform-drop-indicator').classList.remove('hide');
+			if ($('postform-drop-indicator').classList.contains('hide')) {
+				$('postform-drop-indicator').classList.remove('hide');
+			}
 		});
 	}
 
@@ -6357,6 +6373,8 @@ function setupPostFormItemEvent (items) {
 
 	function handleDrop (e) {
 		e.preventDefault();
+		register('dnd');
+		//dumpElement('    drop');
 		$('postform-drop-indicator').classList.add('hide');
 		handleTextAreaPaste(e);
 		$('com').focus();
@@ -6609,6 +6627,7 @@ function setupSearchResultPopup () {
 				const originNumber = target.getAttribute('data-number');
 				const originElement = getWrapElement($qs(`#_${originNumber}, [data-number="${originNumber}"]`));
 				const popup = quotePopup.createPopup({element: originElement}, 'quote-popup-pool2');
+				popup.querySelector('.comment').style = '';
 				popup.style.left = (panelRect.left - 8 - popup.offsetWidth) + 'px';
 				popup.style.top = Math.min(targetRect.top, viewportRect.height - popup.offsetHeight - 8) + 'px';
 				popup.id = 'search-popup';
@@ -8701,6 +8720,290 @@ const 新字体の漢字を舊字體に変換 = (function () {
 	return s => ('' + s).replace(key, $0 => map[$0]);
 })();
 
+/*
+ * This function is ported from:
+ *   http://www2f.biglobe.ne.jp/takan/javac/freeware/nandeyanen.htm
+ *   @note It is unknown license.
+ */
+const osaka = (() => {
+	const dictMap = new Map;
+	let dict = {
+		'こんばんわ': 'おこんばんわ',
+		'ありがとう(?:ございました)?': 'おおきに',
+		'あなた': 'あんさん',
+		'あんな': 'あないな',
+		'りますので': 'るさかいに',
+		'りますから': 'るさかいに',
+		'あります': 'あるんや',
+		'(?:ある|或)いは': 'せやなかったら',
+		'ありません': 'おまへん',
+		'ありました': 'おました',
+		'いない': 'おらへん',
+		'(?:いま|今)までの': 'ムカシからの',
+		'(?:いま|今)まで': '本日この時まで',
+		'(?:今|いま)(?:時|どき)': 'きょうび',
+		'いわゆる': 'ようみなはん言わはるとこの',
+		'思いますが': '思うんやが',
+		'思います': '思うで',
+		'いただいた': 'もろた',
+		'いただきます': 'もらうで',
+		'いただきました': 'もろた',
+		'いくら': 'なんぼ',
+		'いつも': '毎日毎晩壱年中',
+		'いるか': 'おるか',
+		'いますので': 'おるさかいに',
+		'いますから': 'おるさかいに',
+		'(?:いちど|一度)': 'いっぺん',
+		'いますが': ['おるけど', 'おるけどダンさん'],
+		'いました': 'おったんや',
+		'います': 'いますわ',
+		'エラー': 'アヤマチ',
+		'えない': 'えへん',
+		'おかしな': 'ケッタイな',
+		'おきました': 'おいたんや',
+		'おっと': ['おっとドッコイ、', 'おっとドッコイたこやきはうまいで…あかん、脱線や'],
+		'かなあ': 'かいな',
+		'かならず': 'じぇったい',
+		'かわいい': 'メンコイ',
+		'(?:おそ|恐)らく': 'ワイが思うには',
+		'おもしろい': 'オモロイ',
+		'面白い': 'おもろい',
+		'ください': 'おくんなはれ',
+		'(?:くわ|詳)しく': 'ねちっこく',
+		'けない': 'けへん',
+		'ございます': 'おます',
+		'ございました': 'おました',
+		'こちら': 'ウチ',
+		'(?:僕|俺)': ['ワテ', 'わて'],
+		'こんな': 'こないな',
+		'この(?:頃|ごろ)': 'きょうび',
+		'(?:子|こ)(?:供|ども)': ['ガキ', 'ボウズ'],
+		'コロン': 'てんてん',
+		'下さい': 'くれへんかの',
+		'さよう?なら': 'ほなさいなら',
+		'さん': 'はん',
+		'しかし': ['せやけどね', 'せやけどダンさん'],
+		'おはよう': 'おはようさん',
+		'(?:しかた|仕方)ない': 'しゃあない',
+		'しなければ': 'せな',
+		'しない': 'せん',
+		'しばらく': 'ちーとの間',
+		'している': 'しとる',
+		'しました': 'したんや',
+		'しまいました': 'しもたんや',
+		'しますか': 'しまっか',
+		'しますと': 'すやろ、ほしたら',
+		'しまった': 'しもた',
+		'しますので': 'するさかいに',
+		'じゃ': 'や',
+		'するとき': 'するっちうとき',
+		'すべて': 'ずぅぇえええぇぇええんぶ',
+		'(?:すく|少)なくとも': 'なんぼなんでも',
+		'ずに': 'んと',
+		'すごい': 'どエライ',
+		'少し': 'ちびっと',
+		'スリッパ': 'パッスリ',
+		'せない': 'せへん',
+		'そこで': 'ほんで',
+		'そして': 'ほんで',
+		'そんな': 'そないな',
+		'そうだろ': 'そうやろ',
+		'それから': 'ほんで',
+		'それでは': 'ほなら',
+		'(?:たと|例)えば': ['$&', '$&やね', '例あげたろか、たとえばやなあ'],
+		'たのです': 'たちうワケや',
+		'たので': 'たさかい',
+		'ただし': 'せやけど',
+		'たぶん': ['たぶんやけど', 'タブン…たぶんやで、わいもよーしらんがタブン'],
+		'たくさん': 'ようけ',
+		'だった': 'やった',
+		'だけど': 'やけど',
+		'だから': 'やから',
+		'だが': 'やけど',
+		'だろ': 'やろ',
+		'だね([、。…！？!?]|\\.)*$': 'やね$1',
+		'ちなみに': '余計なお世話やけど',
+		'ちょっと': 'ちーとばかし',
+		'ったし': 'ったことやねんし',
+		'つまり': ' ゴチャゴチャゆうとる場合やあれへん、要は',
+		'つまらない': 'しょーもない',
+		'であった': 'やった',
+		'ている': 'とる',
+		'ていただいた': 'てもろた',
+		'ていただきます': 'てもらうで',
+		'ていただく': 'てもらうで',
+		'ていただ': 'ていただ',
+		'ていた': 'とった',
+		'多く': 'ようけ',
+		'ですか': 'やろか',
+		'ですよ': 'や',
+		'ですが': 'やけどアンタ',
+		'ですね': 'やね',
+		'でした': 'やった',
+		'でしょう': 'でっしゃろ',
+		'できない': 'でけへん',
+		'ではない': 'ではおまへん',
+		'です': 'や',
+		'てない': 'てへん',
+		'どういう(?:わけ|訳)か': 'なんでやろかわいもよー知らんが',
+		'どうだ': 'どや',
+		'どこか': 'どこぞ',
+		'どんな': 'どないな',
+		'という': 'ちう',
+		'とすれば': 'とするやろ、ほしたら',
+		'ところが': 'トコロが',
+		'ところ': 'トコ',
+		'とても': 'どエライ',
+		'(?:なぜ|何故)か': 'なんでやろかわいもよー知らんが',
+		'なった': 'なりよった',
+		'なのですが': 'なんやけど',
+		'なのです': 'なんやこれがホンマに',
+		'なので': 'やので',
+		'なぜ': 'なんでやねん',
+		'など': 'やらなんやら',
+		'ならない': 'ならへん',
+		'なりました': 'なったんや',
+		'のちほど': 'ノチカタ',
+		'のです': 'のや',
+		'(?:はじ|初)めまして': 'はじめてお目にかかりまんなあ',
+		'(?:はじ|初)めて': ['初めて', 'この世におぎゃあいうて生まれてはじめて'],
+		'びっくり仰天': 'クリビツテンギョー',
+		'(?:ひと|人)(?:たち|達)': 'ヤカラ',
+		'ヘルプ': '助け船',
+		'ほんとう?': 'ホンマ',
+		'まいますので': 'まうさかいに',
+		'まったく': 'まるっきし',
+		'全く': 'まるっきし',
+		'ません': 'まへん',
+		'ました': 'たんや',
+		'ますか': 'まっしゃろか',
+		'ますが': 'まっけど',
+		'ましょう': 'まひょ',
+		'ますので': 'よるさかいに',
+		'むずかしい': 'ややこしい',
+		'めない': 'めへん',
+		'メッセージ': '文句',
+		'もらった': 'もろた',
+		'もらって': 'もろて',
+		'よろしく': 'シブロクヨンキュー',
+		'ります': 'るんや',
+		'[らり]ない': 'りまへん',
+		'れない': 'れへん',
+		'ます': 'まんねん',
+		'もっとも': 'もっとも',
+		'もっと': ['もっともっと', 'もっともっともっともっと', 'もっともっともっともっともっともっともっともっともっと'],
+		'ようやく': 'ようやっと',
+		'よろしく': 'よろしゅう',
+		'るのです': 'るちうワケや',
+		'だ([、。…！？!?]|\\.)*$': 'や$1',
+		'りました': 'ったんや',
+		'る([、。…！？!?]|\\.)*$': ['$&', 'るんや$1', 'るちうわけや$1'],
+		'い([、。…！？!?]|\\.)*$': ['$&', 'いんや$1', 'いちうわけや$1'],
+		'た([、。…！？!?]|\\.)*$': ['$&', 'たちうわけや$1'],
+		'う([、。…！？!?]|\\.)*$': 'うわ$1',
+		'わがまま': 'ワガママ',
+		'まま': 'まんま',
+		'われわれ': 'ウチら',
+		'わたし': 'わい',
+		'私': 'ウチ',
+		'アタシ': 'ウチ',
+		'わない': 'いまへん',
+		'本当': 'ホンマ',
+		'全て': 'みな',
+		'全部': 'ぜええんぶひとつのこらず',
+		'全然': 'さらさら',
+		'ぜんぜん': 'サラサラ',
+
+		'日本語': '祖国語',
+		'日本': '大日本帝国',
+		'便利': ['$&', '便器…おっとちゃうわ、便利'],
+		'当局': 'わい',
+		'大変な?': 'エライ',
+		'非常に': 'どエライ',
+		'違う': 'ちゃう',
+		'ANK': ['$&', 'アンコ……ウソやウソ、ANKやわ、はっはっ、'],
+		'古い': '古くさい',
+		'最近': 'きょうび',
+		'以前': 'よりどエライ昔',
+		'無効': 'チャラ',
+		'中止': 'ヤメ',
+		'外国': '異国',
+		'海外': 'アチラ',
+		'難し': 'ややこし',
+		'面倒': '難儀',
+		'遅([いかきく])': 'とろ$1',
+		'良い': 'ええ',
+		'入れる': 'ぶちこむ',
+		'コギャル': 'セーラー服のねえちゃん',
+		'女子高生': 'セーラー服のねえちゃん',
+		'来た': '攻めて来よった',
+		'同時': 'いっぺん',
+		'先頭': 'アタマ',
+		'破壊': 'カンペキに破壊',
+		'挿入': ['ソーニュー', 'ソーニュー(うひひひ…おっとカンニンや)'],
+		'置換': 'とっかえ',
+		'無視': 'シカト',
+		'注意': '用心',
+		'最後': 'ケツ',
+		'我々': 'うちら',
+		'初心者': 'どシロウト',
+		'付属': 'オマケ',
+		'誤って': ['あかん言うて', 'あかーんいうて誤って'],
+		'商人': 'あきんど',
+		'商売': 'ショーバイ',
+		'商業': 'ショーバイ',
+		'誰': 'どなたはん',
+		'再度': 'もっかい',
+		'再び': 'もっかい',
+		'自動的に': 'なあんもせんとホッタラかしといても',
+		'無料': 'タダ',
+		'変化': '変身',
+		'右': '右翼',
+		'左': '左翼',
+		'自分': 'オノレ',
+		'とても': 'ごっつ',
+		'成功': ['$&', '性交…ひひひ、ウソや、成功'],
+		'失敗': 'シッパイ',
+		'優先': 'ヒイキ',
+		'タクシー': 'タク',
+		'カレンダー': '日メクリ',
+		'たばこ': 'モク',
+		'特長': 'ええトコ',
+		'概要': 'おーまかなトコ',
+		'概念': '能書き',
+		'アルゴリズム': '理屈',
+		'実用的': 'アホでも使えるよう',
+		'何も': 'なあんも',
+		'何か': '何ぞ',
+		'いい': 'ええ',
+		'マクドナルド': 'マクド',
+		'なのかな': 'やろか',
+		'かな': 'やろか',
+		'こんにちは': 'もうかってまっか？',
+		'どうも': 'もうかってまっか？',
+		'クライアント': '客',
+		'素人': 'トーシロ',
+	};
+
+	for (const i in dict) {
+		const pattern = new RegExp(i, 'gm');
+		dictMap.set(pattern, dict[i]);
+	}
+
+	dict = undefined;
+
+	return function osaka (s) {
+		for (let [pattern, replacement] of dictMap) {
+			if (replacement instanceof Array) {
+				replacement = replacement[Math.floor(Math.random() * replacement.length)];
+			}
+			s = s.replace(pattern, replacement);
+		}
+
+		return s;
+	}
+})();
+
 function registerModeration (anchor, reason, waitDelay) {
 	const postNumber = getPostNumber(anchor);
 	if (!postNumber) return;
@@ -8821,24 +9124,48 @@ function populateFileFormItems (form, callback) {
 
 function postBase (type, form) { /*returns promise*/
 	function getVersion () {
-		let app;
-		const ua = navigator.appVersion;
-		if (typeof InstallTrigger == 'object') {
-			app = 'Firefox';
+		let app, machine = [];
+
+		const ua = navigator.userAgent;
+		/*
+		 * *** browser version info in navigator ***
+		 * Chrome:
+		 *  appVersion: "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36"
+		 *  userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36"
+		 *
+		 * Opera:
+		 *  appVersion: "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36 OPR/72.0.3815.378"
+		 *  userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36 OPR/72.0.3815.378"
+		 *
+		 * Vivaldi:
+		 *  appVersion: "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
+		 *  userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
+		 *
+		 * Firefox:
+		 *  appVersion: "5.0 (X11)"
+		 *  userAgent: "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:83.0) Gecko/20100101 Firefox/83.0"
+		 */
+		if (typeof InstallTrigger == 'object' && /\bfirefox\/(\d+(?:\.\d+)*)/i.test(ua)) {
+			app = `Firefox/${RegExp.$1}`;
 		}
-		else if (/\bvivaldi\/\d+(?:\.\d+)*/i.test(ua)) {
-			app = 'Vivaldi';
+		else if (/\bvivaldi\/(\d+(?:\.\d+)*)/i.test(ua)) {
+			app = `Vivaldi/${RegExp.$1}`;
 		}
-		else if (/\bopr\/\d+(?:\.\d+)*/i.test(ua)) {
-			app = 'Opera';
+		else if (/\bopr\/(\d+(?:\.\d+)*)/i.test(ua)) {
+			app = `Opera/${RegExp.$1}`;
 		}
-		else if (/\bchromium\/\d+(?:\.\d+)*/i.test(ua)) {
-			app = 'Chromium';
+		else if (/\bchromium\/(\d+(?:\.\d+)*)/i.test(ua)) {
+			app = `Chromium/${RegExp.$1}`;
 		}
-		else {
-			app = 'Chrome';
+		else if (/\bchrome\/(\d+(?:\.\d+)*)/i.test(ua)) {
+			app = `Chrome/${RegExp.$1}`;
 		}
-		return `akahukuplus/${version} on ${app} Browser(${navigator.platform}, ${navigator.deviceMemory}GB, ${navigator.hardwareConcurrency}CPUs)`;
+
+		'platform' in navigator && machine.push(navigator.platform);
+		'deviceMemory' in navigator && machine.push(`${navigator.deviceMemory}GB`);
+		'hardwareConcurrency' in navigator && machine.push(`${navigator.hardwareConcurrency}CPUs`);
+
+		return `akahukuplus/${version} on ${app} (${machine.join(', ')})`;
 	}
 
 	function getIconvPayload (form) {
@@ -8851,6 +9178,15 @@ function postBase (type, form) { /*returns promise*/
 				content = 新字体の漢字を舊字體に変換(content);
 				if (node.id == 'email') {
 					content = content.replace(/![旧舊]字[体體]!\s*/g, '');
+				}
+			}
+			if (storage.config.osaka_conversion.value || /!osaka!/.test($('email').value)) {
+				content = content
+					.split(/\r?\n/)
+					.map(line => /^>/.test(line) ? line : osaka(line))
+					.join('\n');
+				if (node.id == 'email') {
+					content = content.replace(/!osaka!\s*/g, '');
 				}
 			}
 			if (node.id == 'com2') {
@@ -9785,7 +10121,7 @@ function adjustReplyWidth () {
 		const normalWidth = comment.offsetWidth;
 		replyImage.classList.remove('hide');
 		heading.classList.remove('hide');
-		
+
 		const minWidth = Math.min(normalWidth + replyImageWidth + 8, maxTextWidth);
 		comment.style.minWidth = `${minWidth}px`;
 		replyImage.classList.add('width-adjusted');
@@ -12369,7 +12705,30 @@ const commands = {
 			targetNodesSelector: 'article .topic-wrap, article .reply-wrap',
 			targetElementSelector: '.sub, .name, .postdate, span.user-id, .email, .comment',
 			getTextContent: node => {
-				return node.textContent;
+				if (node.childElementCount == 0) {
+					return node.textContent;
+				}
+
+				const iterator = document.createNodeIterator(
+					node,
+					window.NodeFilter.SHOW_ELEMENT
+					| window.NodeFilter.SHOW_TEXT);
+				const result = [];
+				let currentNode;
+				while ((currentNode = iterator.nextNode())) {
+					switch (currentNode.nodeType) {
+					case 1:
+						if (currentNode.nodeName == 'IMG') {
+							result.push(currentNode.getAttribute('alt') || '');
+						}
+						break;
+
+					case 3:
+						result.push(currentNode.nodeValue);
+						break;
+					}
+				}
+				return result.join('');
 			},
 			getPostNumber: node => {
 				return node.getAttribute('data-number')
