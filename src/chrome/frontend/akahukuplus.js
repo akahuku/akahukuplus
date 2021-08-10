@@ -2581,7 +2581,29 @@ function createXMLGenerator () {
 			}
 
 			// ID
-			re = /<span\s+class="[^"]*cnw[^"]*"[^>]*>.*?ID:(.+?)<\/span>/i.exec(info) || /ID:([^ "<]+)/.exec(infoText);
+			/*
+			 * [error pattern #1]
+			 * <table border="0"><tbody>
+			 *   <tr>
+			 *     <td class="rts">…</td>
+			 *     <td class="rtd">
+			 *       <span id="delcheck780511344" class="rsc">2</span>
+			 *       <span class="cnw"><a href="mailto:sage ID:Atsolmen Sed ut perspiciatis unde omnis iste natus error sit voluptatem">21/03/05(金)11:27:43</a></span>
+			 *       <span class="cno">No.780511344</span>
+			 *       <a href="javascript:void(0);" onclick="sd(780511344);return(false);" class="sod" id="sd780511344">+</a>
+			 */
+			/*
+			 * [correct pattern #1]
+             * <table border=0 class=deleted>
+			 *   <tr>
+			 *     <td class=rts>…</td>
+			 *     <td class=rtd>
+			 *       <span id="delcheck780494428" class="rsc">1</span>
+			 *       <span class="cnw">21/03/05(金)09:30:30 ID:lDKYMQjg</span>
+			 *       <span class="cno">No.780494428</span>
+			 *       <a href="javascript:void(0);" onclick="sd(780494428);return(false);" class=sod id=sd780494428>+</a>
+			 */
+			re = /<span\s+class="[^"]*cnw[^"]*"[^>]*>.*?ID:([^\s]+)<\/span>/i.exec(info) || /ID:([^ "<]+)/.exec(infoText);
 			if (re) {
 				const idNode = element(replyNode, 'user_id');
 				idNode.appendChild(text(stripTags(re[1])));
@@ -4085,7 +4107,10 @@ function createQueryCompiler () {
 		let result;
 		if (query.charAt(0) == '/' && query.substr(-1) == '/') {
 			try {
-				const regex = new RegExp(query.substring(1, query.length - 1), 'i');
+				query = query.substring(1, query.length - 1);
+				query = query.replace(/(?<!\\)\^/g, '(?:^|\\t)');
+				query = query.replace(/(?<!\\)\$/g, '(?:$|\\t)');
+				const regex = new RegExp(query, 'i');
 				result = {
 					test: target => regex.test(target)
 				};
@@ -6947,7 +6972,7 @@ function lightbox (anchor) {
 		if (!image.naturalWidth || !image.naturalHeight) return;
 
 		const size = `${image.naturalWidth}x${image.naturalHeight}`;
-		const zoomRatio = `   ${(image.offsetWidth / image.naturalWidth * 100).toFixed(2)}%`.substr(-7); // max: '100.00%'.length == 7
+		const zoomRatio = `   ${(parseInt(image.style.width, 10) / image.naturalWidth * 100).toFixed(2)}%`.substr(-7); // max: '100.00%'.length == 7
 
 		$t('lightbox-ratio', `${size}, ${zoomRatio}`);
 	}
@@ -7186,6 +7211,26 @@ function lightbox (anchor) {
 		});
 	}
 
+	function handleCopyClick (e) {
+		if (isInTransition) return;
+		if (!image) return;
+		if (location.protocol != 'https:') return;
+
+		const canvas = document[CRE]('canvas');
+		canvas.width = image.naturalWidth;
+		canvas.height = image.naturalHeight;
+		canvas.getContext('2d').drawImage(image, 0, 0);
+
+		getBlobFrom(canvas)
+			.then(blob => navigator.clipboard.write([new ClipboardItem({[blob.type]: blob})]))
+			.then(() => {
+				sounds.imageSaved.play();
+			})
+			.catch(err => {
+				console.error(err);
+			});
+	}
+
 	function handleStroke (e) {
 		if (isInTransition) return;
 		if (!image) return;
@@ -7313,6 +7358,7 @@ function lightbox (anchor) {
 						.add('#lightbox-right', handleRotateModeClick)
 						.add('#lightbox-180', handleRotateModeClick)
 						.add('#lightbox-search', handleSearch)
+						.add('#lightbox-copy', handleCopyClick)
 						.add('#lightbox-close', leave);
 
 					keyManager
@@ -7320,6 +7366,7 @@ function lightbox (anchor) {
 						.addStroke('lightbox', ['n', 'l', 'r', 'v'], handleRotateModeKey)
 						.addStroke('lightbox', '\u001b', leave)
 						.addStroke('lightbox', 's', handleSearch)
+						.addStroke('lightbox', 'c', handleCopyClick)
 						.addStroke('lightbox', [' ', '<S-space>'], handleStroke, true)
 						.updateManifest();
 
@@ -8310,11 +8357,10 @@ function getReadableSize (size) {
 function regalizeEditable (el) {
 	const r = document.createRange();
 	let div;
+	el.normalize();
 	while ((div = el.querySelector('div'))) {
 		r.selectNodeContents(div);
 		const prevBreak = div.previousSibling && div.previousSibling.nodeName == 'BR';
-		//const nextBreak = div.firstChild && div.firstChild.nodeName == 'BR';
-		//if (!prevBreak && !nextBreak) {
 		if (!prevBreak) {
 			div.parentNode.insertBefore(document[CRE]('br'), div);
 		}
@@ -8349,9 +8395,18 @@ function getContentsFromEditable (el) {
 
 		value = result.join('').replace(/^\s+|\s+$/g, '');
 
+		/*
+		if (devMode && /\n\n/.test(value)) {
+			sounds.imageSaved.play();
+			console.log('*** debug: Extra Newlines Found ***');
+		}
+		*/
+
 		debugInfo = [
 			`*** original html ***`,
 			`"${el.innerHTML}"`,
+			`*** regalized html ***`,
+			`"${div.innerHTML}"`,
 			`--- result text ---`,
 			`"${value}"`
 		].join('\n');
@@ -9141,6 +9196,8 @@ function postBase (type, form) { /*returns promise*/
 		 *  appVersion: "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
 		 *  userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
 		 *
+		 *  NOTE: Vivaldi deliberately uses the exact same user agent string as Chrome.
+		 *
 		 * Firefox:
 		 *  appVersion: "5.0 (X11)"
 		 *  userAgent: "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:83.0) Gecko/20100101 Firefox/83.0"
@@ -9168,6 +9225,14 @@ function postBase (type, form) { /*returns promise*/
 		return `akahukuplus/${version} on ${app} (${machine.join(', ')})`;
 	}
 
+	function reverseText (s) {
+		const result = [];
+		for (const ch of s) {
+			result.push(ch)
+		}
+		return result.reverse().join('');
+	}
+
 	function getIconvPayload (form) {
 		const payload = {};
 
@@ -9180,6 +9245,17 @@ function postBase (type, form) { /*returns promise*/
 					content = content.replace(/![旧舊]字[体體]!\s*/g, '');
 				}
 			}
+			if (/!rtl!/.test($('email').value)) {
+				if (node.id == 'email') {
+					content = content.replace(/!rtl!\s*/g, '');
+				}
+				if (node.id == 'com2' || node.id == 'email') {
+					content = content
+						.split(/\r?\n/)
+						.map(line => /^>/.test(line) ? line : reverseText(line))
+						.join('\n');
+				}
+			}
 			if (storage.config.osaka_conversion.value || /!osaka!/.test($('email').value)) {
 				content = content
 					.split(/\r?\n/)
@@ -9189,12 +9265,66 @@ function postBase (type, form) { /*returns promise*/
 					content = content.replace(/!osaka!\s*/g, '');
 				}
 			}
-			if (node.id == 'com2') {
-				content = content.replace(/!version!\s*$/g, getVersion());
-			}
 
 			payload[node.name] = content;
 		});
+
+		// process command tags !TAG! in comment
+		if ('com' in payload) {
+			const commands = {};
+			let com = payload['com'].replace(/\r\n/g, '\n');
+			let re;
+			try {
+				while (re = /^!(email|sub|name|trad|[旧舊]字[体體]|rtl|osaka)!([^\n]*)\n/.exec(com)) {
+					const key = RegExp.$1.replace(/[旧舊]字[体體]/, 'trad');
+					const value = RegExp.$2;
+					commands[RegExp.$1] = RegExp.$2;
+					com = com.substring(re[0].length);
+				}
+
+				if (/!version!\s*$/.test(com)) {
+					commands['version'] = getVersion();
+					com = com.replace(/!version!\s*$/, '');
+				}
+
+				for (const [key, value] of Object.entries(commands)) {
+					switch (key) {
+					case 'email':
+					case 'sub':
+					case 'name':
+						if (value != '') {
+							payload[key] = value;
+						}
+						break;
+
+					case 'trad':
+						com = 新字体の漢字を舊字體に変換(com);
+						break;
+
+					case 'osaka':
+						com = com
+							.split(/\r?\n/)
+							.map(line => /^>/.test(line) ? line : osaka(line))
+							.join('\n');
+						break;
+
+					case 'rtl':
+						com = com
+							.split(/\r?\n/)
+							.map(line => /^>/.test(line) ? line : reverseText(line))
+							.join('\n');
+						break;
+
+					case 'version':
+						com += value;
+						break;
+					}
+				}
+			}
+			finally {
+				payload['com'] = com;
+			}
+		}
 
 		return payload;
 	}

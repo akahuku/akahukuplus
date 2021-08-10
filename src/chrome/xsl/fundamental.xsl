@@ -2402,6 +2402,9 @@ div.catalog-popup span {
 						<a class="js" href="#lightbox-search"><kbd>s</kbd>検索</a>
 					</div>
 					<div class="flex">
+						<a class="js" href="#lightbox-copy"><kbd>c</kbd>コピー</a>
+					</div>
+					<div class="flex">
 						<a class="js" href="#lightbox-close"><kbd>esc</kbd>閉じる</a>
 					</div>
 				</div>
@@ -2710,7 +2713,7 @@ div.catalog-popup span {
 <xsl:when test="(contains(@class,'link-futaba') or contains(@class,'link-up')) and @thumbnail and not(name(..)='q')">
 <a class="{@class}" href="{@href}" target="_blank"><xsl:value-of select="."/></a>
 <small class="inline-save-image-wrap"> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
-<a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}"/></a>
+<a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}" referrerpolicy="unsafe-url"/></a>
 </xsl:when>
 <xsl:when test="contains(@class,'link-twitter') and not (name(..)='q')">
 <a class="{@class}" href="{@href}" target="_blank" data-tweet-id="{@tweet-id}"><xsl:value-of select="."/></a>

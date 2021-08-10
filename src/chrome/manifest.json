@@ -23,6 +23,7 @@
 		"storage",
 		"*://*.2chan.net/*",
 		"*://*.nijibox2.com/*", "*://*.nijibox5.com/*", "*://*.nijibox6.com/*",
+		"*://appsweets.net/*",
 		"https://*.twitter.com/*",
 		"https://login.microsoftonline.com/*"
 	],
