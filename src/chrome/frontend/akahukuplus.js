@@ -50,7 +50,8 @@ const HEADER_MARGIN_BOTTOM = 16;
 const FALLBACK_JPEG_QUALITY = 0.8;
 const TEGAKI_CANVAS_WIDTH = 344;// original size: 344
 const TEGAKI_CANVAS_HEIGHT = 135;// original size: 135
-const INLINE_VIDEO_MAX_WIDTH = 720;
+const INLINE_VIDEO_MAX_WIDTH = '720px';
+const INLINE_VIDEO_MAX_HEIGHT = '75vh';
 const QUICK_MODERATE_REASON_CODE = 110;
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
@@ -2752,25 +2753,7 @@ function createXMLGenerator () {
 				case 0:
 					extraTester = [
 						'\n',
-						'su3524582.mp3',
-						'su3524582.mp3',
-						'<font color="#789922">&gt;su3524582.mp3'
-					].join('<br>');
-					break;
-				case 1:
-					extraTester = [
-						'\n',
-						'fu25616.mp3',
-						'fu25616.mp3',
-						'<font color="#789922">&gt;fu25616.mp3</font>'
-					].join('<br>');
-					break;
-				case 2:
-					extraTester = [
-						'\n',
-						'https://img.2chan.net/b/src/1577371181511.webm',
-						'https://img.2chan.net/b/src/1577371181511.webm',
-						'<font color="#789922">&gt;https://img.2chan.net/b/src/1577371181511.webm</font>'
+						'fu258062'
 					].join('<br>');
 					break;
 				}
@@ -8441,7 +8424,8 @@ function displayInlineVideo (anchor) {
 		for (let i in props) {
 			media[i] = props[i];
 		}
-		media.style.maxWidth = `${INLINE_VIDEO_MAX_WIDTH}px`;
+		media.style.maxWidth = INLINE_VIDEO_MAX_WIDTH;
+		media.style.maxHeight = INLINE_VIDEO_MAX_HEIGHT;
 		media.style.width = '100%';
 		media.addEventListener('volumechange', e => {
 			storage.runtime.media.volume = e.target.volume;

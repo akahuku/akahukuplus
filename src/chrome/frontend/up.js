@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', function handler (e) {
 	const THUMB_MAX_WIDTH = 125;
 	const ENABLE_BURST_LOAD = false;
 	const LAST_UPLOADED_ID_KEY = 'lastUpLoadedId';
+	const LAST_UPLOADED_FILES_KEY = 'lastUpLoadedFiles';
 	const THUMB_LOAD_WAIT_MSECS = 100;
 
 	function load (board, base) {
@@ -191,7 +192,7 @@ document.addEventListener('DOMContentLoaded', function handler (e) {
 			const com = e.target.querySelector('input[name="com"]');
 			if (!com) return;
 			const uuid = getUUIDv4();
-			com.value = /^\s*$/.test(com.value) ? uuid : `${uuid} ${com.value}`;
+			com.value = (com.value.replace(/\s+[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/i) + ` ${uuid}`).replace(/^\s+/, '');
 			sessionStorage.setItem(LAST_UPLOADED_ID_KEY, uuid);
 		});
 	});
@@ -202,7 +203,7 @@ document.addEventListener('DOMContentLoaded', function handler (e) {
 		sessionStorage.removeItem(LAST_UPLOADED_ID_KEY);
 
 		const snapshot = document.evaluate(
-			`//*[starts-with(.,"${uuid}")]`,
+			`//td[contains(.,"${uuid}")]`,
 			document, null,
 			XPathResult.ORDERED_NODE_SNAPSHOT_TYPE);
 		if (snapshot.snapshotLength) {
@@ -211,14 +212,37 @@ document.addEventListener('DOMContentLoaded', function handler (e) {
 
 			// copy the file name to clipboard
 			const fileName = /[^\/]+$/.exec(container.closest('tr').querySelector(query).href)[0];
-			navigator.clipboard.writeText(fileName);
+			const fileNames = LAST_UPLOADED_FILES_KEY in sessionStorage ?
+				sessionStorage.getItem(LAST_UPLOADED_FILES_KEY) + '\n' + fileName : fileName;
+			const fileCount = (fileNames.match(/\n/g) || []).length + 1;
+			try { navigator.clipboard.writeText(fileNames); } catch (e) { ; }
+			sessionStorage.setItem(LAST_UPLOADED_FILES_KEY, fileNames);
 
 			// show indicator
 			const indicatorContainer = container.appendChild(document.createElement('div'));
 			const indicator = indicatorContainer.appendChild(document.createElement('div'));
 			indicator.className = 'akahukuplus-last-uploaded-item';
-			//indicator.textContent = `This is the file you just uploaded. The file name "${fileName}" is already copied to the clipboard.`;
-			indicator.textContent = `今アップロードしたファイルです。ファイル名 "${fileName}" はクリップボードにコピーされています。`;
+			if (fileCount == 1) {
+				//indicator.textContent = `This is the file you just uploaded. The file name "${fileName}" is already copied to the clipboard.`;
+				indicator.textContent = `今アップロードしたファイルです。ファイル名 "${fileName}" はクリップボードにコピーされています。`;
+			}
+			else {
+				indicator.textContent = `今アップロードしたファイルです。"${fileName}" を含む ${fileCount} 個のファイル名はクリップボードにコピーされています。`;
+
+				// append utility anchor
+				indicator.appendChild(document.createElement('br'));
+				const anchor = indicator.appendChild(document.createElement('a'));
+				anchor.textContent = '(このファイル名だけコピーしなおすにはこのリンクをクリックしてください)';
+				anchor.href = '#rebuild-clipboard-file-name';
+				anchor.dataset.fileName = fileName;
+				anchor.addEventListener('click', e => {
+					e.preventDefault();
+					const fileName = e.target.dataset.fileName;
+					try { navigator.clipboard.writeText(fileName); } catch (e) { ; }
+					sessionStorage.setItem(LAST_UPLOADED_FILES_KEY, fileName);
+					e.target.parentNode.textContent = `今アップロードしたファイルです。ファイル名 "${fileName}" はクリップボードにコピーされています。`;
+				}, {once: true});
+			}
 		}
 	}
 

@@ -2453,7 +2453,7 @@ div.catalog-popup span {
 <!-- partial content: a comment -->
 <xsl:template match="futaba" mode="comment">
 <html>
-	<body><xsl:apply-templates select="."/></body>
+	<body><xsl:apply-templates select="comment"/></body>
 </html>
 </xsl:template>
 
