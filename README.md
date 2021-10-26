@@ -24,8 +24,8 @@
 
 だいたい見ればわかるようになっている。
 
-Chrome に限り、画像を直接ローカルに保存することができますが、これにはとても
-難しい事前設定が必要です。[説明](https://akahuku.github.io/akahukuplus/how-to-save-image-with-chrome.html)をよく読んでください。
+FileSystemAccess API をサポートしているブラウザでは画像を直接ローカルに保存することができますが、これにはとても
+難しい事前設定が必要です。[説明](https://appsweets.net/akahukuplus/how-to-save-image-assets.html)をよく読んでください。
 
 ## ライセンス
 
