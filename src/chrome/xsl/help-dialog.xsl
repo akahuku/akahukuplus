@@ -91,11 +91,13 @@
 				<tr><td><kbd>ctrl</kbd>+<kbd>[</kbd></td>			<td>閉じる</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>s</kbd></td>			<td>sage の切り替え</td></tr>
 				<tr><td><kbd>shift</kbd>+<kbd>enter</kbd></td>		<td>送信</td></tr>
+				<tr><td><kbd>alt</kbd>+<kbd>d</kbd></td>			<td>選択範囲に濁点を付ける</td></tr>
+				<tr><td><kbd>alt</kbd>+<kbd>shift</kbd>+<kbd>d</kbd></td>		<td>選択範囲に半濁点を付ける</td></tr>
 				<tr><td colspan="2" class="notice">以下は Emacs ぽいショートカット ON 時に有効</td></tr>
-				<tr><td><kbd>ctrl</kbd>+<kbd>a</kbd></td>			<td>全選択/行頭</td></tr>
+				<tr><td><kbd>ctrl</kbd>+<kbd>a</kbd></td>			<td>行頭</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>e</kbd></td>			<td>行末</td></tr>
-				<tr><td><kbd>ctrl</kbd>+<kbd>k</kbd></td>			<td>前の行</td></tr>
-				<tr><td><kbd>ctrl</kbd>+<kbd>j</kbd></td>			<td>次の行</td></tr>
+				<tr><td><kbd>alt</kbd>+<kbd>p</kbd></td>			<td>前の行</td></tr>
+				<tr><td><kbd>alt</kbd>+<kbd>n</kbd></td>			<td>次の行</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>b</kbd></td>			<td>前の文字</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>f</kbd></td>			<td>次の文字</td></tr>
 				<tr><td><kbd>alt</kbd>+<kbd>b</kbd></td>			<td>前の単語</td></tr>
@@ -103,6 +105,7 @@
 				<tr><td><kbd>ctrl</kbd>+<kbd>h</kbd></td>			<td>前の1文字を削除</td></tr>
 				<tr><td><kbd>alt</kbd>+<kbd>h</kbd></td>			<td>前の1単語を削除</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>u</kbd></td>			<td>行頭までを削除</td></tr>
+				<tr><td><kbd>ctrl</kbd>+<kbd>/</kbd></td>			<td>全選択</td></tr>
 			</table>
 		</div>
 
@@ -118,6 +121,7 @@
 				<tr><td><kbd>r</kbd></td>					<td>右に回転</td></tr>
 				<tr><td><kbd>v</kbd></td>					<td>180度回転</td></tr>
 				<tr><td><kbd>s</kbd></td>					<td>画像検索</td></tr>
+				<tr><td><kbd>c</kbd></td>					<td>コピー</td></tr>
 				<tr><td><kbd>esc</kbd></td>					<td>閉じる</td></tr>
 				<tr><td><kbd>ctrl</kbd>+<kbd>[</kbd></td>	<td>閉じる</td></tr>
 			</table>

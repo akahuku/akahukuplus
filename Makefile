@@ -26,11 +26,6 @@ EMBRYO_DIR = .embryo
 RSYNC_OPT = -rptLv --delete \
 	--exclude '*.sw?' --exclude '*.bak' --exclude '*~' --exclude '*.sh' \
 	--exclude '.*' \
-	--exclude '$(CRYPT_SRC_FILE)*'
-
-CRYPT_KEY_FILE = LICENSE
-CRYPT_SRC_FILE = consumer_keys.json
-CRYPT_DST_FILE = consumer_keys.bin
 
 CHROME_SUFFIX = crx
 CHROME_SRC_DIR = chrome
@@ -52,8 +47,6 @@ FIREFOX_UPDATE_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/
 
 # derived macros
 # ========================================
-
-BINKEYS_PATH = $(CHROME_SRC_PATH)/$(CRYPT_DST_FILE)
 
 CHROME_TARGET_PATH = $(DIST_DIR)/$(PRODUCT).$(CHROME_SUFFIX)
 CHROME_MTIME_PATH = $(EMBRYO_DIR)/.$(CHROME_SUFFIX)
@@ -96,21 +89,12 @@ nex: $(BLINKOPERA_TARGET_PATH)
 
 xpi: $(FIREFOX_TARGET_PATH)
 
-binkeys: $(BINKEYS_PATH)
-
 clean:
 	rm -rf ./$(EMBRYO_DIR)
 
-$(BINKEYS_PATH): $(CHROME_SRC_PATH)/$(CRYPT_KEY_FILE) $(CHROME_SRC_PATH)/$(CRYPT_SRC_FILE)
-	tool/make-binkey.js \
-		--key $(CHROME_SRC_PATH)/$(CRYPT_KEY_FILE) \
-		--src $(CHROME_SRC_PATH)/$(CRYPT_SRC_FILE) \
-		--dst $@ \
-		--verbose --verbose
-
 FORCE:
 
-.PHONY: all crx nex xpi binkeys \
+.PHONY: all crx nex xpi \
 	clean message \
 	debug-firefox momocan version \
 	FORCE
@@ -121,7 +105,7 @@ FORCE:
 #
 
 # akahukuplus.crx
-$(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEYS_PATH)
+$(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH)
 #	copy all of sources to embryo dir
 	@echo synchoronizing source...
 	@$(RSYNC) $(RSYNC_OPT) \
@@ -144,6 +128,8 @@ $(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH) $(BINKEYS_PATH)
 #	build general crx
 	@echo building crx...
 	@$(CHROME) \
+		--disable-gpu \
+		--disable-software-rasterizer \
 		--lang=en \
 		--pack-extension=$(CHROME_EMBRYO_SRC_PATH) \
 		--pack-extension-key=$(PRODUCT).pem
@@ -187,7 +173,7 @@ $(CHROME_MTIME_PATH): FORCE
 #
 
 # akahukuplus.nex
-$(BLINKOPERA_TARGET_PATH): $(BLINKOPERA_MTIME_PATH) $(BINKEYS_PATH)
+$(BLINKOPERA_TARGET_PATH): $(BLINKOPERA_MTIME_PATH)
 #	copy all of sources to embryo dir
 	$(RSYNC) $(RSYNC_OPT) \
 		$(BLINKOPERA_SRC_PATH)/ $(BLINKOPERA_EMBRYO_SRC_PATH)
@@ -207,6 +193,8 @@ $(BLINKOPERA_TARGET_PATH): $(BLINKOPERA_MTIME_PATH) $(BINKEYS_PATH)
 
 #	build nex
 	$(CHROME) \
+		--disable-gpu \
+		--disable-software-rasterizer \
 		--lang=en \
 		--pack-extension=$(BLINKOPERA_EMBRYO_SRC_PATH) \
 		--pack-extension-key=$(PRODUCT).pem
@@ -231,12 +219,12 @@ $(BLINKOPERA_MTIME_PATH): FORCE
 
 
 #
-# rules to make wasavi.xpi
+# rules to make akahukuplus.xpi
 # ========================================
 #
 
-# wasavi.xpi
-$(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH) $(BINKEYS_PATH)
+# akahukuplus.xpi
+$(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH)
 #	copy all of sources to embryo dir
 	$(RSYNC) $(RSYNC_OPT) \
 		$(FIREFOX_SRC_PATH)/ $(FIREFOX_EMBRYO_SRC_PATH)
@@ -276,15 +264,6 @@ $(FIREFOX_MTIME_PATH): FORCE
 
 
 #
-# rules to make binary formed consumer keys
-# ========================================
-#
-
-binkeys: $(BINKEYS_PATH)
-
-
-
-#
 # rules to make messages
 # ========================================
 #
@@ -309,7 +288,7 @@ message: FORCE
 #
 
 debug-firefox: FORCE
-	cd $(FIREFOX_SRC_PATH) && web-ext run \
+	cd $(FIREFOX_SRC_PATH) && npx web-ext run \
 		--firefox-profile $(abspath $(FIREFOX_TEST_PROFILE_PATH)) \
 		--keep-profile-changes \
 		--browser-console \

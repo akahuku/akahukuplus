@@ -22,10 +22,8 @@
 		"webRequest", "webRequestBlocking",
 		"storage",
 		"*://*.2chan.net/*",
-		"*://*.nijibox2.com/*", "*://*.nijibox5.com/*", "*://*.nijibox6.com/*",
 		"*://appsweets.net/*",
-		"https://*.twitter.com/*",
-		"https://login.microsoftonline.com/*"
+		"https://*.twitter.com/*"
 	],
 	"background": {
 		"page": "backend/main.html"
@@ -45,11 +43,7 @@
 			],
 			"js": [
 				"frontend/global.js",
-				"frontend/extension_wrapper.js",
-				"frontend/qeema.js",
 				"frontend/twitter_emoji_regexp.js",
-				"frontend/difflib.js",
-				"frontend/momocan.js",
 				"frontend/akahukuplus.js"
 			],
 			"run_at": "document_start",
@@ -68,8 +62,8 @@
 		},
 		{
 			"matches": [
-				"*://dec.2chan.net/up/*.htm",
-				"*://dec.2chan.net/up2/*.htm"
+				"*://dec.2chan.net/up/*.htm*",
+				"*://dec.2chan.net/up2/*.htm*"
 			],
 			"js": [
 				"frontend/up.js"
@@ -83,8 +77,9 @@
 		"sounds/*",
 		"styles/*",
 		"fonts/*",
-		"xsl/*"
+		"xsl/*",
+		"lib/*"
 	],
-	"homepage_url": "http://akahuku.github.io/akahukuplus/",
+	"homepage_url": "https://appsweets.net/akahukuplus/",
 	"update_url":"https://github.com/akahuku/akahukuplus/raw/master/dist/chrome.xml"
 }

@@ -144,6 +144,10 @@ a.js:hover kbd {
 	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/local.png) left top no-repeat;
 }
 
+.fsa-image {
+	background:url(chrome-extension://__MSG_@@extension_id__/images/storage/fsa.png) left top no-repeat;
+}
+
 input[type="checkbox"] {
 	vertical-align:middle;
 	position:relative;
@@ -230,6 +234,10 @@ twitter-widget + br {
 #header h1 a {
 	color:inherit;
 	text-decoration:inherit;
+}
+
+#header h1 a span:nth-child(2) {
+	font-size:75%;
 }
 
 #header img {
@@ -378,6 +386,16 @@ twitter-widget + br {
 .topic-wrap .email,
 .reply-wrap .email {
 	color:#00f;
+}
+
+.topic-wrap .email:before,
+.reply-wrap .email:before {
+	content:"[";
+}
+
+.topic-wrap .email:after,
+.reply-wrap .email:after {
+	content:"]";
 }
 
 .topic-wrap .repdigit,
@@ -651,6 +669,11 @@ article.summary .replies {
 .reply-wrap a.sodane {
 }
 
+.topic-wrap a.sodane:before,
+.reply-wrap a.sodane:before {
+	content:"そうだね × ";
+}
+
 .reply-wrap a.sodane-null {
 	visibility:hidden;
 }
@@ -742,6 +765,41 @@ article.summary .replies {
 }
 
 .reply-image > div {
+}
+
+/*
+ * save image link
+ */
+
+.save-image {
+	display:inline-block;
+	margin:0;
+	padding:2px 15px 2px 3px;
+	background-color:transparent;
+	color:#800000;
+	border:1px solid #ea8;
+	border-radius:4px;
+	text-decoration:none;
+	font-size:small;
+	line-height:1;
+	background:url(chrome-extension://__MSG_@@extension_id__/images/down-arrow.svg) right 3px center/8px no-repeat;
+}
+
+.save-image:hover {
+	background-color:#ea8;
+	color:#800000;
+	text-decoration:none;
+}
+
+.save-image.active {
+	background-color:#ea8;
+	color:#800000;
+	text-decoration:none;
+	border-radius:4px 4px 0 0;
+}
+
+.inline-save-image-wrap .save-image {
+	margin-left:6px;
 }
 
 /*
@@ -1978,24 +2036,26 @@ div.catalog-popup span {
 
 #selection-menu {
 	position:absolute;
-	background-color:#eee;
-	border:1px solid silver;
+	padding:4px 0 4px 0;
+	background-color:rgba(255,255,255,.95);
+	border:none;
+	border-radius:4px;
+	box-shadow:3px 3px 5px -1px rgba(0,0,0,.5);
 	font-size:small;
 	z-index:300;
-	box-shadow:0 1px 4px 2px rgba(0,0,0,.3);
 }
 
 #selection-menu .menu-rule {
-	overflow:hidden;
-	height:0px;
-	margin:2px 0 2px 0;
-	border-top:1px solid silver;
-	border-bottom:1px solid #fff;
+	margin:5px 0 4px 0;
+	height:0;
+	border-style:none none solid none;
+	border-width:1px;
+	border-color:#ddd;
 }
 
 #selection-menu a {
 	margin:0;
-	padding:4px;
+	padding:4px 1em 4px 1em;
 	line-height:1;
 	text-decoration:none;
 	color:#333;
@@ -2003,8 +2063,10 @@ div.catalog-popup span {
 }
 
 #selection-menu a:hover {
-	background-color:highlight;
-	color:highlighttext;
+	background-color:#cf9c97;
+	color:#ffffff;
+	/*background-color:highlight;
+	color:highlighttext;*/
 }
 
 #selection-menu a.l {
@@ -2025,6 +2087,145 @@ div.catalog-popup span {
 
 #selection-menu a.i img {
 	border:1px solid #eee;
+}
+
+/*
+ * context menu
+ */
+
+.menu-pane {
+	position:fixed;
+	padding:4px 0 4px 0;
+	background-color:rgba(255,255,255,.95);
+	color:#333333;
+	border:none;
+	border-radius:4px;
+	box-shadow:-1px -1px 2px -1px rgba(0,0,0,.125),
+				3px 3px 5px -1px rgba(0,0,0,.5);
+	font-size:small;
+	line-height:1;
+	z-index:65540;
+}
+
+.menu-pane.top-menu {
+	/*border-radius:0 0 4px 4px;*/
+}
+
+.menu-head {
+	display:flex;
+	justify-content:center;
+	align-items:center;
+	margin:-4px 0 0 0;
+	height:16px;
+	border-radius:4px 4px 0 0;
+}
+
+.top-menu .menu-head {
+	border-radius:unset;
+}
+
+.menu-tail {
+	display:flex;
+	justify-content:center;
+	align-items:center;
+	margin:0 0 -4px 0;
+	height:16px;
+	border-radius:0 0 4px 4px;
+}
+
+.menu-head img,
+.menu-tail img {
+	height:10px;
+}
+
+.menu-tail img {
+	transform:scaleY(-1);
+}
+
+.menu-head:hover,
+.menu-tail:hover {
+	background-color:#f0e0d6;
+}
+
+.menu-head:hover img,
+.menu-tail:hover img{
+	filter:invert(10%) sepia(44%) saturate(6674%) hue-rotate(354deg) brightness(101%) contrast(115%);
+}
+
+.menu-body {
+	overflow:hidden;
+}
+
+.menu-body > div.ruler {
+	margin:5px 0 4px 0;
+	height:0;
+	border-style:none none solid none;
+	border-width:1px;
+	border-color:#dddddd;
+}
+
+.menu-body > a {
+	display:flex;
+	padding:4px 1em 4px 4px;
+	background-color:inherit;
+	color:inherit;
+	text-decoration:inherit;
+	white-space:nowrap;
+}
+
+.menu-body > a > :first-child {
+	width:1em;
+}
+
+.menu-body > a > :first-child img {
+	width:.75em;
+	filter:invert(17%) sepia(0%) saturate(0%) hue-rotate(43deg) brightness(95%) contrast(88%);
+}
+
+.menu-body > a > :last-child {
+	margin:0 0 0 2em;
+	color:#888;
+	text-align:right;
+	white-space:nowrap;
+}
+
+.menu-body > a > :last-child img {
+	margin:0;
+	width:0.75em;
+	filter:invert(17%) sepia(0%) saturate(0%) hue-rotate(43deg) brightness(95%) contrast(88%);
+}
+
+/* disable item */
+
+.menu-body > a.disabled {
+	color:#bbbbbb;
+	cursor:default;
+}
+
+.menu-body > a.disabled img {
+	filter:invert(85%);
+}
+
+/* hover item */
+
+.menu-body > a:not(.disabled):hover,
+.menu-body > a:not(.disabled).emphasis {
+	background-color:#cf9c97;
+	color:#ffffff;
+	/*background-color:highlight;
+	color:highlighttext;*/
+}
+
+.menu-body > a:not(.disabled):hover > :last-child,
+.menu-body > a:not(.disabled).emphasis > :last-child {
+	color:#fff;
+}
+
+.menu-body > a:not(.disabled):hover > :first-child img,
+.menu-body > a:not(.disabled):hover > :last-child img,
+.menu-body > a:not(.disabled).emphasis > :first-child img,
+.menu-body > a:not(.disabled).emphasis > :last-child img {
+	filter:invert(100%);
 }
 
 /*
@@ -2058,7 +2259,7 @@ div.catalog-popup span {
 				<div>
 					<a class="js" href="#toggle-catalog"><kbd>c</kbd><span>カタログ</span></a>
 					&#160;<a class="js" href="#delete-post">記事削除</a>
-					<xsl:if test="$page_mode='reply'">&#160;<a class="js" href="#track">自動追尾</a></xsl:if>
+					<xsl:if test="$page_mode='reply'">&#160;<a class="js" href="#autotrack">自動追尾</a>&#160;<a class="js" href="#autosave">自動保存</a></xsl:if>
 					&#160;現在<span id="viewers" data-binding="xpath:/futaba/meta/viewers">?</span>人くらいが見てます.
 				</div>
 				<div>
@@ -2119,7 +2320,7 @@ div.catalog-popup span {
 			<div class="credit">—
 				<a href="http://php.loglog.jp/bbs/bbs3.php" target="_blank">GazouBBS</a>
 				+ <a href="//www.2chan.net/" target="_top">futaba</a>
-				/ This page is under control of <a href="https://akahuku.github.io/akahukuplus/" target="_blank"><xsl:value-of select="$app_name"/>/<xsl:value-of select="meta/version"/></a>
+				/ This page is under control of <a href="https://appsweets.net/akahukuplus/" target="_blank"><xsl:value-of select="$app_name"/>/<xsl:value-of select="meta/version"/></a>
 			—</div>
 			<xsl:if test="$dev_mode='1'">
 			<div class="debug-tools">
@@ -2130,8 +2331,10 @@ div.catalog-popup span {
 				+ <a class="js" href="#dump-stats">Dump Stats</a>
 				+ <a class="js" href="#dump-reload-data">Dump Reload Data</a>
 				+ <a class="js" href="#empty-replies">Empty replies</a>
+				+ <a class="js" href="#traverse">Directory Traverse</a>
 				+ <label><input type="checkbox" data-href="#toggle-timing-log"/>Timing log</label>
 				+ <label><input type="checkbox" data-href="#toggle-comment-log"/>Comment log</label>
+				+ <label><input type="checkbox" data-href="#toggle-dump-xml"/>Dump XML</label>
 			</div>
 			</xsl:if>
 			<div class="fts-form-wrap">
@@ -2173,6 +2376,7 @@ div.catalog-popup span {
 					<li class="hide"><p>なー<span></span></p><div id="stat-nar"></div></li>
 					<li class="hide"><p>スレッドを立てた人によって削除<span></span></p><div id="stat-passive"></div></li>
 					<li class="hide"><p>書き込みをした人によって削除<span></span></p><div id="stat-active"></div></li>
+					<li class="hide"><p>削除依頼によって隔離<span></span></p><div id="stat-isolated"></div></li>
 					<li class="hide"><p>その他の赤字<span></span></p><div id="stat-other"></div></li>
 				</ul>
 				<h2>ID の集計<span id="stat-id-header"></span></h2>
@@ -2482,10 +2686,11 @@ div.catalog-popup span {
 <html>
 	<body>
 	<xsl:choose>
+	<xsl:when test="meta/configurations/param[@name='storage']/@value='fsa'"><span class="storage-image fsa-image" title="保存先: ローカル ドライブ(File System Access)">-</span></xsl:when>
 	<xsl:when test="meta/configurations/param[@name='storage']/@value='dropbox'"><a href="https://www.dropbox.com/" target="_blank"><span class="storage-image dropbox-image" title="保存先: dropbox">-</span></a></xsl:when>
 	<xsl:when test="meta/configurations/param[@name='storage']/@value='googledrive'"><a href="http://www.google.com/drive/about.html" target="_blank"><span class="storage-image gdrive-image" title="保存先: Google Drive">-</span></a></xsl:when>
 	<xsl:when test="meta/configurations/param[@name='storage']/@value='onedrive'"><a href="https://onedrive.live.com/" target="_blank"><span class="storage-image onedrive-image" title="保存先: Microsoft OneDrive">-</span></a></xsl:when>
-	<xsl:when test="meta/configurations/param[@name='storage']/@value='local'"><span class="storage-image local-image" title="保存先: ローカル ドライブ">-</span></xsl:when>
+	<xsl:when test="meta/configurations/param[@name='storage']/@value='local'"><span class="storage-image local-image" title="保存先: ローカル ドライブ(Chrome Apps)">-</span></xsl:when>
 	</xsl:choose>
 	</body>
 </html>
@@ -2494,7 +2699,12 @@ div.catalog-popup span {
 <!-- partial content: title -->
 <xsl:template match="futaba" mode="title">
 <html>
-	<body><xsl:apply-templates select="meta/title"/></body>
+	<body>
+	<xsl:choose>
+		<xsl:when test="meta/title/span"><span><xsl:apply-templates select="meta/title/span[1]"/></span><span><xsl:apply-templates select="meta/title/span[2]"/></span></xsl:when>
+		<xsl:otherwise><span><xsl:apply-templates select="meta/title"/></span></xsl:otherwise>
+	</xsl:choose>
+	</body>
 </html>
 </xsl:template>
 
@@ -2513,7 +2723,7 @@ div.catalog-popup span {
 				<xsl:value-of select="topic/image/@base_name"/>
 			</a>
 			<br/><span class="info-sup"><xsl:value-of select="topic/image/@size"/><xsl:if test="topic/image/@animated"> - アニメGIF</xsl:if></span>
-			<br/>[<a class="js save-image" href="{topic/image}">保存する</a>]
+			<br/><a class="save-image" href="{topic/image}">保存する</a>
 		</div>
 	</div>
 	</xsl:if>
@@ -2528,7 +2738,7 @@ div.catalog-popup span {
 				<xsl:if test="topic/user_id"><span class="user-id" data-id="{topic/user_id}">ID:<xsl:value-of select="topic/user_id"/></span><span></span><span class="sep">|</span></xsl:if>
 				<a class="postno" href="#quote">No.<xsl:apply-templates select="topic/number"/></a>&#160;<a class="del js" href="#del">del</a>&#160;<a class="{topic/sodane/@class} js" href="#sodane"><xsl:value-of select="topic/sodane"/></a>&#160;<xsl:if test="$page_mode!='reply'"><span class="reply-link"><a href="{@url}" target="_blank">返信</a></span></xsl:if>
 			</div>
-			<xsl:if test="topic/email"><div class="email">[<xsl:apply-templates select="topic/email"/>]</div></xsl:if>
+			<xsl:if test="topic/email"><div class="email"><xsl:apply-templates select="topic/email"/></div></xsl:if>
 			<div class="comment"><xsl:apply-templates select="topic/comment"/></div>
 			<xsl:apply-templates select="topic/expires" mode="detail"/>
 			<xsl:if test="$page_mode='summary' and replies/@hidden>0"><div class="hidden-indicator">レス <xsl:value-of select="replies/@hidden"/> 件省略。全て読むには返信ボタンを押してください。</div></xsl:if>
@@ -2585,18 +2795,18 @@ div.catalog-popup span {
 		<xsl:if test="image">
 			<div class="reply-image">
 				<a class="js lightbox" href="{image}" target="_blank">
-					<img src="{thumb}" width="{thumb/@width}" height="{thumb/@height}" loading="lazy"/>
+					<img src="{thumb}" width="{thumb/@width}" height="{thumb/@height}" data-bytes="{image/@bytes}" loading="lazy"/>
 					<br/>
 					<xsl:value-of select="image/@base_name"/>
 				</a>
 				<div>
 					<xsl:value-of select="image/@size"/>
 					<xsl:if test="image/@animated"> - アニメGIF</xsl:if>
-					<br/>[<a class="js save-image" href="{image}">保存する</a>]
+					<br/><a class="save-image" href="{image}">保存する</a>
 				</div>
 			</div>
 		</xsl:if>
-		<xsl:if test="email"><div class="email">[<xsl:apply-templates select="email"/>]</div></xsl:if>
+		<xsl:if test="email"><div class="email"><xsl:apply-templates select="email"/></div></xsl:if>
 		<div class="comment"><xsl:apply-templates select="comment"/></div>
 		<xsl:if test="user_id"><div class="user-id">── <span class="user-id" data-id="{user_id}">ID:<xsl:value-of select="user_id"/></span><span></span></div></xsl:if>
 	</div>
@@ -2695,24 +2905,24 @@ div.catalog-popup span {
 <div class="{@class}" data-thumbnail-href="{@thumbnail}">
 	<a class="lightbox" href="{@href}" title="{@title}" target="_blank" data-basename="{@basename}"><xsl:value-of select="."/></a>
 	<a class="lightbox siokara-thumbnail" href="{@href}" title="{@title}" target="_blank" data-basename="{@basename}"><img src="{$platform}-extension://{/futaba/meta/extension_id}/images/siokara-common.png"/></a>
-	<div>[<a class="js save-image" href="{@href}">保存する</a>]</div>
+	<div><a class="save-image" href="{@href}">保存する</a></div>
 </div>
 </xsl:when>
 <xsl:when test="contains(@class,'link-youtube') and not(name(..)='q')">
 <div class="inline-video-container">
-	<a href="{@href}" target="_blank"><xsl:value-of select="."/></a>
-	<div class="inline-video youtube" data-markup="&lt;iframe width='420' height='315' src='//www.youtube.com/embed/{@youtube-key}' frameborder='0' allowfullscreen='allowfullscreen'&gt;&lt;/iframe&gt;"></div>
+<a href="{@href}" target="_blank"><xsl:value-of select="."/></a><br/>
+<div class="inline-video youtube" data-markup="&lt;iframe width='420' height='315' src='https://www.youtube.com/embed/{@youtube-key}' frameborder='0' allowfullscreen='allowfullscreen'&gt;&lt;/iframe&gt;"></div>
 </div>
 </xsl:when>
 <xsl:when test="contains(@class,'link-nico2') and not(name(..)='q')">
 <div class="inline-video-container">
-	<a href="{@href}" target="_blank"><xsl:value-of select="."/></a>
-	<div class="inline-video nico2" data-nico2-key="{@nico2-key}"></div>
+<a href="{@href}" target="_blank"><xsl:value-of select="."/></a><br/>
+<div class="inline-video nico2" data-nico2-key="{@nico2-key}"></div>
 </div>
 </xsl:when>
 <xsl:when test="(contains(@class,'link-futaba') or contains(@class,'link-up')) and @thumbnail and not(name(..)='q')">
 <a class="{@class}" href="{@href}" target="_blank"><xsl:value-of select="."/></a>
-<small class="inline-save-image-wrap"> - [<a class="js save-image" href="{@href}">保存する</a>]</small><br/>
+<small class="inline-save-image-wrap"><a class="save-image" href="{@href}">保存する</a></small><br/>
 <a class="{@class}" href="{@href}" target="_blank"><img src="{@thumbnail}" referrerpolicy="unsafe-url"/></a>
 </xsl:when>
 <xsl:when test="contains(@class,'link-twitter') and not (name(..)='q')">

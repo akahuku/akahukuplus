@@ -23,7 +23,7 @@ import {Kosian} from './kosian/Kosian.js';
 import {SjisUtils} from './SjisUtils.js';
 import {FetchTweets} from './FetchTweets.js';
 import {CompleteUpfiles} from './CompleteUpfiles.js';
-import {SaveImage} from './SaveImage.js';
+import {FetchExternalResource} from './FetchExternalResource.js';
 
 
 
@@ -40,7 +40,7 @@ const ext = Kosian(window, {
 const sjisUtils = SjisUtils;
 const fetchTweets = FetchTweets();
 const completeUpfiles = CompleteUpfiles();
-const saveImage = SaveImage('LICENSE');
+const fetchExternalResource = FetchExternalResource();
 const initializingTabIds = {};
 
 
@@ -168,17 +168,143 @@ function reloadAllFutabaTabs () {
 	}
 }
 
+async function getFileSystemAccessPermissionFromSummaryPage (data, sender, res) {
+	function getSummaryPage () {
+		return new Promise(resolve => {
+			chrome.tabs.query({currentWindow: true}, tabs => {
+				const summaryURL = `https://${data.server}.2chan.net/${data.board}/futaba.htm`
+				resolve(tabs.filter(tab => tab.url.startsWith(summaryURL)));
+			});
+		});
+	}
+
+	function queryPermToSummaryPage (tabId, fileSystemId) {
+		return new Promise((resolve, reject) => {
+			chrome.tabs.sendMessage(
+				tabId, {type: 'query-filesystem-permission', id: fileSystemId},
+				result => {
+					if (chrome.runtime.lastError) {
+						reject(new Error('failed to query a permission on summary page'));
+					}
+					else {
+						resolve(result);
+					}
+				}
+			);
+		});
+	}
+
+	function getPermFromSummaryPage (tabId, fileSystemId) {
+		return new Promise((resolve, reject) => {
+			chrome.tabs.sendMessage(
+				tabId, {type: 'get-filesystem-permission', id: fileSystemId},
+				result => {
+					if (chrome.runtime.lastError) {
+						reject(new Error('failed to get a permission on summary page'));
+					}
+					else {
+						resolve(result);
+					}
+				});
+		});
+	}
+
+	function activateTab (tabId) {
+		return new Promise((resolve, reject) => {
+			chrome.tabs.update(
+				tabId, {active: true},
+				() => {
+					if (chrome.runtime.lastError) {
+						reject(new Error('failed to update the tab'));
+					}
+					else {
+						resolve();
+					}
+				}
+			);
+		});
+	}
+
+	const result = {
+		foundSummary: false,
+		granted: false
+	};
+
+	try {
+		// get summary page
+		const tabs = await getSummaryPage();
+		if (tabs.length == 0) {
+			return;
+		}
+		result.foundSummary = true;
+
+		// query the file system access permission on summary page
+		const queried = await queryPermToSummaryPage(tabs[0].id, data.id);
+		if (queried.permission === 'unavailable') {
+			return;
+		}
+		if (queried.permission === 'granted') {
+			result.granted = true;
+			return;
+		}
+
+		// activate the summary page
+		await activateTab(tabs[0].id);
+
+		// send message to the summary page
+		const requestedPermission = await getPermFromSummaryPage(tabs[0].id, data.id);
+		result.granted = requestedPermission.granted;
+
+		// re-activate the sender page
+		await activateTab((sender + '').split('_')[0] - 0);
+	}
+	catch (e) {
+		console.dir(e);
+		result.granted = false;
+	}
+	finally {
+		res(result);
+	}
+}
+
 
 
 /** <<<2 request handlers */
 const handlers = {
 	'init': (command, data, sender, res) => {
-		res({
-			extensionId: ext.id,
-			tabId: sender,
-			version: ext.version,
-			devMode: ext.isDev
+		Promise.all([
+			new Promise(resolve => {
+				chrome.tabs.query({active: true, currentWindow: true}, tabs => {
+					resolve(tabs.length && 'extData' in tabs[0]);
+				});
+			}),
+			new Promise(resolve => {
+				if ('getBrowserInfo' in chrome.runtime) {
+					chrome.runtime.getBrowserInfo(resolve);
+				}
+				else {
+					resolve({
+						name: null,
+						vendor: null,
+						version: null,
+						buildID: null
+					});
+				}
+			})
+		])
+		.then(([isVivaldi, browserInfo]) => {
+			if (isVivaldi) {
+				browserInfo.name = 'Vivaldi';
+			}
+			res({
+				extensionId: ext.id,
+				tabId: sender,
+				version: ext.version,
+				devMode: ext.isDev,
+				browserInfo: browserInfo
+			});
 		});
+		return true;
 	},
 
 	'initialized': (command, data, sender, res) => {
@@ -195,7 +321,7 @@ const handlers = {
 	},
 
 	'get-tweet': (command, data, sender, res) => {
-		return fetchTweets.run(data.id, res);
+		return fetchTweets.run(data.url, data.id, res);
 	},
 
 	'complete': (command, data, sender, res) => {
@@ -206,10 +332,11 @@ const handlers = {
 		return completeUpfiles.loadSiokaraThumbnail(data.url, res);
 	},
 
-	'save-image': (command, data, sender, res) => {
-		return saveImage.run(
-			data.url, data.path, data.mimeType,
-			data.anchorId, sender);
+	'fetch': (command, data, sender, res) => {
+		fetchExternalResource.run(data.url).then(objectURL => {
+			res({objectURL});
+		});
+		return true;
 	},
 
 	'get-resource': (command, data, sender, res) => {
@@ -270,8 +397,8 @@ const handlers = {
 	'notify-viewers': (command, data, sender, res) => {
 		const payload = {
 			type: 'notify-viewers',
-				data: data.viewers,
-				siteInfo: data.siteInfo
+			data: data.viewers,
+			siteInfo: data.siteInfo
 		};
 		getAllFutabaTabs().then(tabs => {
 			tabs.forEach(tab => {
@@ -280,15 +407,15 @@ const handlers = {
 		});
 	},
 
+	'filesystem': (command, data, sender, res) => {
+		getFileSystemAccessPermissionFromSummaryPage(data, sender, res);
+		return true;
+	},
+
 	'reload': (command, data, sender, res) => {
 		if (!ext.isDev) return;
 		localStorage.setItem(RELOAD_FLAG_KEY, '1');
 		chrome.runtime.reload();
-	},
-
-	'clear-credentials': (command, data, sender, res) => {
-		saveImage.clearCredentials(data.schemes).then(res);
-		return true;
 	},
 };
 
@@ -322,6 +449,8 @@ ext.receive((command, data, sender, respond) => {
 
 optimizeAssetLoading();
 reloadAllFutabaTabs();
+
+
 
 console.info(`${ext.appName}/${ext.version} started.`);
 

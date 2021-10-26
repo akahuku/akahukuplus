@@ -8,7 +8,7 @@
 
 if (document.querySelector('meta[name="generator"][content="akahukuplus"]')) {
 	console.log('akahukuplus: multiple execution of content script.');
-	window.location.reload();
+	location.reload();
 }
 else {
 
@@ -17,6 +17,7 @@ else {
  */
 
 const APP_NAME = 'akahukuplus';
+const IS_GECKO = 'InstallTrigger' in window;
 const FUTABA_CHARSET = 'Shift_JIS';
 const NOTFOUND_TITLE = /404\s+file\s+not\s+found/i;
 const UNAVAILABLE_TITLE = /503 Service Temporarily Unavailable/;
@@ -53,57 +54,50 @@ const TEGAKI_CANVAS_HEIGHT = 135;// original size: 135
 const INLINE_VIDEO_MAX_WIDTH = '720px';
 const INLINE_VIDEO_MAX_HEIGHT = '75vh';
 const QUICK_MODERATE_REASON_CODE = 110;
+const EXTRACT_UNIT = 10;
+const ASSET_FILE_SYSTEM_NAME = 'asset';
+const THREAD_FILE_SYSTEM_NAME = 'thread';
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
 const DEBUG_IGNORE_LAST_MODIFIED = false;	// default: false
 
-const MOVER_EVENT_NAME = 'mouseover';
-const MOUT_EVENT_NAME = 'mouseout';
-const MMOVE_EVENT_NAME = 'mousemove';
-
-const IHTML = d('joofsIUNM');
-const FUN = d('Gvodujpo');
-const IAHTML = d('jotfsuBekbdfouIUNM');
-const USW = d('votbgfXjoepx');
-const CRE = d('dsfbufFmfnfou');
-const ONER = d('pofssps');
-
-const MESSAGE_BACKEND_CONNECTION_ERROR = 'バックエンドに接続できません。ページをリロードしてください。';
-
 /*
  * <<<1 globals
  */
 
-let bootVars = {iframeSources:'', bodyHTML:''};
+// object instances, created on demand
+let timingLogger = stub('timingLogger', () => timingLogger = createTimingLogger());
+let storage = stub('storage', () => storage = createPersistentStorage());
+let backend = stub('backend', () => backend = createExtensionBackend());
+let transport = stub('transport', () => transport = createTransport());
+let resources = stub('resources', () => resources = createResourceManager());
+let postStats = stub('postStats', () => postStats = createPostStats());
+let urlStorage = stub('urlStorage', () => urlStorage = createUrlStorage());
+let xmlGenerator = stub('xmlGenerator', () => xmlGenerator = createXMLGenerator());
+let linkifier = stub('linkifier', () => linkifier = createLinkifier());
+let passiveTracker = stub('passiveTracker', () => passiveTracker = createPassiveTracker());
+let activeTracker = stub('activeTracker', () => activeTracker = createActiveTracker());
+let clickDispatcher = stub('clickDispatcher', () => clickDispatcher = createClickDispatcher());
+let keyManager = stub('keyManager', () => keyManager = createKeyManager());
+let favicon = stub('favicon', () => favicon = createFavicon());
+let scrollManager = stub('scrollManager', () => scrollManager = createScrollManager(10));
+let selectionMenu = stub('selectionMenu', () => selectionMenu = createSelectionMenu());
+let catalogPopup = stub('catalogPopup', () => catalogPopup = createCatalogPopup($qs('#catalog')));
+let quotePopup = stub('quotePopup', () => quotePopup = createQuotePopup());
+let titleIndicator = stub('titleIndicator', () => titleIndicator = createTitleIndicator());
+let resourceSaver = stub('resourceSaver', () => resourceSaver = createResourceSaver());
+let moderator = stub('moderator', () => moderator = createModerator());
+let historyStateWrapper = stub('historyStateWrapper', () => historyStateWrapper = createHistoryStateWrapper());
 
-// object instances
-let timingLogger;
-let storage;
-let backend;
-let transport;
-let resources;
-let markStatistics;
-let xmlGenerator;
-let xsltProcessor;
-let clickDispatcher;
-let keyManager;
-let favicon;
-let scrollManager;
-let historyStateWrapper;
-let selectionMenu;
-let sounds;
-let catalogPopup;
-let urlStorage;
-let quotePopup;
-let activeTracker;
-let passiveTracker;
-let linkifier;
-let titleIndicator;
-
-// other runtime variables
+// variables with initial values
+let bootVars = {bodyHTML: ''};
+let version = '0.0.1';
+let devMode = false;
 const siteInfo = {
-	server: '', board: '', resno: 0, summaryIndex: 0,
+	server: '', board: '', resno: 0, date: null,
+	summaryIndex: 0,	// only summary mode
+	latestNumber: 0,	// only summary mode
 	logSize: 10000,
 	maxAttachSize: 0,
 	maxReplies: -1,
@@ -111,7 +105,6 @@ const siteInfo = {
 	lastModified: 0,
 	subHash: {},
 	nameHash: {},
-	latestNumber: 0,
 	notice: '',
 	idDisplay: false
 };
@@ -131,28 +124,61 @@ const reloadStatus = {
 	lastReceivedCompressedBytes: 0,
 	lastStatus: 0,
 	totalReceivedBytes: 0,
-	totalReceivedCompressedBytes: 0
-};
-reloadStatus.size = function (key) {
-	return getReadableSize(this[key]);
+	totalReceivedCompressedBytes: 0,
+	size: function (key) {return getReadableSize(this[key])}
 };
 const pageModes = [];
 const appStates = ['command'];
+const globalPromises = {};
 
-let version = '0.0.1';
-let devMode = false;
+// variables to be initialized at appropriate time
+let xsltProcessor;
 let viewportRect;
 let overrideUpfile;
-let moderatePromise = Promise.resolve();
+let sounds;
+let editorHelper;
 
 /*
  * <<<1 bootstrap functions
  */
 
-let scriptWatcher = (function () {
+let styleInitializer = (() => {
+	const STYLE_ID = 'akahuku_initial_style';
+
+	function start () {
+		let s = document.getElementById(STYLE_ID);
+
+		if (!s) {
+			try {
+				s = document.documentElement.appendChild(document.createElement('style'));
+			}
+			catch (e) {
+				s = null;
+			}
+		}
+
+		if (s) {
+			s.type = 'text/css';
+			s.id = 'akahuku_initial_style';
+			s.appendChild(document.createTextNode('body {visibility:hidden}'));
+		}
+	}
+
+	function done () {
+		let s = document.getElementById(STYLE_ID);
+
+		if (s) {
+			s.parentNode.removeChild(s);
+		}
+	}
+
+	start();
+
+	return {done};
+})();
+
+let scriptWatcher = (() => {
 	function handleBeforeScriptExecute (e) {
-		e.target.removeEventListener(
-			e.type, handleBeforeScriptExecute);
 		e.preventDefault();
 	}
 
@@ -162,7 +188,7 @@ let scriptWatcher = (function () {
 				if (node.nodeType != 1 || node.nodeName != 'SCRIPT') return;
 				node.type = 'text/plain';
 				node.addEventListener(
-					'beforescriptexecute', handleBeforeScriptExecute);
+					'beforescriptexecute', handleBeforeScriptExecute, {once: true});
 			});
 		});
 	});
@@ -176,7 +202,7 @@ let scriptWatcher = (function () {
 })();
 
 // html extension to DOMParser: @see https://gist.github.com/kethinov/4760460
-(function (DOMParser) {
+(DOMParser => {
 	const DOMParser_proto = DOMParser.prototype,
 		real_parseFromString = DOMParser_proto.parseFromString;
 
@@ -193,10 +219,10 @@ let scriptWatcher = (function () {
 		if (/^\s*text\/html\s*(?:;|$)/i.test(type)) {
 			const doc = document.implementation.createHTMLDocument('');
 			if (/<!doctype/i.test(markup)) {
-				doc.documentElement[IHTML] = markup;
+				doc.documentElement.innerHTML = markup;
 			}
 			else {
-				doc.body[IHTML] = markup;
+				doc.body.innerHTML = markup;
 			}
 			return doc;
 		}
@@ -204,82 +230,22 @@ let scriptWatcher = (function () {
 			return real_parseFromString.apply(this, arguments);
 		}
 	};
-}(window.DOMParser));
+})(window.DOMParser);
 
-function d (s) {
-	let result = '';
-	for (let i = 0, goal = s.length; i < goal; i++) {
-		result += String.fromCharCode(s.charCodeAt(i) - 1);
-	}
-	return result;
-}
-
-function initialStyle (isStart) {
-	let s = $('akahuku_initial_style');
-
-	if (isStart) {
-		if (!s) {
-			try {
-				s = document.documentElement.appendChild(
-					document[CRE]('style'));
-			}
-			catch (e) {
-				s = null;
-			}
+function stub (label, creator) {
+	return new Proxy({}, {
+		get: (obj, prop) => {
+			//console.log(`stub: ${label}.${prop} proxy getter invoked`);
+			return creator()[prop];
 		}
-
-		if (s) {
-			s.type = 'text/css';
-			s.id = 'akahuku_initial_style';
-			s.appendChild(document.createTextNode('body {visibility:hidden}'));
-		}
-	}
-	else {
-		if (s) {
-			s.parentNode.removeChild(s);
-		}
-	}
-}
-
-function connectToBackend (callback) {
-	let retryRest = 5;
-	let wait = 1000;
-
-	function doconnect () {
-		backend.connect('init', response => {
-			if (response) {
-				backend.tabId = response.tabId;
-				version = response.version;
-				devMode = response.devMode;
-				callback(true);
-			}
-			else {
-				if (--retryRest > 0) {
-					setTimeout(doconnect, wait);
-					wait += 1000;
-				}
-				else {
-					callback(false);
-				}
-			}
-		});
-	}
-
-	backend = WasaviExtensionWrapper.create({extensionName: APP_NAME});
-	doconnect();
+	});
 }
 
 function transformWholeDocument (xsl) {
 	timingLogger.startTag('transformWholeDocument');
 
-	markStatistics = createMarkStatistics();
-	urlStorage = createUrlStorage();
-	xmlGenerator = createXMLGenerator();
-	linkifier = createLinkifier();
-	passiveTracker = createPassiveTracker();
-
 	const generateResult = xmlGenerator.run(
-		bootVars.bodyHTML + bootVars.iframeSources,
+		bootVars.bodyHTML,
 		pageModes[0].mode == 'reply' ? LEAD_REPLIES_COUNT : null);
 
 	try {
@@ -293,7 +259,7 @@ function transformWholeDocument (xsl) {
 			`${APP_NAME}: XSL ファイルの DOM ツリー構築に失敗しました。中止します。`);
 	}
 
-	xsltProcessor = new window.XSLTProcessor();
+	xsltProcessor = new XSLTProcessor;
 	try {
 		timingLogger.startTag('constructing xsl');
 		xsltProcessor.importStylesheet(xsl);
@@ -307,12 +273,12 @@ function transformWholeDocument (xsl) {
 
 	// transform xsl into html
 	timingLogger.startTag('applying xsl');
-	document.body[IHTML] = '';
+	document.body.innerHTML = '';
 	xsltProcessor.setParameter(null, 'app_name', APP_NAME);
 	xsltProcessor.setParameter(null, 'dev_mode', devMode ? '1' : '0');
 	xsltProcessor.setParameter(null, 'page_mode', pageModes[0].mode);
 	xsltProcessor.setParameter(null, 'render_mode', 'full');
-	xsltProcessor.setParameter(null, 'platform', WasaviExtensionWrapper.IS_GECKO ? 'moz' : 'chrome');
+	xsltProcessor.setParameter(null, 'platform', IS_GECKO ? 'moz' : 'chrome');
 	xsltProcessor.setParameter(null, 'sort_order', storage.runtime.catalog.sortOrder);
 
 	let fragment = xsltProcessor.transformToFragment(generateResult.xml, document);
@@ -329,6 +295,19 @@ function transformWholeDocument (xsl) {
 			node.parentNode.removeChild(node);
 		});
 	};
+
+	/*
+	 * transform result has head or body:
+	 *
+	 *  #fragment
+	 *    head
+	 *      meta
+	 *      meta
+	 *       :
+	 *    body
+	 *      header
+	 */
+
 	if (head || body) {
 		if (head) {
 			removeHeadElements();
@@ -338,21 +317,38 @@ function transformWholeDocument (xsl) {
 			document.body.appendChild(fixFragment(fragment, 'body'));
 		}
 	}
+
+	/*
+	 * transform result has not head and body:
+	 *
+	 *  #fragment
+	 *    meta
+	 *    meta
+	 *     :
+	 *    header
+	 */
+
 	else {
 		removeHeadElements();
 		document.body.appendChild(fragment);
 	}
-	appendFragment(document.documentElement);
+
+	// expand all markups of all ads
+	extractDisableOutputEscapingTags(document.documentElement);
+
 	timingLogger.endTag();
 
 	timingLogger.startTag('some tweaks');
+	// some tweaks: ensure html tag language
+	document.documentElement.setAttribute('lang', 'ja');
+
 	// some tweaks: remove obsolete attributes on body element
 	['bgcolor', 'text', 'link', 'vlink', 'alink'].forEach(p => {
 		document.body.removeAttribute(p);
 	});
 
 	// some tweaks: move some elements to its proper position
-	const headNodes = Array.from($qsa('body style, body link'));
+	const headNodes = Array.from($qsa('meta,title,link,style'.replace(/^|,/g, '$&body ')));
 	while (headNodes.length) {
 		const node = headNodes.shift();
 		node.parentNode.removeChild(node);
@@ -361,7 +357,8 @@ function transformWholeDocument (xsl) {
 
 	// some tweaks: ensure title element exists
 	if (document.head.getElementsByTagName('title').length == 0) {
-		document.head.appendChild(document[CRE]('title')).setAttribute('data-binding', 'xpath:/futaba/meta/title');
+		document.head.appendChild(document.createElement('title')).setAttribute(
+			'data-binding', 'xpath:/futaba/meta/title');
 	}
 	timingLogger.endTag();
 
@@ -375,7 +372,7 @@ function transformWholeDocument (xsl) {
 	}
 
 	fragment = xsl = null;
-	bootVars = null;
+	//bootVars = null;
 
 	$('content').classList.remove('init');
 
@@ -403,47 +400,8 @@ function install (mode) {
 	 * message handler from backend
 	 */
 
-	backend.setMessageListener(data => {
+	backend.setMessageListener((data, sender, response) => {
 		switch (data.type) {
-		case 'fileio-authorize-response':
-		case 'fileio-write-response':
-			{
-				let anchor = $(data.anchorId);
-
-				let message;
-				if (data.error || data.state == 'complete') {
-					if (data.error) {
-						message = '保存失敗';
-					}
-					else {
-						message = '保存完了';
-
-						if (data.status == 200) {
-							anchor.setAttribute('data-image-saved', '1');
-							sounds.imageSaved.volume = storage.config.save_image_bell_volume.value;
-							sounds.imageSaved.play();
-						}
-					}
-
-					anchor && setTimeout(anchor => {
-						if (/^save-image-anchor-/.test(anchor.id)) {
-							anchor.removeAttribute('id');
-						}
-						$t(anchor, anchor.getAttribute('data-original-text'));
-						anchor.removeAttribute('data-original-text');
-						anchor = null;
-					}, 1000 * 1, anchor);
-				}
-				else {
-					switch (data.state) {
-					case 'authorizing':	message = '認可の確認中...'; break;
-					case 'buffered':	message = 'バッファ済み...'; break;
-					case 'writing':		message = '書き込み中...'; break;
-					}
-				}
-				message && $t(anchor, message);
-			}
-			break;
 		case 'notify-viewers':
 			{
 				if (data.siteInfo.server == siteInfo.server
@@ -453,17 +411,36 @@ function install (mode) {
 				}
 			}
 			break;
-		default:
-			break;
+
+		case 'query-filesystem-permission':
+			devMode && console.log(`got message: ${data.type}`);
+			resourceSaver.fileSystemManager.get(data.id).then(fileSystem => {
+				return fileSystem.queryRootDirectoryPermission(true);
+			})
+			.then(permission => {
+				devMode && console.log(`returning response (${permission})`);
+				response({permission});
+			});
+			return true;
+
+		case 'get-filesystem-permission':
+			devMode && console.log(`got message: ${data.type}`);
+			resourceSaver.fileSystemManager.get(data.id).then(fileSystem => {
+				return fileSystem.getRootDirectory(true);
+			})
+			.then(result => {
+				devMode && console.log(`returning response (${!!result.handle})`);
+				response({granted: !!result.handle});
+			});
+			return true;
 		}
 	});
 
 	/*
-	 * instantiate click dispachter
 	 * and register click handlers
 	 */
 
-	clickDispatcher = createClickDispatcher();
+	clickDispatcher.ensure;
 	clickDispatcher
 		.add('#void', () => {})
 
@@ -477,19 +454,12 @@ function install (mode) {
 		.add('#search-start',      commands.search)
 		.add('#clear-upfile',      commands.clearUpfile)
 		.add('#toggle-catalog',    commands.toggleCatalogVisibility)
-		.add('#track',             commands.registerTrack)
+		.add('#autotrack',         commands.registerAutotrack)
+		.add('#autosave',          commands.registerAutosave)
 		.add('#reload-ext',        commands.reloadExtension)
 		.add('#prev-summary',      commands.summaryBack)
 		.add('#next-summary',      commands.summaryNext)
 		.add('#clear-credentials', commands.clearCredentials)
-
-		.add('#reload-full',       commands.reloadFull)
-		.add('#reload-delta',      commands.reloadDelta)
-		.add('#dump-stats',        commands.dumpStats)
-		.add('#dump-reload-data',  commands.dumpReloadData)
-		.add('#empty-replies',     commands.emptyReplies)
-		.add('#notice-test',       commands.noticeTest)
-		.add('#toggle-timing-log', commands.toggleLogging)
 
 		.add('#search-item', (e, t) => {
 			const number = t.getAttribute('data-number');
@@ -522,7 +492,7 @@ function install (mode) {
 				y: $('catalog-vert-number').value,
 				text: $('catalog-with-text').checked ? storage.config.catalog_text_max_length.value : 0
 			});
-			window.alert('はい。');
+			alert('はい。');
 		})
 
 		.add('.del', (e, t) => {
@@ -548,7 +518,7 @@ function install (mode) {
 			selectionMenu.dispatch('quote', comment);
 		})
 		.add('.save-image',  (e, t) => {
-			commands.saveImage(e, t);
+			commands.saveAsset(t);
 		})
 		.add('.panel-tab',   (e, t) => {
 			showPanel(panel => {
@@ -559,32 +529,28 @@ function install (mode) {
 			historyStateWrapper.pushState(t.href);
 		})
 		.add('.lightbox',  (e, t) => {
-			if (storage.config.auto_save_image.value) {
-				setTimeout((e, t) => {
-					const saveLink = $qs(`.save-image[href="${t.href}"]`);
-					if (!saveLink) return;
-					if (saveLink.getAttribute('data-image-saved')) return;
-
-					commands.saveImage(e, saveLink);
-				}, 1000 * 1, e, t);
+			function saveAsset () {
+				if (!storage.config.auto_save_image.value) return;
+				const saveLink = $qs(`.save-image[href="${t.href}"]`);
+				if (!saveLink) return;
+				return commands.saveAsset(saveLink);
 			}
-			if (storage.config.lightbox_enabled.value) {
-				if (/\.(?:jpe?g|gif|png|webp)$/.test(t.href)) {
-					const ignoreThumbnail =
-						t.classList.contains('link-siokara')
-						|| t.classList.contains('siokara-thumbnail');
 
-					lightbox(t, ignoreThumbnail);
-				}
-				else if (/\.(?:webm|mp4)$/.test(t.href)) {
-					displayInlineVideo(t);
-				}
-				else if (/\.(?:mp3|ogg)$/.test(t.href)) {
-					displayInlineAudio(t);
-				}
-			}
-			else {
+			if (!storage.config.lightbox_enabled.value) {
+				saveAsset();
 				return clickDispatcher.PASS_THROUGH;
+			}
+
+			if (/\.(?:jpe?g|gif|png|webp)$/i.test(t.href)) {
+				displayLightbox(t).then(saveAsset);
+			}
+			else if (/\.(?:webm|mp4)$/i.test(t.href)) {
+				saveAsset();
+				displayInlineVideo(t);
+			}
+			else if (/\.(?:mp3|ogg)$/i.test(t.href)) {
+				saveAsset();
+				displayInlineAudio(t);
 			}
 		})
 		.add('.catalog-order', (e, t) => {
@@ -626,17 +592,33 @@ function install (mode) {
 		.add('.sodane-null', (e, t) => {
 			commands.sodane(e, t);
 		})
+
+		// debug features
+		.add('#reload-full',       () => {
+			return commands[pageModes[0].mode == 'reply' ? 'reloadReplies' : 'reload']();
+		})
+		.add('#reload-delta',      () => {
+			return commands[pageModes[0].mode == 'reply' ? 'reloadRepliesViaAPI' : 'reload']();
+		})
+		.add('#dump-stats',        commands.dumpStats)
+		.add('#dump-reload-data',  commands.dumpReloadData)
+		.add('#empty-replies',     commands.emptyReplies)
+		.add('#notice-test',       commands.noticeTest)
+		.add('#toggle-timing-log', commands.toggleLogging)
+		.add('#traverse',          commands.traverseTest)
+
+		// generic handler for anchors without class
 		.add('*noclass*', (e, t) => {
 			const re1 = /(.*)#[^#]*$/.exec(t.href);
-			const re2 = /(.*)(#[^#]*)?$/.exec(window.location.href);
+			const re2 = /(.*)(#[^#]*)?$/.exec(location.href);
 			if (t.target != '_blank') return;
 			if (re1 && re2 && re1[1] == re2[1]) return;
 
 			e.preventDefault();
 			e.stopPropagation();
-			sendToBackend('open', {
+			backend.send('open', {
 				url: t.href,
-				selfUrl: window.location.href
+				selfUrl: location.href
 			});
 		})
 
@@ -645,7 +627,7 @@ function install (mode) {
 	 * and register shortcut handlers
 	 */
 
-	keyManager = createKeyManager();
+	keyManager.ensure;
 	keyManager
 		.addStroke('command', 'r', commands.reload)
 		.addStroke('command', [' ', '<S-space>'], commands.scrollPage, true)
@@ -661,39 +643,39 @@ function install (mode) {
 		.addStroke('command', 'i', commands.activatePostForm)
 		.addStroke('command', '\u001b', commands.deactivatePostForm)
 
-		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)	// <esc>
-		.addStroke('command.edit', ['\u0013', '<A-S>'], commands.toggleSage)			// ^S, <Alt+S>
-		.addStroke('command.edit', '<S-enter>', commands.post)				// <Shift+Enter>
+		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)			// <esc>
+		.addStroke('command.edit', ['\u0013', '<A-S>'], commands.toggleSage)		// ^S, <Alt+S>
+		.addStroke('command.edit', '<A-D>', commands.voice)
+		.addStroke('command.edit', '<A-S-D>', commands.semiVoice)
+		.addStroke('command.edit', '<S-enter>', commands.post)						// <Shift+Enter>
 
 		// These shortcuts for text editing are basically emacs-like...
-		.addStroke('command.edit', '\u0001', commands.cursorBeginningOfLine)	// ^A
-		.addStroke('command.edit', '\u0005', commands.cursorEndOfLine)			// ^E
-		.addStroke('command.edit', '\u000a', commands.cursorNextLine)			// ^J: Because Chrome reserves ^N, so this is the plan B.
-		.addStroke('command.edit', '\u000b', commands.cursorPreviousLine)		// ^K: ^N can not be used, this is also defined like vi.
-		.addStroke('command.edit', '\u0006', commands.cursorForwardChar)		// ^F
-		.addStroke('command.edit', '\u0002', commands.cursorBackwardChar)		// ^B
-		.addStroke('command.edit', '<A-F>',  commands.cursorForwardWord)		// <Alt+F>
-		.addStroke('command.edit', '<A-B>',  commands.cursorBackwardWord)		// <Alt+B>
-		.addStroke('command.edit', '\u0008', commands.cursorDeleteBackwardChar)	// ^H
-		.addStroke('command.edit', '<A-H>',  commands.cursorDeleteBackwardWord)	// <Alt+H>: Chrome reserves ^W
-		.addStroke('command.edit', '\u0015', commands.cursorDeleteBackwardBlock)// ^U
-
-		.updateManifest();
+		.addStroke('command.edit', '\u0001', commands.cursorBeginningOfLine)		// ^A
+		.addStroke('command.edit', '\u0005', commands.cursorEndOfLine)				// ^E
+		.addStroke('command.edit', '<A-N>',  commands.cursorNextLine)				// <Alt+N>: ^N alternative
+		.addStroke('command.edit', '<A-P>',  commands.cursorPreviousLine)			// <Alt+P>: ^P alternative
+		.addStroke('command.edit', '\u0006', commands.cursorForwardChar)			// ^F
+		.addStroke('command.edit', '\u0002', commands.cursorBackwardChar)			// ^B
+		.addStroke('command.edit', '<A-F>',  commands.cursorForwardWord)			// <Alt+F>
+		.addStroke('command.edit', '<A-B>',  commands.cursorBackwardWord)			// <Alt+B>
+		.addStroke('command.edit', '\u0008', commands.cursorDeleteBackwardChar)		// ^H
+		.addStroke('command.edit', '<A-H>',  commands.cursorDeleteBackwardWord)		// <Alt+H>: ^W alternative
+		.addStroke('command.edit', '\u0015', commands.cursorDeleteBackwardBlock)	// ^U
+		.addStroke('command.edit', '<C-/>',  commands.selectAll);					// ^/
 
 	/*
 	 * favicon maintainer
 	 */
 
-	favicon = createFavicon();
 	favicon.update();
 
 	/*
 	 * window resize handler
 	 */
 
-	(function () {
+	(() => {
 		function updateViewportRectGeometry () {
-			const vp = document.body.appendChild(document[CRE]('div'));
+			const vp = document.body.appendChild(document.createElement('div'));
 			try {
 				vp.id = 'viewport-rect';
 				viewportRect = vp.getBoundingClientRect();
@@ -750,16 +732,10 @@ function install (mode) {
 	})();
 
 	/*
-	 * window scroll handler
-	 */
-
-	scrollManager = createScrollManager(10);
-
-	/*
 	 * history handler
 	 */
 
-	historyStateWrapper = createHistoryStateWrapper(() => {
+	historyStateWrapper.setHandler(() => {
 		/*
 		console.log([
 			`  previous page mode: ${pageModes[0].mode}`,
@@ -767,7 +743,7 @@ function install (mode) {
 		].join('\n'));
 		*/
 
-		const isCatalog = window.location.hash == '#mode=cat';
+		const isCatalog = location.hash == '#mode=cat';
 
 		if (pageModes[0].mode == 'catalog' && !isCatalog
 		||  pageModes[0].mode != 'catalog' && isCatalog) {
@@ -775,16 +751,16 @@ function install (mode) {
 		}
 
 		if (pageModes[0].mode == 'summary') {
-			const re = /(\d+)\.htm$/.exec(window.location.pathname);
+			const re = /(\d+)\.htm$/.exec(location.pathname);
 			siteInfo.summaryIndex = re ? re[1] : 0;
 			commands.reload();
 		}
 		else if (pageModes[0].mode == 'catalog' && pageModes[1].mode == 'summary') {
-			const re = /(\d+)\.htm$/.exec(window.location.pathname);
+			const re = /(\d+)\.htm$/.exec(location.pathname);
 			const summaryIndex = siteInfo.summaryIndex = re ? re[1] : 0;
 
 			// title sync
-			const titleElement = $qs('#header h1 a');
+			const titleElement = $qs('#header h1 a span:last-child');
 			let title = titleElement
 				.textContent
 				.replace(/\s*\[ページ\s*\d+\]/, '');
@@ -799,12 +775,12 @@ function install (mode) {
 			empty(navElement);
 			for (let i = 0; i < pageCount; i++) {
 				if (i == summaryIndex) {
-					const span = navElement.appendChild(document[CRE]('span'));
+					const span = navElement.appendChild(document.createElement('span'));
 					span.className = 'current';
 					$t(span, i);
 				}
 				else {
-					const a = navElement.appendChild(document[CRE]('a'));
+					const a = navElement.appendChild(document.createElement('a'));
 					a.className = 'switch-to';
 					a.href = `${location.protocol}//${location.host}/${siteInfo.board}/${i == 0 ? 'futaba' : i}.htm`;
 					$t(a, i);
@@ -814,34 +790,28 @@ function install (mode) {
 	});
 
 	/*
+	 * quote popup
+	 */
+
+	quotePopup.ensure;
+
+	/*
+	 * selection menu handler
+	 */
+
+	selectionMenu.ensure;
+
+	/*
 	 * mouse cursor tracker
 	 */
 
-	window.addEventListener(MMOVE_EVENT_NAME, e => {
+	window.addEventListener('mousemove', e => {
 		cursorPos.x = e.clientX;
 		cursorPos.y = e.clientY;
 		cursorPos.pagex = e.pageX;
 		cursorPos.pagey = e.pageY;
 		cursorPos.moved = true;
 	}, false);
-
-	/*
-	 * selection menu handler
-	 */
-
-	selectionMenu = createSelectionMenu();
-
-	/*
-	 * thread tracker
-	 */
-
-	activeTracker = createActiveTracker();
-
-	/*
-	 * title indicator
-	 */
-
-	titleIndicator = createTitleIndicator();
 
 	/*
 	 * restore cookie value
@@ -971,7 +941,7 @@ function install (mode) {
 	setupWheelReload();
 
 	/*
-	 * sounds/
+	 * sounds
 	 */
 
 	sounds = {
@@ -993,18 +963,6 @@ function install (mode) {
 	// pseudo mousehoverin/mousehoverout events for search item
 	// on reply search panel and statistics panel
 	setupSearchResultPopup();
-
-	/*
-	 * catalog popup
-	 */
-
-	catalogPopup = createCatalogPopup($qs('#catalog'));
-
-	/*
-	 * quote popup
-	 */
-
-	quotePopup = createQuotePopup();
 
 	/*
 	 * register custom event handler
@@ -1039,7 +997,7 @@ function install (mode) {
 
 	let queries = (() => {
 		const result = {};
-		window.location.hash
+		location.hash
 		.replace(/^#/, '')
 		.split('&').forEach(s => {
 			s = s.split('=');
@@ -1119,7 +1077,7 @@ function applyDataBindings (xml) {
 				const f = fixFragment(xsltProcessor.transformToFragment(xml, document));
 				if (f.textContent.replace(/^\s+|\s+$/g, '') == '' && !$qs('[data-doe]', f)) continue;
 				empty(node);
-				appendFragment(node, f);
+				extractDisableOutputEscapingTags(node, f);
 			}
 			catch (e) {
 				console.error(
@@ -1134,16 +1092,248 @@ function applyDataBindings (xml) {
  * <<<1 classes / class constructors
  */
 
+function createExtensionBackend () {
+	let connection;
+
+	function Connection () {
+		this.tabId = null;
+		this.browserInfo = null;
+		this.requestNumber = 0;
+	}
+	Connection.prototype = {
+		postMessage: function (data, callback) {
+			let type;
+			let requestNumber = this.getNewRequestNumber();
+
+			data || (data = {});
+
+			if ('type' in data) {
+				type = data.type;
+				delete data.type;
+			}
+
+			this.doPostMessage({
+				type: type || 'unknown-command',
+				tabId: this.tabId,
+				requestNumber: requestNumber,
+				data: data
+			}, callback);
+
+			return requestNumber;
+		},
+		doPostMessage: function (data, callback) {},
+		connect: function (type, callback) {
+			this.doConnect();
+			this.doPostMessage({
+				type: type || 'init',
+				tabId: this.tabId,
+				requestNumber: this.getNewRequestNumber(),
+				data: {url: location.href}
+			}, callback);
+		},
+		connectp: function (type) {
+			return new Promise(resolve => {
+				this.connect(type, resolve);
+			});
+		},
+		doConnect: function () {},
+		disconnect: function () {
+			this.doDisconnect();
+		},
+		doDisconnect: function () {},
+		setMessageListener: function (handler) {},
+		addMessageListener: function (handler) {},
+		removeMessageListener: function (handler) {},
+		runCallback: function (...args) {
+			let callback = args.shift();
+			if (typeof callback != 'function') {
+				return;
+			}
+			return callback.apply(null, args);
+		},
+		getUniqueId: function () {
+			return APP_NAME
+				+ '_' + Date.now()
+				+ '_' + Math.floor(Math.random() * 0x10000);
+		},
+		getNewRequestNumber: function () {
+			this.requestNumber = (this.requestNumber + 1) & 0xffff;
+			return this.requestNumber;
+		},
+		getMessage: function (messageId) {
+			return messageId;
+		},
+		ensureRun: function (...args) {
+			let callback = args.shift();
+			let doc;
+			try {
+				doc = document;
+				doc.body;
+			}
+			catch (e) {
+				return;
+			}
+			if (doc.readyState == 'interactive'
+			||  doc.readyState == 'complete') {
+				callback.apply(null, args);
+				callback = args = null;
+			}
+			else {
+				doc.addEventListener('DOMContentLoaded', e => {
+					callback.apply(null, args);
+					e = callback = args = null;
+				}, {once: true});
+			}
+		}
+	};
+
+	function ChromeConnection () {
+		Connection.apply(this, arguments);
+
+		let onMessageHandlers = [];
+
+		function handleMessage (req, sender, response) {
+			let result = false;
+			for (const handler of onMessageHandlers) {
+				result = !!handler(req, sender, response) || result;
+			}
+			return result;
+		}
+
+		this.constructor = Connection;
+		this.runType = 'chrome-extension';
+		this.doPostMessage = function (data, callback) {
+			try {
+				chrome.runtime.sendMessage(data, response => {
+					if (chrome.runtime.lastError) {
+						console.error(`${APP_NAME}: chrome.runtime.sendMessage failed (${chrome.runtime.lastError.message})`);
+						callback();
+					}
+					else {
+						callback(response);
+					}
+				});
+			}
+			catch (e) {
+				console.error(`${APP_NAME}: chrome.runtime.sendMessage failed (${e.stack})`);
+				throw e;
+			}
+		};
+		this.doConnect = function () {
+			chrome.runtime.onMessage.addListener(handleMessage);
+		};
+		this.doDisconnect = function () {
+			onMessageHandlers.length = 0;
+			chrome.runtime.onMessage.removeListener(handleMessage);
+		};
+		this.setMessageListener = function (handler) {
+			onMessageHandlers = [handler];
+		};
+		this.addMessageListener = function (handler) {
+			const index = onMessageHandlers.indexOf(handler);
+			if (index < 0) {
+				onMessageHandlers.push(handler);
+			}
+		};
+		this.removeMessageListener = function (handler) {
+			const index = onMessageHandlers.indexOf(handler);
+			if (index >= 0) {
+				onMessageHandlers.splice(index, 1);
+			}
+		};
+	}
+	ChromeConnection.prototype = Connection.prototype;
+
+	function createConnection () {
+		if (typeof chrome !== 'undefined') return new ChromeConnection;
+		return new Connection;
+	};
+
+	async function connect () {
+		if (connection) return;
+
+		connection = createConnection();
+
+		for (let retryRest = 5, wait = 1000; retryRest > 0; retryRest--, wait += 1000) {
+			const response = await connection.connectp('init');
+			if (response) {
+				connection.tabId = response.tabId;
+				connection.browserInfo = response.browserInfo;
+				return response;
+			}
+			await new Promise(resolve => setTimeout(resolve, wait));
+		}
+
+		return null;
+	};
+
+	function send (...args) {
+		if (!connection) return;
+
+		let data, callback;
+
+		if (args.length > 1 && typeof args[args.length - 1] == 'function') {
+			callback = args.pop();
+		}
+		if (args.length > 1) {
+			data = args.pop();
+		}
+		else {
+			data = {};
+		}
+
+		data.type = args[0];
+		if (callback) {
+			try {
+				connection.postMessage(data, callback);
+			}
+			catch (err) {
+				console.error(`${APP_NAME}: send: ${err.stack}`);
+				throw new Error(chrome.i18n.getMessage('cannot_connect_to_backend'));
+			}
+		}
+		else {
+			return new Promise(resolve => {
+				connection.postMessage(data, resolve);
+			})
+			.catch(err => {
+				console.error(`${APP_NAME}: send: ${err.stack}`);
+				throw new Error(chrome.i18n.getMessage('cannot_connect_to_backend'));
+			});
+		}
+	}
+
+	function setMessageListener (listener) {
+		if (!connection) return;
+		connection.setMessageListener(listener);
+	}
+
+	return {
+		connect, send, setMessageListener,
+		get extensionId () {
+			// extension id can be retrieved by chrome.runtime.id in chrome,
+			// but Firefox's WebExtensions distinguishes extension id from
+			// runtime UUID.
+			const url = chrome.runtime.getURL('README.md');
+			let re = /^[^:]+:\/\/([^\/]+)/.exec(url);
+			return re[1];
+		},
+		get browserInfo () {
+			return connection && connection.browserInfo || {};
+		}
+	};
+}
+
 function createResourceManager () {
 	const ENABLE_NIGHT_MODE = false;
 
 	const transformers = [
 		function updateI18nMarks (s) {
-			s = s.replace(/__MSG_@@extension_id__/g, getExtensionId());
+			s = s.replace(/__MSG_@@extension_id__/g, backend.extensionId);
 			return s;
 		},
 		function chromeToMoz (s) {
-			if (WasaviExtensionWrapper.IS_GECKO) {
+			if (IS_GECKO) {
 				s = s.replace(/<style[^>]*>[\s\S]*?<\/style[^>]*>/gi, s1 => {
 					return s1.replace(/chrome-extension:/g, 'moz-extension:');
 				});
@@ -1274,17 +1464,12 @@ function createResourceManager () {
 		}
 	}
 
-	return {
-		get: get,
-		remove: remove,
-		clearCache: clearCache
-	};
+	return {get, remove, clearCache};
 }
 
 function createLinkifier () {
 	// link target class
-	function LinkTarget (pattern, handler, options) {
-		options || (options = {});
+	function LinkTarget (pattern, handler, options = {}) {
 		this.pattern = pattern;
 		this.handler = handler;
 		this.className = options.className || 'link-external';
@@ -1355,6 +1540,7 @@ function createLinkifier () {
 
 
 	// utility functions
+	/*
 	function siokaraHandler (re, anchor, baseUrl) {
 		const [whole, fileId, extension] = re;
 
@@ -1376,6 +1562,7 @@ function createLinkifier () {
 			return `${baseUrl}index.html`;
 		}
 	}
+	*/
 
 	function upHandler (re, anchor, baseUrl) {
 		const [whole, scheme, fileId, extension] = re;
@@ -1503,6 +1690,7 @@ function createLinkifier () {
 
 	// constants
 	const linkTargets = [
+		/*
 		new LinkTarget(
 			'(?:h?t?t?p?s?://)?(?:www\\.nijibox6\\.com/futabafiles/001/src/)?(sa\\d{4,})(\\.\\w+)?',
 			function (re, anchor) {
@@ -1575,6 +1763,7 @@ function createLinkifier () {
 				overrideScheme: 'http:'
 			}
 		),
+		*/
 		new LinkTarget(
 			'(h?t?t?p?s?://)?(?:dec\\.2chan\\.net/up/src/)?(f\\d{4,})(\\.\\w+)?',
 			function (re, anchor) {
@@ -1682,9 +1871,7 @@ function createLinkifier () {
 	);
 
 	// public functions
-	function linkify (node, opts) {
-		opts = opts || {linkify: true, emojify: true};
-
+	function linkify (node, opts = {linkify: true, emojify: true}) {
 		const emojiRegex = typeof Akahuku == 'object' ? Akahuku.twemoji.regex : /\x00/;
 		const r = node.ownerDocument.createRange();
 		let re;
@@ -1693,7 +1880,7 @@ function createLinkifier () {
 				const linkTarget = findLinkTarget(re);
 				if (!linkTarget) break;
 
-				const anchor = node.ownerDocument[CRE]('a');
+				const anchor = node.ownerDocument.createElement('a');
 				r.setStart(node.lastChild, re.index);
 				r.setEnd(node.lastChild, re.index + re[0].length);
 				r.surroundContents(anchor);
@@ -1704,7 +1891,7 @@ function createLinkifier () {
 			}
 
 			else if (opts.emojify && (re = emojiRegex.exec(node.lastChild.nodeValue))) {
-				const emoji = node.ownerDocument[CRE]('emoji');
+				const emoji = node.ownerDocument.createElement('emoji');
 
 				r.setStart(node.lastChild, re.index);
 				r.setEnd(node.lastChild, re.index + re[0].length);
@@ -1716,16 +1903,14 @@ function createLinkifier () {
 			else {
 				node.lastChild.nodeValue = node.lastChild.nodeValue.replace(
 					/[a-zA-Z0-9\u3040-\u30ff\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]{20}/g,
-					'$&\u00ad');
+					'$&\u200b');
 				break;
 			}
 		}
 	}
 
 	// export
-	return {
-		linkify: linkify
-	}
+	return {linkify}
 }
 
 function createXMLGenerator () {
@@ -1768,13 +1953,11 @@ function createXMLGenerator () {
 
 	function textFactory (xml, nodeOnly) {
 		if (nodeOnly) {
-			return function (s) {
-				return xml.createTextNode('' + s);
-			};
+			return s => xml.createTextNode('' + s);
 		}
 		else {
 			const refmap = {'&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"'};
-			return function (s) {
+			return s => {
 				s = ('' + s).replace(/&(?:amp|lt|gt|quot);/g, $0 => refmap[$0]);
 				return xml.createTextNode(s);
 			};
@@ -1782,18 +1965,14 @@ function createXMLGenerator () {
 	}
 
 	function element (node, s) {
-		return node.appendChild(node.ownerDocument[CRE](s));
+		return node.appendChild(node.ownerDocument.createElement(s));
 	}
 
 	function setDefaultSubjectAndName (xml, text, metaNode, subHash, nameHash) {
 		element(metaNode, 'sub_default')
-			.appendChild(text((Object.keys(subHash).sort(function (a, b) {
-				return subHash[b] - subHash[a];
-			})[0] || '').replace(/^\s+|\s+$/g, '')));
+			.appendChild(text((Object.keys(subHash).sort((a, b) => subHash[b] - subHash[a])[0] || '').replace(/^\s+|\s+$/g, '')));
 		element(metaNode, 'name_default')
-			.appendChild(text((Object.keys(nameHash).sort(function (a, b) {
-				return nameHash[b] - nameHash[a];
-			})[0] || '').replace(/^\s+|\s+$/g, '')));
+			.appendChild(text((Object.keys(nameHash).sort((a, b) => nameHash[b] - nameHash[a])[0] || '').replace(/^\s+|\s+$/g, '')));
 	}
 
 	function pushComment (node, text, s) {
@@ -1956,17 +2135,17 @@ function createXMLGenerator () {
 	 * main functions
 	 */
 
-	function run (content, maxReplies, isAfterPost) {
+	function run (content = '', maxReplies = 0x7fffffff, isAfterPost = false) {
 		timingLogger.startTag('createXMLGenerator#run');
 
-		const url = window.location.href;
+		const url = location.href;
 		const isReplyMode = pageModes[0].mode == 'reply';
 		const baseUrl = url;
 		const remainingRepliesContext = [];
 		const xml = createFutabaXML(isReplyMode ? 'reply' : 'summary');
 		const text = textFactory(xml);
 		const enclosureNode = xml.documentElement;
-		const metaNode = element(enclosureNode, 'meta');
+		const metaNode = $qs('meta', enclosureNode);
 
 		let re;
 		if (typeof maxReplies != 'number') {
@@ -1984,7 +2163,7 @@ function createXMLGenerator () {
 		// base url
 		re = /<base[^>]+href="([^"]+)"/i.exec(content);
 		if (re) {
-			baseUrl = resolveRelativePath(re[1], `${window.location.protocol}//${window.location.host}/`);
+			baseUrl = resolveRelativePath(re[1], `${location.protocol}//${location.host}/`);
 			element(metaNode, 'base').appendChild(text(re[1]));
 		}
 
@@ -1997,20 +2176,49 @@ function createXMLGenerator () {
 		}
 
 		// page title
-		(function () {
-			const re = />([^<>]+)(＠ふたば)/.exec(content);
+		(() => {
+			/*
+			 * summary page:  "二次元裏＠ふたば"
+			 * reply page #1: "これ実際どのぐらいヤ - 二次元裏＠ふたば"
+			 * reply page #2: "二次元裏＠ふたば"
+			 */
+			const re = /([^<>]+\s+-\s+)?([^<>]+)(＠ふたば)/.exec(content);
 			if (!re) return;
-			let title = re[1].replace(/二次元裏$/, `虹裏${siteInfo.server}`) + re[2];
-			if (!isReplyMode && siteInfo.summaryIndex) {
-				title += ` [ページ ${siteInfo.summaryIndex}]`;
+
+			let [, titleFragment, boardName, siteName] = re;
+			let dash = '';
+
+			// update title
+			if (titleFragment) {
+				titleFragment = titleFragment.replace(/\s+-\s+$/, '');
+				dash = ' ─ ';
 			}
+			else {
+				titleFragment = '';
+			}
+			// update board name
+			boardName = boardName.replace(/二次元裏$/, `虹裏${siteInfo.server}`);
+			// update site title
+			if (!isReplyMode && siteInfo.summaryIndex) {
+				siteName += ` [ページ ${siteInfo.summaryIndex}]`;
+			}
+
 			let titleNode = element(metaNode, 'title');
-			titleNode.appendChild(text(title));
-			linkifier.linkify(titleNode, {linkify: false, emojify: true});
+			if (titleFragment) {
+				const span1 = element(titleNode, 'span');
+				span1.appendChild(text(titleFragment));
+				linkifier.linkify(span1, {linkify: false, emojify: true});
+
+				const span2 = element(titleNode, 'span');
+				span2.appendChild(text(`${dash}${boardName}${siteName}`));
+			}
+			else {
+				titleNode.appendChild(text(`${boardName}${siteName}`));
+			}
 		})();
 
 		// page notice
-		(function () {
+		(() => {
 			let notices = /<table[^>]+class="ftbl"[^>]*>(.*?)<\/form>/i.exec(content);
 			if (!notices) return;
 			notices = notices[1];
@@ -2068,7 +2276,7 @@ function createXMLGenerator () {
 		})();
 
 		// page navigator
-		(function () {
+		(() => {
 			const navs = /<table[^>]+class="psen"[^>]*>(.*)<\/table>/i.exec(content);
 			if (!navs) return;
 			const buffer = [];
@@ -2113,7 +2321,7 @@ function createXMLGenerator () {
 		})();
 
 		// post form metadata
-		(function () {
+		(() => {
 			const postformRegex = /(<form[^>]+enctype="multipart\/form-data"[^>]*>)(.+?)<\/form>/ig;
 			let postform;
 			while ((postform = postformRegex.exec(content))) {
@@ -2148,7 +2356,7 @@ function createXMLGenerator () {
 		})();
 
 		// ads
-		(function () {
+		(() => {
 			const adsNode = element(metaNode, 'ads');
 			const adsHash = {};
 
@@ -2220,7 +2428,7 @@ function createXMLGenerator () {
 		})();
 
 		// configurations
-		(function () {
+		(() => {
 			const configNode = element(metaNode, 'configurations');
 			const cs = getCatalogSettings();
 			let paramNode;
@@ -2254,7 +2462,7 @@ function createXMLGenerator () {
 		const postTimeRegex = getPostTimeRegex();
 		let threadIndex = 0;
 
-		markStatistics.start();
+		postStats.start();
 
 		for (let matches; (matches = threadRegex.exec(content)); threadIndex++) {
 			const match = matches[0];
@@ -2278,7 +2486,7 @@ function createXMLGenerator () {
 
 			let htmlref;
 			if (isReplyMode) {
-				htmlref = /\b(res\/(\d+)\.htm|futaba\.php\?res=(\d+))/.exec(window.location.href);
+				htmlref = /\b(res\/(\d+)\.htm|futaba\.php\?res=(\d+))/.exec(location.href);
 			}
 			else {
 				htmlref = /<a href="(res\/(\d+)\.htm|futaba\.php\?res=(\d+))[^>]*>/i.exec(topicInfo);
@@ -2363,6 +2571,9 @@ function createXMLGenerator () {
 				const postDateNode = element(topicNode, 'post_date');
 				postDateNode.appendChild(text(re[0]));
 				postDateNode.setAttribute('value', postedDate.getTime());
+				if (pageModes[0].mode == 'reply' && !siteInfo.date) {
+					siteInfo.date = postedDate;
+				}
 			}
 
 			// subject
@@ -2397,15 +2608,22 @@ function createXMLGenerator () {
 			// そうだね (that's right)
 			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(topicInfo);
 			if (re) {
+				/*
+				 * +          => sodane-null
+				 * そうだねx0 => sodane-null
+				 * そうだねxn => sodane
+				 */
 				const sodaneNode = element(topicNode, 'sodane');
-				if (/x0$/.test(re[1])) {
-					re[1] = '+';
+				if (/x\s*([1-9][0-9]*)/.test(re[1])) {
+					sodaneNode.appendChild(text(RegExp.$1));
+					sodaneNode.setAttribute('class', 'sodane');
+					postStats.notifySodane(threadNumber, RegExp.$1);
 				}
-				sodaneNode.appendChild(text(re[1]
-					.replace('x', ' × ')
-					.replace('+', '＋')
-				));
-				sodaneNode.setAttribute('class', re[1] == '+' ? 'sodane-null' : 'sodane');
+				else {
+					sodaneNode.appendChild(text('＋'));
+					sodaneNode.setAttribute('class', 'sodane-null');
+					postStats.notifySodane(threadNumber, 0);
+				}
 			}
 
 			// ID
@@ -2413,7 +2631,7 @@ function createXMLGenerator () {
 			if (re) {
 				const idNode = element(topicNode, 'user_id');
 				idNode.appendChild(text(stripTags(re[1])));
-				markStatistics.notifyId(threadNumber, re[1]);
+				postStats.notifyId(threadNumber, re[1]);
 			}
 
 			// IP
@@ -2427,7 +2645,7 @@ function createXMLGenerator () {
 			const imagehref = /<br><a[^>]+href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(topicInfo);
 			if (imagehref) {
 				const imageNode = element(topicNode, 'image');
-				const srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				const srcUrl = resolveRelativePath(imagehref[1], baseUrl);
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
@@ -2450,7 +2668,6 @@ function createXMLGenerator () {
 				if (re) {
 					thumbUrl = re[1].replace(/^["']|["']$/g, '');
 					thumbUrl = resolveRelativePath(thumbUrl, baseUrl);
-					thumbUrl = restoreDistributedImageURL(thumbUrl);
 				}
 				re = /\bwidth="?(\d+)"?/i.exec(imagehref[2]);
 				if (re) {
@@ -2536,10 +2753,12 @@ function createXMLGenerator () {
 		setDefaultSubjectAndName(xml, text, metaNode, siteInfo.subHash, siteInfo.nameHash);
 
 		timingLogger.endTag();
-		return {
-			xml: xml,
-			remainingRepliesContext: remainingRepliesContext
-		};
+
+		if (devMode && ($qs('[data-href="#toggle-dump-xml"]') || {}).checked) {
+			console.log(serializeXML(xml));
+		}
+
+		return {xml, remainingRepliesContext};
 	}
 
 	function fetchReplies (s, regex, hiddenRepliesCount, maxReplies, lowBoundNumber, threadNode, subHash, nameHash, baseUrl) {
@@ -2582,33 +2801,11 @@ function createXMLGenerator () {
 			}
 
 			// ID
-			/*
-			 * [error pattern #1]
-			 * <table border="0"><tbody>
-			 *   <tr>
-			 *     <td class="rts">…</td>
-			 *     <td class="rtd">
-			 *       <span id="delcheck780511344" class="rsc">2</span>
-			 *       <span class="cnw"><a href="mailto:sage ID:Atsolmen Sed ut perspiciatis unde omnis iste natus error sit voluptatem">21/03/05(金)11:27:43</a></span>
-			 *       <span class="cno">No.780511344</span>
-			 *       <a href="javascript:void(0);" onclick="sd(780511344);return(false);" class="sod" id="sd780511344">+</a>
-			 */
-			/*
-			 * [correct pattern #1]
-             * <table border=0 class=deleted>
-			 *   <tr>
-			 *     <td class=rts>…</td>
-			 *     <td class=rtd>
-			 *       <span id="delcheck780494428" class="rsc">1</span>
-			 *       <span class="cnw">21/03/05(金)09:30:30 ID:lDKYMQjg</span>
-			 *       <span class="cno">No.780494428</span>
-			 *       <a href="javascript:void(0);" onclick="sd(780494428);return(false);" class=sod id=sd780494428>+</a>
-			 */
 			re = /<span\s+class="[^"]*cnw[^"]*"[^>]*>.*?ID:([^\s]+)<\/span>/i.exec(info) || /ID:([^ "<]+)/.exec(infoText);
 			if (re) {
 				const idNode = element(replyNode, 'user_id');
 				idNode.appendChild(text(stripTags(re[1])));
-				markStatistics.notifyId(number, re[1]);
+				postStats.notifyId(number, re[1]);
 			}
 
 			// IP
@@ -2631,21 +2828,24 @@ function createXMLGenerator () {
 				}
 				re[2] = stripTags(re[2]);
 				markNode.appendChild(text(re[2]));
-				markStatistics.notifyMark(number, re[2]);
+				postStats.notifyMark(number, re[2]);
 			}
 
 			// そうだね (that's right)
 			re = /<a[^>]+class="sod"[^>]*>([^<]+)<\/a>/i.exec(info);
 			if (re) {
 				const sodaneNode = element(replyNode, 'sodane');
-				if (/x0$/.test(re[1])) {
-					re[1] = '+';
+				if (/x\s*([1-9][0-9]*)/.test(re[1])) {
+					const sodaneValue = RegExp.$1;
+					sodaneNode.appendChild(text(sodaneValue));
+					sodaneNode.setAttribute('class', 'sodane');
+					postStats.notifySodane(number, sodaneValue);
 				}
-				sodaneNode.appendChild(text(re[1]
-					.replace('x', ' × ')
-					.replace('+', '＋')
-				));
-				sodaneNode.setAttribute('class', re[1] == '+' ? 'sodane-null' : 'sodane');
+				else {
+					sodaneNode.appendChild(text('＋'));
+					sodaneNode.setAttribute('class', 'sodane-null');
+					postStats.notifySodane(number, 0);
+				}
 			}
 
 			// offset
@@ -2703,7 +2903,7 @@ function createXMLGenerator () {
 			const imagehref = /<br><a[^>]+href="([^"]+)"[^>]*>(<img[^>]+>)<\/a>/i.exec(info);
 			if (imagehref) {
 				const imageNode = element(replyNode, 'image');
-				const srcUrl = restoreDistributedImageURL(resolveRelativePath(imagehref[1], baseUrl));
+				const srcUrl = resolveRelativePath(imagehref[1], baseUrl);
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', imagehref[1].match(/[^\/]+$/)[0]);
 
@@ -2726,7 +2926,6 @@ function createXMLGenerator () {
 				if (re) {
 					thumbUrl = re[1].replace(/^["']|["']$/g, '');
 					thumbUrl = resolveRelativePath(thumbUrl, baseUrl);
-					thumbUrl = restoreDistributedImageURL(thumbUrl);
 				}
 				re = /\bwidth="?(\d+)"?/i.exec(imagehref[2]);
 				if (re) {
@@ -2768,21 +2967,19 @@ function createXMLGenerator () {
 
 		return {
 			lastReached: repliesCount < goal && !reply,
-			repliesNode: repliesNode,
-			repliesCount: repliesCount,
-			regex: regex
+			repliesNode, repliesCount, regex
 		}
 	}
 
 	function runFromJson (content, hiddenRepliesCount, isAfterPost) {
 		timingLogger.startTag('createXMLGenerator#runFromJson');
 
-		const url = window.location.href;
+		const url = location.href;
 		const baseUrl = url;
 		const xml = createFutabaXML('reply');
 		const text = textFactory(xml);
 		const enclosureNode = xml.documentElement;
-		const metaNode = element(enclosureNode, 'meta');
+		const metaNode = $qs('meta', enclosureNode);
 
 		/*
 		 * thread meta informations
@@ -2817,7 +3014,7 @@ function createXMLGenerator () {
 		 * replies
 		 */
 
-		markStatistics.start();
+		postStats.start();
 
 		const repliesNode = element(threadNode, 'replies');
 		let offset = hiddenRepliesCount || 0;
@@ -2863,7 +3060,7 @@ function createXMLGenerator () {
 					}
 					re[2] = stripTags(re[2]);
 					markNode.appendChild(text(re[2]));
-					markStatistics.notifyMark(replyNumber, re[2]);
+					postStats.notifyMark(replyNumber, re[2]);
 				}
 			}
 
@@ -2877,7 +3074,7 @@ function createXMLGenerator () {
 				else {
 					const idNode = element(replyNode, 'user_id');
 					idNode.appendChild(text(id));
-					markStatistics.notifyId(replyNumber, id);
+					postStats.notifyId(replyNumber, id);
 				}
 			}
 
@@ -2885,7 +3082,7 @@ function createXMLGenerator () {
 			if (content.dispsod - 0) {
 				const sodaneNode = element(replyNode, 'sodane');
 				if (replyNumber in content.sd) {
-					sodaneNode.appendChild(text(`そうだね × ${content.sd[replyNumber]}`));
+					sodaneNode.appendChild(text(content.sd[replyNumber]));
 					sodaneNode.setAttribute('class', 'sodane');
 				}
 				else {
@@ -2928,7 +3125,7 @@ function createXMLGenerator () {
 			// src & thumbnail url
 			if (reply.ext != '') {
 				const imageNode = element(replyNode, 'image');
-				const srcUrl = restoreDistributedImageURL(resolveRelativePath(reply.src, baseUrl));
+				const srcUrl = resolveRelativePath(reply.src, baseUrl);
 				imageNode.appendChild(text(srcUrl));
 				imageNode.setAttribute('base_name', reply.src.match(/[^\/]+$/)[0]);
 
@@ -2946,7 +3143,6 @@ function createXMLGenerator () {
 				// thumbnail
 				if (reply.thumb != '') {
 					let thumbUrl = resolveRelativePath(reply.thumb, baseUrl);
-					thumbUrl = restoreDistributedImageURL(thumbUrl);
 
 					const thumbNode = element(replyNode, 'thumb');
 					const thumbnailSize = getThumbnailSize(reply.w, reply.h, 250, 250);
@@ -2959,20 +3155,31 @@ function createXMLGenerator () {
 			pushComment(element(replyNode, 'comment'), text, reply.com);
 		}
 
+		/*
+		 * sodane
+		 */
+
+		if (content.dispsod - 0) {
+			for (const n in content.sd) {
+				postStats.notifySodane(n, content.sd[n]);
+			}
+		}
+
 		repliesNode.setAttribute("total", offset);
 		repliesNode.setAttribute("hidden", hiddenRepliesCount);
 		setDefaultSubjectAndName(xml, text, metaNode, siteInfo.subHash, siteInfo.nameHash);
 
-		return {
-			delta: offset - hiddenRepliesCount,
-			xml: xml
-		};
+		if (devMode && ($qs('[data-href="#toggle-dump-xml"]') || {}).checked) {
+			console.log(serializeXML(xml));
+		}
+
+		return {delta: offset - hiddenRepliesCount, xml};
 	}
 
 	function remainingReplies (context, maxReplies, lowBoundNumber, callback1, callback2) {
 		timingLogger.startTag('createXMLGenerator#remainingReplies');
 
-		const url = window.location.href;
+		const url = location.href;
 
 		function main () {
 			timingLogger.startTag('creating fragment of replies');
@@ -2989,7 +3196,7 @@ function createXMLGenerator () {
 
 			result.repliesNode.setAttribute("total", result.repliesCount);
 			result.repliesNode.setAttribute("hidden", context[0].repliesCount);
-			setDefaultSubjectAndName(xml, text, element(xml.documentElement, 'meta'), siteInfo.subHash, siteInfo.nameHash);
+			setDefaultSubjectAndName(xml, text, $qs('meta', xml.documentElement), siteInfo.subHash, siteInfo.nameHash);
 			timingLogger.endTag();
 
 			timingLogger.startTag('intermediate call back');
@@ -3029,11 +3236,7 @@ function createXMLGenerator () {
 		}
 	}
 
-	return {
-		run: run,
-		remainingReplies: remainingReplies,
-		runFromJson: runFromJson
-	};
+	return {run, remainingReplies, runFromJson};
 }
 
 function createPersistentStorage () {
@@ -3074,22 +3277,38 @@ function createPersistentStorage () {
 		},
 		storage: {
 			type:'list',
-			value:'dropbox',
+			value:'fsa',
 			name:'使用するストレージ',
 			list:{
-				dropbox:'dropbox',
-				googledrive:'Google Drive',
-				onedrive:'Microsoft OneDrive',
-				local:'local'
+				fsa:'local (FileSystemAccess)',
+				dropbox:'dropbox - サポート終了',
+				googledrive:'Google Drive - サポート終了',
+				onedrive:'Microsoft OneDrive - サポート終了',
+				local:'local (ChromeApps) - サポート終了'
 			},
-			desc:`localストレージを使用できるのは現在Chromeのみです。
-詳細は <a href="https://akahuku.github.io/akahukuplus/how-to-save-image-with-chrome.html" target="_blank">ドキュメント</a> を参照してください。
-<div><button data-href="#clear-credentials">オンラインストレージの認証を解除する</button></div>`
+			desc:`localストレージをまだサポートしてないブラウザもあります。`
 		},
-		save_image_name_template: {
+		save_thread_name_template: {
 			type:'string',
-			value:'$SERVER/$BOARD/$SERIAL.$EXT',
-			name:'保存するファイル名のテンプレート',
+			value:'$SERVER/$BOARD/$THREAD.$EXT',
+			name:'保存するスレッドのパス名のテンプレート',
+			desc:`以下のマクロを使用できます:
+<ul>
+	<li>$SERVER (サーバ名)</li>
+	<li>$BOARD (板名)</li>
+	<li>$THREAD (スレッド番号)</li>
+	<li>$YEAR (スレッドの投稿年)</li>
+	<li>$MONTH (スレッドの投稿月)</li>
+	<li>$DAY (スレッドの投稿日)</li>
+	<li>$TEXT (スレッド本文)</li>
+	<li>$TEXT2 (レス、またはスレッド本文)</li>
+	<li>$EXT (拡張子)</li>
+</ul>`
+		},
+		save_image_kokoni_name_template: {
+			type:'string',
+			value:'$SERVER-$BOARD-$SERIAL.$EXT',
+			name:'画像、動画などを「ここに保存」する際のファイル名のテンプレート',
 			desc:`以下のマクロを使用できます:
 <ul>
 	<li>$SERVER (サーバ名)</li>
@@ -3099,10 +3318,24 @@ function createPersistentStorage () {
 	<li>$MONTH (画像の投稿月)</li>
 	<li>$DAY (画像の投稿日)</li>
 	<li>$SERIAL (画像番号)</li>
-	<li>$DIST (画像の分散キー)</li>
 	<li>$TEXT (スレッド本文)</li>
+	<li>$TEXT2 (レス、またはスレッド本文)</li>
 	<li>$EXT (拡張子)</li>
-</ul>`
+</ul>
+このテンプレートにはパスを含めることはできません。`
+		},
+		save_image_name_template: {
+			type:'string',
+			value:'$SERVER/$BOARD/$SERIAL.$EXT',
+			name:'画像、動画などを保存する際のパス名のテンプレート',
+			desc:`「ここに保存」用のテンプレートと同様のマクロを使用できます。
+このテンプレートにはパスを含めることができます。`
+		},
+		save_image_text_max_length: {
+			type:'int',
+			value:50,
+			name:'ファイル名中のスレッド本文の最大長',
+			min:10, max:100
 		},
 		auto_save_image: {
 			type:'bool',
@@ -3207,6 +3440,10 @@ function createPersistentStorage () {
 		},
 		media: {
 			volume: 0.2
+		},
+		kokoni: {
+			lru: [],
+			treeCache: null
 		}
 	};
 	let onChanged;
@@ -3249,6 +3486,12 @@ function createPersistentStorage () {
 		return value;
 	}
 
+	function handleChanged (changes, areaName) {
+		if (onChanged) {
+			onChanged(changes, areaName);
+		}
+	}
+
 	function saveConfig () {
 		const config = {};
 
@@ -3258,17 +3501,7 @@ function createPersistentStorage () {
 			}
 		}
 
-		set({config: config});
-	}
-
-	function saveRuntime () {
-		if (saveRuntimeTimer) {
-			clearTimeout(saveRuntimeTimer);
-		}
-		saveRuntimeTimer = setTimeout(() => {
-			saveRuntimeTimer = undefined;
-			set({runtime: runtime});
-		}, 1000);
+		setSynced({config: config});
 	}
 
 	function assignConfig (storage) {
@@ -3281,10 +3514,6 @@ function createPersistentStorage () {
 				data[i].value = value;
 			}
 		}
-	}
-
-	function assignRuntime (storage) {
-		runtime = storage;
 	}
 
 	function resetConfig () {
@@ -3309,12 +3538,26 @@ function createPersistentStorage () {
 		return result;
 	}
 
-	function set (items) {
+	function saveRuntime () {
+		if (saveRuntimeTimer) {
+			clearTimeout(saveRuntimeTimer);
+		}
+		saveRuntimeTimer = setTimeout(() => {
+			saveRuntimeTimer = undefined;
+			setLocal({runtime: runtime});
+		}, 1000);
+	}
+
+	function assignRuntime (storage) {
+		runtime = storage;
+	}
+
+	function setSynced (items) {
 		return new Promise(resolve => {
 			chrome.storage.onChanged.removeListener(handleChanged);
 			chrome.storage.sync.set(items, () => {
 				if (chrome.runtime.lastError) {
-					console.error(`${APP_NAME}: storage#set: ${chrome.runtime.lastError.message}`);
+					console.error(`${APP_NAME}: storage#setSynced: ${chrome.runtime.lastError.message}`);
 				}
 				chrome.storage.onChanged.addListener(handleChanged);
 				resolve();
@@ -3322,9 +3565,23 @@ function createPersistentStorage () {
 		});
 	}
 
-	function handleChanged (changes, areaName) {
-		if (!onChanged) return;
-		onChanged(changes, areaName);
+	function setLocal (items) {
+		return new Promise(resolve => {
+			chrome.storage.onChanged.removeListener(handleChanged);
+			chrome.storage.local.set(items, () => {
+				if (chrome.runtime.lastError) {
+					console.error(`${APP_NAME}: storage#setLocal: ${chrome.runtime.lastError.message}`);
+				}
+				chrome.storage.onChanged.addListener(handleChanged);
+				resolve();
+			});
+		});
+	}
+
+	function assignChangedHandler (f) {
+		if (typeof f === 'function') {
+			onChanged = f;
+		}
 	}
 
 	function init () {
@@ -3337,22 +3594,11 @@ function createPersistentStorage () {
 
 	init();
 	return {
-		saveConfig: saveConfig,
-		assignConfig: assignConfig,
-		saveRuntime: saveRuntime,
-		assignRuntime: assignRuntime,
-		resetConfig: resetConfig,
-		getAllConfig: getAllConfig,
-		getAllConfigDefault: getAllConfigDefault,
-		set: set,
+		saveConfig, assignConfig, resetConfig, getAllConfig, getAllConfigDefault,
+		saveRuntime, assignRuntime,
+		setSynced, setLocal, assignChangedHandler,
 		get config () {return data},
-		get runtime () {return runtime},
-		get onChanged () {return onChanged},
-		set onChanged (f) {
-			if (typeof f == 'function') {
-				onChanged = f;
-			}
-		}
+		get runtime () {return runtime}
 	};
 }
 
@@ -3396,7 +3642,7 @@ function createTimingLogger () {
 				(message ? (' ' + message) : '') +
 				` (${(now - item.time).toFixed(4)} msecs)`);
 			if (stack.length == 0) {
-				log(`*** timing dump ***\n${this.dump()}`);
+				devMode && console.log(`*** timing dump ***\n${this.dump()}\n\n${getVersion()}`);
 				this.reset();
 			}
 			last = now;
@@ -3510,51 +3756,123 @@ function createClickDispatcher () {
 
 	document.body.addEventListener('click', handler, false);
 
-	return {
-		add:add,
-		remove:remove,
-		PASS_THROUGH: PASS_THROUGH
-	};
+	return {add, remove, PASS_THROUGH};
 }
 
 function createKeyManager () {
 	const PASS_THROUGH = 'passthrough';
+	const ASIS_KEY_MAP = {
+		'Backspace': '\u0008',
+		'Tab': '\u0009',
+		'Enter': '\u000d',
+		'Escape': '\u001b',
+		'Delete': '\u007f'
+	};
+	const CONTROL_KEY_MAP = {
+		'@': '\u0000', a: '\u0001', b: '\u0002', c: '\u0003', d: '\u0004', e: '\u0005', f: '\u0006', g: '\u0007',
+		h: '\u0008', i: '\u0009', j: '\u000a', k: '\u000b', l: '\u000c', m: '\u000d', n: '\u000e', o: '\u000f',
+		p: '\u0010', q: '\u0011', r: '\u0012', s: '\u0013', t: '\u0014', u: '\u0015', v: '\u0016', w: '\u0017',
+		x: '\u0018', y: '\u0019', z: '\u001a', '[': '\u001b', '\\': '\u001c', ']': '\u001d', '^': '\u001e', '_': '\u001f'
+	};
+	const STROKE_TRANSLATE_MAP = {
+		' ': 'space'
+	};
+
 	const strokes = {};
 
-	function keypress (e) {
-		const focusedNodeName = getFocusedNodeName();
-		if ((e.code == 13 || e.code == 27) && isSpecialInputElement(focusedNodeName)) {
+	function keydown (e) {
+		if (/^(?:Control|Shift|Alt|Meta)$/.test(e.key)) return;
+
+		const stroke = getKeyStroke(e);
+		const focusedNodeName = getDetailedNodeName(e.target);
+		const mode = appStates[0] + (isTextInputElement(focusedNodeName) ? '.edit' : '');
+
+		/*
+		dlog([
+			` focus: "${focusedNodeName}"`,
+			`target: ${getNodeSummary(e.target)}`,
+			`  mode: "${mode}"`,
+			`  code: "${e.code}"`,
+			`   key: "${e.key}"`,
+			`   mod: ${getModifiers(e).join(',')}`,
+			`stroke: "${toReadableString(stroke)}"`
+		].join('\n'));
+		*/
+
+		if (e.isComposing) {
 			return;
 		}
 
-		const mode = appStates[0] +
-			(isTextInputElement(focusedNodeName) ? '.edit' : '');
-		if (!(mode in strokes) || !(e.key in strokes[mode])) {
+		if ((stroke == 'Enter' || stroke == 'Escape')
+		&& isSpecialInputElement(focusedNodeName)) {
+			return;
+		}
+
+		if (!(mode in strokes) || !(stroke in strokes[mode])) {
 			return;
 		}
 
 		let result;
 		try {
-			result = strokes[mode][e.key].handler(e, document.activeElement);
+			result = strokes[mode][stroke].handler(e);
 		}
-		catch (ex) {
-			console.error(
-				`${APP_NAME}: exception in keyManager: ${e.stack}`);
+		catch (err) {
+			console.error(`${APP_NAME}: exception in keyManager: ${err.message}\n${err.stack}`);
 			result = undefined;
 		}
-		if (result === PASS_THROUGH) {
-			return;
+		if (result !== PASS_THROUGH) {
+			e.preventDefault();
 		}
-		return false;
 	}
 
-	function getFocusedNodeName () {
-		const el = document.activeElement;
+	function getModifiers (e, components = []) {
+		e.shiftKey && components.push('S');
+		e.ctrlKey  && components.push('C');
+		e.altKey   && components.push('A');
+		return components;
+	}
+
+	function getKeyStroke (e) {
+		const modifierBits = (e.shiftKey ? 0x80 : 0) |
+							 (e.ctrlKey  ? 0x40 : 0) |
+							 (e.altKey   ? 0x20 : 0);
+		let key = e.key;
+		let result;
+
+		switch (modifierBits) {
+		case 0:
+			result = ASIS_KEY_MAP[key] || key;
+			break;
+
+		case 0x40:
+			// turn control character strokes with ctrl key into themselves
+			result = CONTROL_KEY_MAP[key];
+			break;
+
+		case 0x80:
+			// use visible characters as they are (except space)
+			if (key.length == 1 && key != ' ') {
+				result = key;
+				break;
+			}
+		}
+
+		if (!result) {
+			const components = getModifiers(e);
+			components.push(STROKE_TRANSLATE_MAP[key] || key);
+			result = `<${components.join('-')}>`.toLowerCase();
+		}
+
+		return result;
+	}
+
+	function getDetailedNodeName (target) {
+		const el = target || document.activeElement;
 		let focusedNodeName = el.nodeName.toLowerCase();
 		if (focusedNodeName == 'input') {
 			focusedNodeName += `.${el.type.toLowerCase()}`;
 		}
-		else if (el.contentEditable == 'true') {
+		else if (el.isContentEditable) {
 			focusedNodeName += '.contentEditable';
 		}
 		return focusedNodeName;
@@ -3568,7 +3886,7 @@ function createKeyManager () {
 		return /^(?:textarea|input\.(?:text|password)|[^.]+\.contentEditable)$/.test(name);
 	}
 
-	function addStroke (mode, stroke, handler, isPrior) {
+	function addStroke (mode, stroke, handler) {
 		if (!(mode in strokes)) {
 			strokes[mode] = {};
 		}
@@ -3576,10 +3894,7 @@ function createKeyManager () {
 			stroke = [stroke];
 		}
 		stroke.forEach(s => {
-			strokes[mode][s] = {
-				handler: handler,
-				isPrior: isPrior
-			};
+			strokes[mode][s.toLowerCase()] = {handler};
 		});
 		return this;
 	}
@@ -3594,7 +3909,7 @@ function createKeyManager () {
 					stroke = [stroke];
 				}
 				stroke.forEach(s => {
-					delete strokes[mode][s];
+					delete strokes[mode][s.toLowerCase()];
 				});
 				if (Object.keys(strokes[mode]).length == 0) {
 					delete strokes[mode];
@@ -3604,32 +3919,9 @@ function createKeyManager () {
 		return this;
 	}
 
-	function updateManifest (mode) {
-		if (!mode) {
-			mode = appStates[0];
-		}
-		if (!(mode in strokes)) {
-			return;
-		}
+	document.addEventListener('keydown', keydown, true);
 
-		const m = [];
-		for (let i in strokes[mode]) {
-			if (strokes[mode][i].isPrior) {
-				m.push(i);
-			}
-		}
-
-		qeema.setManifest(m);
-	}
-
-	qeema.install({handlePasteEvent: false}).addListener(keypress);
-
-	return {
-		addStroke:addStroke,
-		removeStroke:removeStroke,
-		updateManifest:updateManifest,
-		PASS_THROUGH: PASS_THROUGH
-	};
+	return {addStroke, removeStroke, PASS_THROUGH};
 }
 
 function createSound (name, volume) {
@@ -3637,7 +3929,7 @@ function createSound (name, volume) {
 	return {
 		play: function play () {
 			if (volume <= 0) return;
-			sendToBackend('play-sound', {
+			backend.send('play-sound', {
 				key: name,
 				volume: volume
 			});
@@ -3654,162 +3946,198 @@ function createSound (name, volume) {
 	}
 }
 
-function createMarkStatistics () {
-	let marks, otherMarks, ids;
-	let repliesCount, newEntries;
-	let lastStatistics;
-
+function createPostStats () {
 	const KEY_MAP = {
 		'管理人': 'admin',
 		'なー': 'nar',
 		'スレッドを立てた人によって削除されました': 'passive',
-		'書き込みをした人によって削除されました': 'active'
+		'書き込みをした人によって削除されました': 'active',
+		'削除依頼によって隔離されました': 'isolated'
 	};
+
+	const data = createData();
+	let newData;
+	let repliesCount;
+	let lastStats;
+
+	function createData () {
+		return {
+			marks: {
+				admin: {},
+				nar: {},
+				passive: {},
+				active: {},
+				isolated: {}
+			},
+			otherMarks: {},
+			ids: {},
+			sodanes: {}
+		};
+	}
 
 	function notifyMark (number, content) {
 		const key = KEY_MAP[content];
 		if (key) {
-			if (!(number in marks[key])) {
-				newEntries[`${key}_${number}`] = 1;
+			if (!(number in data.marks[key])) {
+				newData.marks[key][number] = 1;
 			}
-			marks[key][number] = 1;
+			data.marks[key][number] = 1;
 		}
 		else {
-			if (!(content in otherMarks)) {
-				otherMarks[content] = {};
+			if (!(content in data.otherMarks)) {
+				data.otherMarks[content] = {};
+				newData.otherMarks[content] = {};
 			}
-			if (!(number in otherMarks[content])) {
-				newEntries[`other_${number}`] = 1;
+			if (!(number in data.otherMarks[content])) {
+				newData.otherMarks[content] = newData.otherMarks[content] || {};
+				newData.otherMarks[content][number] = 1;
 			}
-			otherMarks[content][number] = 1;
+			data.otherMarks[content][number] = 1;
 		}
 	}
 
 	function notifyId (number, id) {
-		if (!(id in ids)) {
-			ids[id] = {};
+		if (!(id in data.ids)) {
+			data.ids[id] = {};
+			newData.ids[id] = {};
 		}
-		if (!(number in ids[id])) {
-			newEntries[`id_${number}`] = 1;
+		if (!(number in data.ids[id])) {
+			newData.ids[id] = newData.ids[id] || {};
+			newData.ids[id][number] = 1;
 		}
-		ids[id][number] = 1;
+		data.ids[id][number] = 1;
 	}
 
-	function reset () {
-		marks = {
-			admin: {},
-			nar: {},
-			passive: {},
-			active: {}
-		};
-		otherMarks = {};
-		ids = {};
-		newEntries = {};
+	function notifySodane (number, value) {
+		value = value - 0;
+		if (isNaN(value)) return;
+
+		if (number in data.sodanes) {
+			if (data.sodanes[number] != value) {
+				newData.sodanes[number] = [data.sodanes[number], value];
+			}
+			if (value) {
+				data.sodanes[number] = value;
+			}
+			else {
+				delete data.sodanes[number];
+			}
+		}
+		else {
+			if (value) {
+				newData.sodanes[number] = [0, value];
+				data.sodanes[number] = value;
+			}
+		}
 	}
 
 	function start () {
-		newEntries = {};
+		newData = createData();
 		repliesCount = getRepliesCount();
 	}
 
-	function getStatistics (dropDelta) {
-		const extMarks = {};
-		const newMarks = {};
-		const extIds = {};
-		const newIds = {};
+	function done (dropDelta) {
+		const extMarks = new Set;
+		const newMarks = new Set;
+		const extIds = new Set;
+		const newIds = new Set;
 		const currentRepliesCount = getRepliesCount();
 
 		function getMarkData () {
-			const result = {};
+			const result = new Map;
 
-			for (let i in marks) {
-				result[i] = [];
-				for (let num in marks[i]) {
-					const isNew = `${i}_${num}` in newEntries;
+			for (let type in data.marks) {
+				const item = [];
+				for (let number in data.marks[type]) {
+					const isNew = number in newData.marks[type];
 					if (isNew) {
-						newMarks[num] = 1;
+						newMarks.add(number);
 					}
-					extMarks[num] = 1;
-
-					result[i].push({
-						isNew: isNew,
-						number: num
-					});
+					extMarks.add(number);
+					item.push({isNew, number});
 				}
+				result.set(type, item);
 			}
 
 			return result;
 		}
 
 		function getOtherMarkData () {
-			const result = {};
+			const result = new Map;
 
-			for (let host in otherMarks) {
-				result[host] = [];
-				for (let num in otherMarks[host]) {
-					const isNew = `other_${num}` in newEntries;
+			for (let host in data.otherMarks) {
+				const item = [];
+				for (let number in data.otherMarks[host]) {
+					const isNew = newData.otherMarks[host] && number in newData.otherMarks[host];
 					if (isNew) {
-						newMarks[num] = 1;
+						newMarks.add(number);
 					}
-					extMarks[num] = 1;
-
-					result[host].push({
-						isNew: isNew,
-						number: num
-					});
+					extMarks.add(number);
+					item.push({isNew, number});
 				}
+				result.set(host, item);
 			}
 
 			return result;
 		}
 
 		function getIdData () {
-			const result = {};
+			const result = new Map;
 
-			for (let id in ids) {
-				result[id] = [];
-
-				for (let num in ids[id]) {
-					const isNew = `id_${num}` in newEntries;
-					if (isNew) {
-						newIds[id] = 1;
-					}
-					extIds[id] = 1;
-
-					result[id].push({
-						isNew: isNew,
-						number: num
-					});
+			for (let id in data.ids) {
+				const item = [];
+				let newIdCount = 0;
+				for (let number in data.ids[id]) {
+					const isNew = id in newData.ids && number in newData.ids[id];
+					isNew && newIdCount++;
+					extIds.add(id);
+					item.push({isNew, number});
 				}
+
+				if (item.length && item.length == newIdCount) {
+					newIds.add(id);
+				}
+
+				result.set(id, item);
 			}
 
 			return result;
 		}
 
-		return lastStatistics = {
+		function getSodaneDelta () {
+			const result = [];
+
+			for (const number in newData.sodanes) {
+				const [oldValue, value] = newData.sodanes[number];
+				result.push({number, value, oldValue});
+			}
+
+			return result;
+		}
+
+		return lastStats = {
+			idDisplay: siteInfo.idDisplay,
+
 			markData: getMarkData(),
 			otherMarkData: getOtherMarkData(),
 			idData: getIdData(),
 
 			count: {
 				total: currentRepliesCount,
-				mark: Object.keys(extMarks).length,
-				id: Object.keys(extIds).length
+				mark: extMarks.size,
+				id: extIds.size
 			},
 
 			delta: {
 				total: dropDelta ? 0 : currentRepliesCount - repliesCount,
-				mark: dropDelta ? 0 : Object.keys(newMarks).length,
-				id: dropDelta ? 0 : Object.keys(newIds).length,
+				mark: dropDelta ? 0 : newMarks.size,
+				id: dropDelta ? 0 : newIds.size,
+				sodane: dropDelta ? [] : getSodaneDelta()
 			}
 		};
 	}
 
-	function clearStatistics () {
-		lastStatistics = undefined;
-	}
-
-	function updatePanelView (statistics) {
+	function updatePanelView (stats) {
 		if (pageModes[0].mode != 'reply') return;
 
 		function setListItemVisibility (node, value) {
@@ -3828,18 +4156,18 @@ function createMarkStatistics () {
 		}
 
 		function outputSubHeader (container, label, count) {
-			const p = container.appendChild(document[CRE]('p'));
+			const p = container.appendChild(document.createElement('p'));
 			p.classList.add('sub-header');
 			p.textContent = label;
 
-			const pp = p.appendChild(document[CRE]('span'));
+			const pp = p.appendChild(document.createElement('span'));
 			pp.appendChild(document.createTextNode(`(${count} 回)`));
 		}
 
 		function outputArray (container, a) {
 			for (let i = 0; i < a.length; i++) {
 				container.appendChild(document.createTextNode(' '));
-				const anchor = container.appendChild(document[CRE]('a'));
+				const anchor = container.appendChild(document.createElement('a'));
 				anchor.href = '#search-item';
 				anchor.textContent = `No.${a[i].number}`;
 				anchor.setAttribute('data-number', a[i].number);
@@ -3847,40 +4175,43 @@ function createMarkStatistics () {
 			}
 		}
 
-		const markData = statistics.markData;
-		const otherMarkData = statistics.otherMarkData;
-		const idData = statistics.idData;
+		if (!stats) {
+			stats = lastStats;
+		}
+
+		const {markData, otherMarkData, idData} = stats;
 		let container;
 
-		for (let i in markData) {
-			container = $(`stat-${i}`);
-			if (!container) continue;
-
-			empty(container);
-			const data = markData[i];
-			if (data.length) {
-				const li = setListItemVisibility(container, true);
-				if (li) {
-					const header = $qs('p span', li);
-					if (header) {
-						header.textContent = ` (${markData[i].length})`;
+		// known marks
+		for (let [type, item] of markData) {
+			container = $(`stat-${type}`);
+			if (container) {
+				empty(container);
+				if (item.length) {
+					const li = setListItemVisibility(container, true);
+					if (li) {
+						const header = $qs('p span', li);
+						if (header) {
+							header.textContent = ` (${item.length})`;
+						}
 					}
+					outputArray(container, item);
 				}
-				outputArray(container, markData[i]);
-			}
-			else {
-				setListItemVisibility(container, false);
+				else {
+					setListItemVisibility(container, false);
+				}
 			}
 		}
 
+		// other marks
 		container = $('stat-other');
 		if (container) {
 			empty(container);
-			if (Object.keys(otherMarkData).length) {
+			if (otherMarkData.size) {
 				setListItemVisibility(container, true);
-				for (let i in otherMarkData) {
-					outputSubHeader(container, i, otherMarkData[i].length);
-					outputArray(container, otherMarkData[i]);
+				for (let [host, item] of otherMarkData) {
+					outputSubHeader(container, host, item.length);
+					outputArray(container, item);
 				}
 			}
 			else {
@@ -3888,17 +4219,17 @@ function createMarkStatistics () {
 			}
 		}
 
+		// ids
 		container = $('stat-id');
 		if (container) {
 			empty(container);
-			const idKeys = Object.keys(idData);
-			if (idKeys.length) {
-				$t('stat-id-header', `(${idKeys.length} ID)`);
-				for (let i in idData) {
-					const li = container.appendChild(document[CRE]('li'));
-					outputSubHeader(li, i, idData[i].length);
-					const div = li.appendChild(document[CRE]('div'));
-					outputArray(div, idData[i]);
+			if (idData.size) {
+				$t('stat-id-header', `(${idData.size} ID)`);
+				for (let [id, item] of idData) {
+					const li = container.appendChild(document.createElement('li'));
+					outputSubHeader(li, id, item.length);
+					const div = li.appendChild(document.createElement('div'));
+					outputArray(div, item);
 				}
 			}
 			else {
@@ -3907,15 +4238,19 @@ function createMarkStatistics () {
 		}
 	}
 
-	function updatePostformView (statistics) {
+	function updatePostformView (stats) {
 		let marked = false;
 		let identified = false;
 
-		for (let i in statistics.count) {
-			const current = statistics.count[i];
+		if (!stats) {
+			stats = lastStats;
+		}
+
+		for (let i in stats.count) {
+			const current = stats.count[i];
 			let diff;
 
-			if (!statistics.delta || (diff = statistics.delta[i]) == undefined || diff == 0) {
+			if (!stats.delta || (diff = stats.delta[i]) == undefined || diff == 0) {
 				$t(`replies-${i}`, current);
 				$t(`pf-replies-${i}`, current);
 				continue;
@@ -3964,181 +4299,39 @@ function createMarkStatistics () {
 		});
 	}
 
-	function init () {
-		reset();
-	}
-
-	init();
-
-	return {
-		reset: reset,
-		start: start,
-		getStatistics: getStatistics,
-		clearStatistics: clearStatistics,
-		notifyMark: notifyMark,
-		notifyId: notifyId,
-		updatePanelView: updatePanelView,
-		updatePostformView: updatePostformView,
-		resetPostformView: resetPostformView,
-		get lastStatistics () {return lastStatistics}
-	};
-}
-
-function createQueryCompiler () {
-	const lex = /-?"[^"]*"|\(|\)|-\(|\||[^\s|\u3000|)]+/g;
-	let query;
-	let lastIndex;
-	let reachedToEof;
-
-	function next () {
-		if (reachedToEof) return null;
-		lastIndex = lex.lastIndex;
-		let re = lex.exec(query);
-		if (re) return re[0];
-		reachedToEof = true;
-		return null;
-	}
-
-	function unget () {
-		if (lastIndex < 0) {
-			throw new Error('double unget');
+	function dump (stats) {
+		function mapToObject (map) {
+			const result = {};
+			for (const [key, value] of map) {
+				result[key] = value;
+			}
+			return result;
 		}
-		lex.lastIndex = lastIndex;
-		lastIndex = -1;
-	}
 
-	function or (v) {
-		const result = [];
-		while (true) {
-			const a = and(v);
-			result.push(a);
+		if (!stats) {
+			stats = lastStats;
+		}
 
-			v = next();
-			if (v == null) {
-				break;
+		const result = ['*** internal data ***'];
+		result.push(JSON.stringify(data, null, '    '));
+		result.push('*** snapshot stats ***');
+		result.push(JSON.stringify(stats, (key, value) => {
+			if (value instanceof Set) {
+				return Array.from(value);
 			}
-			else if (v != '|') {
-				unget();
-				break;
+			if (value instanceof Map) {
+				return mapToObject(value);
 			}
-			else {
-				v = next();
-			}
-		}
-		return result.join(' || ');
-	}
+			return value;
+		}, '    '));
 
-	function and (v) {
-		const result = [];
-		while (true) {
-			const a = word(v);
-			result.push(a);
-
-			v = next();
-			if (v == null) {
-				break;
-			}
-			else if (v == '|' || v == ')') {
-				unget();
-				break;
-			}
-		}
-		return result.join(' && ');
-	}
-
-	function word (v) {
-		if (v == '(') {
-			const a = or(next());
-			v = next();
-			if (v != ')') {
-				throw new Error('括弧がつり合っていません');
-			}
-			return `(${a})`;
-		}
-		else if (v == '-(') {
-			const a = or(next());
-			v = next();
-			if (v != ')') {
-				throw new Error('括弧がつり合っていません');
-			}
-			return `!(${a})`;
-		}
-		else if (v !== null) {
-			let op = '>=';
-			if (v.charAt(0) == '-') {
-				op = '<';
-				v = v.substring(1);
-			}
-			if (v.charAt(0) == '"' && v.substr(-1) == '"') {
-				v = getLegalizedStringForSearch(v.substring(1, v.length - 1));
-			}
-			else {
-				v = getLegalizedStringForSearch(v);
-			}
-			if (v == '') {
-				return '';
-			}
-			return `target.indexOf("${v.replace(/"/g, '\\"')}")${op}0`;
-		}
-		else {
-			return '';
-		}
-	}
-
-	function compile (q) {
-		query = q.replace(/^\s+|\s+$/g, '');
-		let result;
-		if (query.charAt(0) == '/' && query.substr(-1) == '/') {
-			try {
-				query = query.substring(1, query.length - 1);
-				query = query.replace(/(?<!\\)\^/g, '(?:^|\\t)');
-				query = query.replace(/(?<!\\)\$/g, '(?:$|\\t)');
-				const regex = new RegExp(query, 'i');
-				result = {
-					test: target => regex.test(target)
-				};
-			}
-			catch (e) {
-				result = {
-					test: () => false,
-					message: '正規表現に誤りがあります'
-				};
-			}
-		}
-		else {
-			lex.lastIndex = lastIndex = 0;
-			reachedToEof = false;
-			let source;
-
-			try {
-				source = or(next());
-				//log(source);
-			}
-			catch (e) {
-				result = {
-					test: () => false,
-					message: e.message
-				};
-			}
-
-			try {
-				const f = window[FUN];
-				result = {
-					test: new f('target', `return ${source}`)
-				};
-			}
-			catch (e) {
-				result = {
-					test: () => false,
-					message: e.message
-				};
-			}
-		}
-		return result;
+		return result.join('\n');
 	}
 
 	return {
-		compile: compile
+		start, done, notifyMark, notifyId, notifySodane, dump,
+		updatePanelView, updatePostformView, resetPostformView,
+		get lastStats () {return lastStats}
 	};
 }
 
@@ -4170,20 +4363,20 @@ function createUrlStorage () {
 		}
 		catch (err) {
 			console.error(`${APP_NAME}: loadSlot: ${err.stack}`);
-			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
+			throw new Error(chrome.i18n.getMessage('cannot_connect_to_backend'));
 		}
 	}
 
 	function saveSlot (slot) {
 		try {
-			storage.set({
+			storage.setSynced({
 				openedThreads: slot
 			});
 
 		}
 		catch (err) {
 			console.error(`${APP_NAME}: saveSlot: ${err.stack}`);
-			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
+			throw new Error(chrome.i18n.getMessage('cannot_connect_to_backend'));
 		}
 
 		/*
@@ -4288,10 +4481,7 @@ function createUrlStorage () {
 		});
 	}
 
-	return {
-		memo: memo,
-		getAll: getAll
-	};
+	return {memo, getAll};
 }
 
 function createCatalogPopup (container) {
@@ -4397,14 +4587,14 @@ function createCatalogPopup (container) {
 
 		const targetThumbnail = $qs('img', target);
 		if (targetThumbnail && targetThumbnail.naturalWidth && targetThumbnail.naturalHeight) {
-			thumbnail = document.body.appendChild(document[CRE]('img'));
+			thumbnail = document.body.appendChild(document.createElement('img'));
 			thumbnail.src = targetThumbnail.src.replace('/cat/', '/thumb/');
 			thumbnail.className = 'catalog-popup hide';
 			thumbnail.setAttribute('data-url', target.href);
 			thumbnail.addEventListener('click', (e) => {
-				sendToBackend('open', {
+				backend.send('open', {
 					url: e.target.getAttribute('data-url'),
-					selfUrl: window.location.href
+					selfUrl: location.href
 				});
 			}, false);
 			shrinkedRect = getRect(targetThumbnail);
@@ -4413,13 +4603,13 @@ function createCatalogPopup (container) {
 		const targetText = $qs('.text', target);
 		const targetCount = $qs('.info span:first-child', target);
 		if (targetText || targetCount) {
-			text = document.body.appendChild(document[CRE]('div'));
+			text = document.body.appendChild(document.createElement('div'));
 			text.className = 'catalog-popup hide';
 			if (targetText) {
 				text.appendChild(document.createTextNode(targetText.getAttribute('data-text')));
 			}
 			if (targetCount) {
-				text.appendChild(document[CRE]('span')).textContent = targetCount.textContent;
+				text.appendChild(document.createElement('span')).textContent = targetCount.textContent;
 			}
 		}
 
@@ -4516,7 +4706,7 @@ function createCatalogPopup (container) {
 		let item = popups[index];
 		if (item.state == 'closing') return;
 
-		const handleTransitionend = function (e) {
+		const handleTransitionend = e => {
 			if (e && e.target) {
 				const t = e.target;
 				t.parentNode && t.parentNode.removeChild(t);
@@ -4583,14 +4773,11 @@ function createCatalogPopup (container) {
 		container = $(container);
 		if (!container) return;
 
-		container.addEventListener(MOVER_EVENT_NAME, mover);
+		container.addEventListener('mouseover', mover);
 	}
 
 	init();
-	return {
-		closeAll: closeAll,
-		deleteAll: deleteAll
-	};
+	return {closeAll, deleteAll};
 }
 
 function createQuotePopup () {
@@ -4604,14 +4791,14 @@ function createQuotePopup () {
 	function init () {
 		if (pageModes[0].mode != 'reply') return;
 
-		document.body.addEventListener(MMOVE_EVENT_NAME, mmove, false);
-		clickDispatcher.add('#jumpto-quote-origin', function (e, t) {
+		document.body.addEventListener('mousemove', mmove, false);
+		clickDispatcher.add('#jumpto-quote-origin', (e, t) => {
 			jumpto($(t.getAttribute(ORIGIN_ID_ATTR)));
 		})
 	}
 
 	function mmove (e) {
-		!timer && (timer = setTimeout(function () {
+		!timer && (timer = setTimeout(() => {
 			timer = null;
 			popup();
 		}, QUOTE_POPUP_DELAY_MSEC));
@@ -4724,10 +4911,7 @@ function createQuotePopup () {
 					origin = origin.parentNode;
 				}
 
-				return {
-					index: index,
-					element: origin
-				};
+				return {index, element: origin};
 			}
 		}
 
@@ -4753,25 +4937,22 @@ function createQuotePopup () {
 					index = 0;
 				}
 
-				return {
-					index: index,
-					element: origin
-				};
+				return {index, element: origin};
 			}
 		}
 
 		// quote content
 		let quoteTextForSearch;
 		{
-			const span = document[CRE]('span');
+			const span = document.createElement('span');
 			const quoteText = quote.textContent.replace(/[\s\u3000]*$/, '');
 
 			if (singleLine) {
 				quoteTextForSearch = quoteText;
 			}
 			else {
-				sentinelComment[IHTML].split(/<br[^>]*>/i).some(function (t) {
-					span[IHTML] = t;
+				sentinelComment.innerHTML.split(/<br[^>]*>/i).some(t => {
+					span.innerHTML = t;
 					const fragment = span.textContent
 						.replace(/^\s+/, '')
 						.replace(/[\s\u3000]+$/, '');
@@ -4848,7 +5029,7 @@ function createQuotePopup () {
 		quoteOrigin.element.id = `_${no}`;
 
 		// create new popup
-		const div = ($(poolId) || $(POOL_ID)).appendChild(document[CRE]('div'));
+		const div = ($(poolId) || $(POOL_ID)).appendChild(document.createElement('div'));
 		div.className = 'quote-popup';
 		div.appendChild(quoteOrigin.element.cloneNode(true));
 
@@ -4856,7 +5037,7 @@ function createQuotePopup () {
 		{
 			const noElm = $qs('.no', div);
 			if (noElm) {
-				const a = document[CRE]('a');
+				const a = document.createElement('a');
 				noElm.parentNode.replaceChild(a, noElm);
 				a.className = 'jumpto-quote-anchor';
 				a.href = '#jumpto-quote-origin';
@@ -4942,16 +5123,13 @@ function createQuotePopup () {
 		y < st && window.scrollTo(0, y);
 		removePopup();
 
-		setTimeout(function () {
+		setTimeout(() => {
 			target.classList.remove('highlight');
 		}, QUOTE_POPUP_HIGHLIGHT_MSEC);
 	}
 
 	init();
-	return {
-		jumpto: jumpto,
-		createPopup: createPopup
-	};
+	return {jumpto, createPopup};
 }
 
 function createSelectionMenu () {
@@ -5082,7 +5260,7 @@ function createSelectionMenu () {
 				if ('clipboard' in navigator) {
 					navigator.clipboard.writeText(quoted);
 				}
-				else if (WasaviExtensionWrapper.IS_GECKO) {
+				else if (IS_GECKO) {
 					setClipboardGecko(quoted);
 				}
 			}
@@ -5111,10 +5289,10 @@ function createSelectionMenu () {
 
 	function open (url) {
 		url = url.replace('$TEXT$', encodeURIComponent(text).replace(/%20/g, '+'));
-		sendToBackend('open',
+		backend.send('open',
 			{
 				url: url,
-				selfUrl: window.location.href
+				selfUrl: location.href
 			});
 	}
 
@@ -5149,7 +5327,7 @@ function createSelectionMenu () {
 	}
 
 	function setClipboardGecko (text) {
-		const textarea = document.body.appendChild(document[CRE]('textarea'));
+		const textarea = document.body.appendChild(document.createElement('textarea'));
 		try {
 			Object.assign(textarea.style, {
 				position: 'fixed',
@@ -5170,9 +5348,9 @@ function createSelectionMenu () {
 
 	init();
 	return {
+		dispatch,
 		get enabled () {return enabled},
-		set enabled (v) {enabled = !!enabled},
-		dispatch: dispatch
+		set enabled (v) {enabled = !!enabled}
 	};
 }
 
@@ -5181,7 +5359,7 @@ function createFavicon () {
 	let isLoading = false;
 
 	function createLinkNode () {
-		const link = document.head.appendChild(document[CRE]('link'));
+		const link = document.head.appendChild(document.createElement('link'));
 		link.setAttribute('rel', 'icon');
 		link.setAttribute('id', FAVICON_ID);
 		link.setAttribute('type', 'image/png');
@@ -5199,7 +5377,7 @@ function createFavicon () {
 		const w = 16;
 		const h = 16;
 		const factor = 3;
-		const canvas = document[CRE]('canvas');
+		const canvas = document.createElement('canvas');
 		canvas.width = w * factor;
 		canvas.height = h * factor;
 		const c = canvas.getContext('2d');
@@ -5213,8 +5391,8 @@ function createFavicon () {
 
 		const ps = c.getImageData(0, 0, w * factor, h * factor);
 		let pd;
-		if (window[USW] && window[USW].ImageData) {
-			pd = new window[USW].ImageData(w, h);
+		if (window.unsafeWindow && window.unsafeWindow.ImageData) {
+			pd = new window.unsafeWindow.ImageData(w, h);
 		}
 		else if (c.createImageData) {
 			pd = c.createImageData(w, h);
@@ -5284,7 +5462,7 @@ function createFavicon () {
 				if (!re) break;
 
 				// thumbnail exists in the same domain as the document?
-				if (re[1] == window.location.host) {
+				if (re[1] == location.host) {
 					// yes: use thumbnail directly
 					if (thumb.naturalWidth && thumb.naturalHeight) {
 						overwriteFavicon(thumb, createLinkNode());
@@ -5302,7 +5480,7 @@ function createFavicon () {
 				// no: transform thumbnail url
 				else {
 					isLoading = true;
-					getImageFrom(restoreDistributedImageURL(thumb.src)).then(img => {
+					getImageFrom(thumb.src).then(img => {
 						if (img) {
 							overwriteFavicon(img, createLinkNode());
 						}
@@ -5318,19 +5496,21 @@ function createFavicon () {
 	}
 
 	init();
-	return {
-		update: update
-	};
+	return {update};
 }
 
-function createHistoryStateWrapper (popstateHandler) {
-	window.addEventListener('popstate', popstateHandler, false);
+function createHistoryStateWrapper () {
+	let popstateHandler;
 	return {
-		pushState: function (url) {
+		setHandler: handler => {
+			popstateHandler = handler;
+			window.addEventListener('popstate', popstateHandler);
+		},
+		pushState: url => {
 			window.history.pushState(null, '', url);
 			popstateHandler();
 		},
-		updateHash: function (hash) {
+		updateHash: hash => {
 			if (hash != '') {
 				hash = '#' + hash.replace(/^#/, '');
 			}
@@ -5418,11 +5598,7 @@ function createTransport () {
 	}
 
 	return {
-		create: create,
-		release: release,
-		abort: abort,
-		isRapidAccess: isRapidAccess,
-		isRunning: isRunning,
+		create, release, abort, isRapidAccess, isRunning,
 		get: getTransport
 	};
 }
@@ -5466,8 +5642,7 @@ function createScrollManager (frequencyMsecs) {
 	window.addEventListener('scroll', handleScroll);
 
 	return {
-		addEventListener: addEventListener,
-		removeEventListener: removeEventListener,
+		addEventListener, removeEventListener,
 		get lastScrollTop () {return lastScrollTop}
 	};
 }
@@ -5487,10 +5662,14 @@ function createActiveTracker () {
 	let lastReferencedReplyNumber;
 
 	function l (s) {
-		if (!devMode) return;
 		const now = new Date;
 		const time = `${now.toLocaleTimeString()}.${now.getMilliseconds()}`;
-		console.log(`${time}: ${s}`);
+		if (devMode) {
+			console.log(`${time}: ${s}`);
+		}
+		$qsa('a[href="#autotrack"]').forEach(node => {
+			node.title = `${time}: ${s}`;
+		});
 	}
 
 	function getTimeSpanText (span) {
@@ -5513,8 +5692,9 @@ function createActiveTracker () {
 	}
 
 	function updateNormalLink () {
-		$qsa('a[href="#track"]').forEach(node => {
+		$qsa('a[href="#autotrack"]').forEach(node => {
 			$t(node, '自動追尾');
+			node.title = '';
 		});
 		$qsa('.track-indicator').forEach(node => {
 			node.style.transitionProperty = '';
@@ -5557,7 +5737,7 @@ function createActiveTracker () {
 
 			setCurrentState('reloading');
 			if (pageModes[0].mode == 'reply') {
-				commands.reload().then(() => {
+				commands.reload({isAutotrack: true, scrollBehavior: 'always'}).then(() => {
 					const isValidStatus = /^[23]..$/.test(reloadStatus.lastStatus);
 					const isMaxresReached =
 						!!$qs('.expire-maxreached:not(.hide)')
@@ -5690,7 +5870,7 @@ function createActiveTracker () {
 
 		setCurrentState('preparing');
 
-		$qsa('a[href="#track"]').forEach(node => {
+		$qsa('a[href="#autotrack"]').forEach(node => {
 			$t(node, `自動追尾中`);
 		});
 
@@ -5716,17 +5896,15 @@ function createActiveTracker () {
 	}
 
 	function reset () {
-		l('activeTracker#reset');
 		if (currentState != 'running') return;
 
+		l('activeTracker#reset');
 		setCurrentState();
 		start();
 	}
 
 	return {
-		start: start,
-		stop: stop,
-		reset: reset,
+		start, stop, reset,
 		get running () {return !!currentState}
 	};
 }
@@ -5756,7 +5934,7 @@ function createPassiveTracker () {
 			update(expireDate);
 		}
 		else {
-			commands.reload({isAutotrack: true}).then(next);
+			commands.reload({isAutotrack: true, scrollBehavior: 'none'}).then(next);
 		}
 	}
 
@@ -5775,9 +5953,7 @@ function createPassiveTracker () {
 		timerID = setTimeout(timer, interval);
 	}
 
-	return {
-		update: update
-	};
+	return {update};
 }
 
 function createTitleIndicator () {
@@ -5824,23 +6000,800 @@ function createTitleIndicator () {
 
 	document.addEventListener('visibilitychange', handleVisibilityChange);
 
+	return {startBlink, stopBlink};
+}
+
+function createModerator () {
+	const PROMISE_KEY = 'moderate';
+	let lastModerated;
+
+	function register (postNumber, reason, delayMsecs) {
+		globalPromises[PROMISE_KEY] = globalPromises[PROMISE_KEY].then(async () => {
+			const url = `${location.protocol}//${location.host}/del.php`;
+			const opts = {
+				method: 'POST',
+				body: new URLSearchParams({
+					mode: 'post',
+					b: siteInfo.board,
+					d: postNumber,
+					reason: reason,
+					responsemode: 'ajax'
+				})
+			};
+			const result = await load(url, opts, 'text;charset=Shift_JIS');
+			const text = result.error || result.content;
+
+			if (devMode) {
+				const now = new Date;
+				const header = lastModerated ?
+					`+${Math.floor((now.getTime() - lastModerated.getTime()) / 1000)}s` :
+					now.toLocaleString();
+				console.log(`${header}: moderated for ${postNumber}.`);
+				lastModerated = now;
+			}
+
+			$qsa(`[data-number="${postNumber}"] .del`).forEach(node => {
+				node.classList.add('posted');
+				if (text) {
+					node.setAttribute('title', `del済み (${text})`);
+				}
+			});
+
+			await delay(delayMsecs);
+		});
+	}
+
+	globalPromises[PROMISE_KEY] = Promise.resolve();
+
+	return {register};
+}
+
+function createResourceSaver () {
+	const MODULE_NAME = 'resource-saver';
+	const fileSystemManager = createFileSystemManager();
+	const savers = {};
+
+	function createFileSystemManager () {
+		const fileSystems = {};
+
+		async function get (...args) {
+			const module = await modules('file-system-access');
+
+			for (const id of args) {
+				if (!(id in fileSystems)) {
+					fileSystems[id] = module.createFileSystemAccess(id);
+				}
+			}
+
+			return args.length == 1 ? fileSystems[args[0]] : fileSystems;
+		}
+
+		return {get};
+	}
+
+	function getModule () {
+		return modules(MODULE_NAME).then(module => {
+			if (typeof module.getAssetURLTranslator() != 'function') {
+				module.setAssetURLTranslator(url => {
+					return backend.send('fetch', {url}).then(({objectURL}) => objectURL);
+				});
+			}
+			return module;
+		});
+	}
+
+	function getLocalPath (url, targetNode, template) {
+
+		function getImageAttributes () {
+			let dateAvailable = true;
+			let re;
+
+			/*
+			 * image on image board of futaba server:
+			 *
+			 * https: *img.2chan.net/b/src/999999999.jpg
+			 *         ^^^           ^     ^^^^^^^^^
+			 *          1            2         3
+			 */
+			re = /^https?:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/src\/(\d+)\.([^.]+)/.exec(url);
+
+			/*
+			 * image on up/up2 of futaba server:
+			 *
+			 * https: *dec.2chan.net/up2/src/fu999999.jpg
+			 *         ^^^           ^^^     ^^^^^^^^
+			 *          1             2          3
+			 */
+			if (!re) {
+				re = /^https?:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/src\/(\w+\d+)\.([^.]+)/.exec(url);
+				if (re) {
+					dateAvailable = false;
+				}
+			}
+
+			/*
+			 * image on siokara server:
+			 *
+			 * https: *www.nijibox5.com/futabafiles/tubu/src/su999999.jpg
+			 *             ^^^^^^^^                 ^^^^     ^^^^^^^^
+			 *                 1                      2          3
+			 */
+			/*
+			if (!re) {
+				re = /^https?:\/\/[^.]+\.(nijibox\d+)\.com(?::\d+)?\/futabafiles\/([^\/]+)\/src\/(\w+\d+)\.([^.]+)/.exec(url);
+				if (re) {
+					dateAvailable = false;
+					re[1] = 'siokara';
+				}
+			}
+			*/
+
+			if (re) {
+				return {
+					serverKey: re[1],
+					boardKey: re[2],
+					serial: re[3],
+					extension: re[4],
+					// pick up current date for images which has
+					// unknown creation timestamp:
+					date: dateAvailable ? new Date(re[3] - 0) : new Date
+				}
+			}
+		}
+
+		function sanitize (s, isComponent = false) {
+			// translate newlines to space
+			s = s.replace(/[\r\n]+/g, ' ');
+
+			// strip control characters
+			s = s.replace(/[\u0000-\u001f]/g, '');
+
+			// strip Unicode formatting characters:
+			//
+			//   U+200B Zero Width Space
+			//   U+200C Zero Width Non-Joiner
+			//   U+200D Zero Width Joiner
+			//   U+200E Left-To-Right Mark
+			//   U+200F Right-To-Left Mark
+			//   U+202A Left-To-Right Embedding
+			//   U+202B Right-To-Left Embedding
+			//   U+202C Pop Directional Formatting
+			//   U+202D Left-To-Right Override
+			//   U+202E Right-To-Left Override
+			s = s.replace(/[\u200b-\u200f\u202a-\u202e]/g, '');
+
+			// strip soft hyphen
+			s = s.replace(/\u00ad/g, '');
+
+			// substitute reserved characters on Windows platform
+			// @see https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file#naming-conventions
+			const trmap = {
+				'<': '＜',
+				'>': '＞',
+				':': '：',
+				'"': '”',
+				// '/': '／',
+				// '\\': '＼',
+				'|': '｜',
+				'?': '？',
+				'*': '＊'
+			};
+			s = s.replace(/[<>:"|?*]/g, $0 => trmap[$0]);
+
+			// translate multiple space like characters to space, '     ' -> ' '
+			s = s.replace(/\s+/g, ' ');
+
+			// substitute reserved device names on Windows platform
+			s = s.replace(/\/(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])\b/ig, $0 => `_${$0.substring(1)}`);
+
+			if (isComponent) {
+				const trmap = {
+					'/': '／',
+					'\\': '＼'
+				};
+				s = s.replace(/[\/\\]/g, $0 => trmap[$0]);
+			}
+			else {
+				// change backslash into slash, \ -> /
+				s = s.replace(/\\/g, '/');
+
+				// fold multiple slashes, ////// -> /
+				s = s.replace(/\/{2,}/g, '/');
+
+				// fold multiple dots, ...... -> .
+				s = s.replace(/\.{2,}/g, '.');
+
+				// Windows does not allow a path ending with period.
+				s = s.replace(/\.$/, '');
+			}
+
+			return s;
+		}
+
+		function getThreadAttributes () {
+			const result = {
+				serverKey: siteInfo.server,
+				boardKey: siteInfo.board,
+				serial: siteInfo.resno,
+				extension: 'html',
+				date: siteInfo.date,
+				firstCommentText: null,
+				replyCommentText: null
+			};
+
+			// retrieve thread number and first comment text
+			result.firstCommentText = (p => {
+				if (!p) return '';
+
+				let firstCommentText = '';
+				let defaultCommentText = '';
+
+				$qsa('.topic-wrap', p).forEach(node => {
+					result.serial = node.getAttribute('data-number') - 0;
+				});
+
+				$qsa('.topic-wrap .postdate', p).forEach(node => {
+					result.date = new Date(node.getAttribute('data-value') - 0);
+				});
+
+				Array.from($qsa('.comment', p)).some(node => {
+					const comment = commentToString(node);
+					if (/^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
+						defaultCommentText = comment;
+						return false;
+					}
+					else {
+						firstCommentText = comment;
+						return true;
+					}
+				});
+
+				firstCommentText = firstCommentText.split('\n');
+				// if all comments are quoted line...
+				if (firstCommentText.filter(line => /^\s*>/.test(line)).length == firstCommentText.length) {
+					// reduce 1 quote level
+					firstCommentText = firstCommentText
+						.map(line => line.replace(/^\s*>/, ''));
+				}
+
+				firstCommentText = firstCommentText.filter(line => {
+					// reject quote
+					if (/^\s*>/.test(line)) return false;
+
+					// reject filename
+					if (/^\s*[a-z]*\d+\.[^.]+\s*$/.test(line)) return false;
+
+					return true;
+				}).join('\n');
+
+				if (firstCommentText == '') {
+					firstCommentText = defaultCommentText;
+				}
+				if (firstCommentText == '') {
+					firstCommentText = 'ｷﾀ━━━(ﾟ∀ﾟ)━━━!!';
+				}
+
+				// sanitize
+				firstCommentText = sanitize(firstCommentText, true);
+
+				// trim surrounding spaces
+				firstCommentText = firstCommentText.replace(/^\s*|\s*$/g, '');
+
+				// limit length
+				firstCommentText = substringWithStrictUnicode(
+					firstCommentText,
+					storage.config.save_image_text_max_length.value,
+					storage.config.save_image_text_max_length.min
+				);
+
+				return firstCommentText;
+			})(targetNode && targetNode.closest('article') || $qs('article'));
+
+			// retrieve relative reply comment text
+			result.replyCommentText = (p => {
+				if (!p) return null;
+
+				let replyCommentText = null;
+
+				$qsa('.comment', p).forEach(node => {
+					replyCommentText = commentToString(node);
+				});
+
+				if (!replyCommentText) return null;
+
+				replyCommentText = replyCommentText.split('\n').filter(line => {
+					// reject quote
+					if (/^\s*>/.test(line)) return false;
+
+					// reject filename
+					if (/^\s*[a-z]*\d+\.[^.]+\s*$/.test(line)) return false;
+
+					return true;
+				}).join('\n');
+
+				// sanitize
+				replyCommentText = sanitize(replyCommentText, true);
+
+				// trim surrounding spaces
+				replyCommentText = replyCommentText.replace(/^\s*|\s*$/g, '');
+
+				// limit length
+				replyCommentText = substringWithStrictUnicode(
+					replyCommentText,
+					storage.config.save_image_text_max_length.value,
+					storage.config.save_image_text_max_length.min
+				);
+
+				return replyCommentText == '' ? null : replyCommentText;
+			})(targetNode && targetNode.closest('.reply-wrap'));
+
+			return result;
+		}
+
+		const imageAttributes = getImageAttributes();
+		const threadAttributes = getThreadAttributes();
+
+		let f = template.replace(/\$([A-Z]+)\b/g, ($0, $1) => {
+			switch ($1) {
+			case 'SERVER':
+				return siteInfo.server;
+			case 'BOARD':
+				return siteInfo.board;
+			case 'THREAD':
+				return threadAttributes.serial;
+			case 'YEAR':
+				return imageAttributes ?
+					imageAttributes.date.getFullYear() :
+					threadAttributes.date.getFullYear();
+			case 'MONTH':
+				return imageAttributes ?
+					('00' + (imageAttributes.date.getMonth() + 1)).substr(-2) :
+					('00' + (threadAttributes.date.getMonth() + 1)).substr(-2);
+			case 'DAY':
+				return imageAttributes ?
+					('00' + (imageAttributes.date.getDate())).substr(-2) :
+					('00' + (threadAttributes.date.getDate())).substr(-2);
+			case 'SERIAL':
+				return imageAttributes ? imageAttributes.serial : $0;
+			case 'EXT':
+				return imageAttributes ? imageAttributes.extension : threadAttributes.extension;
+			default:
+				return $0;
+			}
+		});
+
+		f = sanitize(f);
+		f = f.replace(/\$TEXT\b/, threadAttributes.firstCommentText);
+		f = f.replace(/\$TEXT2\b/, threadAttributes.replyCommentText || threadAttributes.firstCommentText);
+		f = f.replace(/^\s*|\s*$/g, '');
+
+		return f;
+	}
+
+	function threadSaverRunning () {
+		return savers[THREAD_FILE_SYSTEM_NAME] && savers[THREAD_FILE_SYSTEM_NAME].running;
+	}
+
+	function createAssetSaverWrap (assetSaver) {
+		let busy = false;
+
+		async function getPrePermission () {
+			let result;
+			let prePermission;
+
+			if (!assetSaver.fileSystemAccess.isRootDirectoryAvailable) {
+				prePermission = await backend.send(
+					'filesystem',
+					{
+						server: siteInfo.server,
+						board: siteInfo.board,
+						id: ASSET_FILE_SYSTEM_NAME
+					});
+			}
+
+			if (prePermission
+			&&  prePermission.foundSummary
+			&&  !prePermission.granted) {
+				result = {
+					error: [
+						`failed to get pre-permission`,
+						`foundSummary: ${prePermission?.foundSummary}`,
+						`granted: ${prePermission?.granted}`
+					].join(', ')
+				};
+			}
+
+			return result;
+		}
+
+		async function save (anchor, options = {}) {
+			if (busy) return;
+			if (anchor.dataset.imageSaved) return;
+
+			if (location.protocol !== 'https:') {
+				alert([
+					`画像の保存:`,
+					`お前が今開いているページは https じゃないので保存できない。`
+				].join('\n'));
+				return;
+			}
+
+			if (!assetSaver.fileSystemAccess.enabled) {
+				alert([
+					`画像の保存:`,
+					`お前が今使っているブラウザにはファイルアクセス API がないので保存できない。`
+				].join('\n'));
+				return;
+			}
+
+			if (storage.config.storage.value !== 'fsa') {
+				alert([
+					`画像の保存:`,
+					`${storage.config.storage.value} ストレージはサポート外になりました。`,
+					`設定で local (FileSystemAccess) ストレージを選択してください。`
+				].join('\n'));
+				return;
+			}
+
+			const url = anchor.href;
+			let localPath = _getLocalPath(url, anchor, options.template);
+			if (!localPath) {
+				alert([
+					`画像の保存:`,
+					`ファイル名が不正です。設定でファイル名のテンプレートを修正してください。`
+				].join('\n'));
+				return;
+			}
+
+			if (typeof options.pathOverride == 'string' && options.pathOverride != '') {
+				localPath = [options.pathOverride, localPath.split('/').pop()].join('/');
+			}
+
+			busy = true;
+			let originalText = anchor.textContent;
+			$t(anchor, '保存中...');
+
+			try {
+				let result = await getPrePermission();
+
+				if (!result) {
+					result = await assetSaver.save(url, localPath);
+				}
+
+				if (result.error) {
+					console.error(result.error);
+
+					$qsa(`.save-image[href="${url}"]`).forEach(node => {
+						$t(node, '保存失敗');
+					});
+				}
+				else {
+					originalText = '保存済み';
+
+					if (result.created) {
+						sounds.imageSaved.volume = storage.config.save_image_bell_volume.value;
+						sounds.imageSaved.play();
+					}
+
+					$qsa(`.save-image[href="${url}"]`).forEach(node => {
+						$t(node, '保存完了');
+						node.setAttribute('title', `${result.localPath} へ保存済み`);
+						node.dataset.imageSaved = '1';
+					});
+				}
+			}
+			finally {
+				await delay(1000);
+				$t(anchor, originalText);
+				busy = false;
+			}
+		}
+
+		function getDirectoryTree () {
+			return storage.runtime.kokoni.treeCache ?
+				Promise.resolve(storage.runtime.kokoni.treeCache) :
+				updateDirectoryTree();
+		}
+
+		async function updateDirectoryTree () {
+			if (busy) return;
+
+			if (location.protocol !== 'https:') {
+				alert([
+					`フォルダツリーの読み込み:`,
+					`お前が今開いているページは https じゃないのでフォルダツリーを読み込めない。`
+				].join('\n'));
+				return;
+			}
+
+			if (!assetSaver.fileSystemAccess.enabled) {
+				alert([
+					`フォルダツリーの読み込み:`,
+					`お前が今使っているブラウザにはファイルアクセス API がないのでフォルダツリーを読み込めない。`
+				].join('\n'));
+				return;
+			}
+
+			busy = true;
+			storage.runtime.kokoni.treeCache = null;
+			try {
+				let result = await getPrePermission();
+
+				if (!result) {
+					result = await assetSaver.getDirectoryTree();
+				}
+
+				if (result.error) {
+					console.error(result.error);
+					setBottomStatus(`フォルダツリーを更新できませんでした。`);
+				}
+				else {
+					storage.runtime.kokoni.treeCache = result.tree;
+					storage.saveRuntime();
+					setBottomStatus(`フォルダツリーを更新しました。`);
+				}
+
+				return result.tree;
+			}
+			finally {
+				busy = false;
+			}
+		}
+
+		function updateLRUList (currentItem) {
+			const ACCESS_TIME_TTL = 1000 * 60 * 60;
+			const TIME_RANGE_TO_FLOAT = 1000 * 60 * 5;
+			const FLOAT_THRESHOLD = 3;
+			const LRU_ITEM_MAX = 10;
+
+			if (!('label' in currentItem) || currentItem.label == '') {
+				return;
+			}
+
+			const list = storage.runtime.kokoni.lru;
+			let found = false;
+			for (let i = 0; i < list.length; i++) {
+				const item = list[i];
+
+				item.accessed = item.accessed.filter(time => {
+					return Date.now() - ACCESS_TIME_TTL < time;
+				});
+
+				if (item.path == currentItem.path) {
+					item.accessed.push(Date.now());
+
+					const n = item.accessed.filter(time => {
+						return Date.now() - TIME_RANGE_TO_FLOAT < time;
+					}).length;
+
+					if (n >= FLOAT_THRESHOLD && i > 0) {
+						list.splice(i, 1);
+						list.unshift(item);
+					}
+
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) {
+				list.unshift({
+					label: currentItem.path,
+					path: currentItem.path,
+					accessed: [Date.now()]
+				});
+
+				while (list.length > LRU_ITEM_MAX) {
+					list.pop();
+				}
+			}
+
+			storage.runtime.kokoni.lru = list;
+			storage.saveRuntime();
+		}
+
+		function clearLRUList () {
+			storage.runtime.kokoni.lru.length = 0;
+			storage.saveRuntime();
+			setBottomStatus(`保存履歴をクリアしました。`);
+		}
+
+		function _getLocalPath (url, anchor, template) {
+			if (!template) {
+				template = storage.config.save_image_name_template.value;
+			}
+			return getLocalPath(url, anchor, template);
+		}
+
+		return {
+			save, getDirectoryTree, updateDirectoryTree,
+			updateLRUList, clearLRUList,
+			get busy () {return busy},
+			get fileSystemAccess () {return assetSaver.fileSystemAccess}
+		};
+	}
+
+	function createThreadSaverWrap (threadSaver) {
+		let busy = false;
+
+		async function start () {
+			if (busy) return;
+			if (threadSaver.running) return;
+			if (pageModes[0].mode !== 'reply') return;
+			if (reloadStatus.lastStatus == 404) return;
+
+			if (location.protocol !== 'https:') {
+				alert([
+					`スレッドの保存:`,
+					`お前が今開いているページは https じゃないので保存できない。`
+				].join('\n'));
+				return;
+			}
+
+			if (!threadSaver.fileSystemAccess.enabled) {
+				alert([
+					`スレッドの保存:`,
+					`お前が今使っているブラウザにはファイルアクセス API がないので保存できない。`
+				].join('\n'));
+				return;
+			}
+
+			if (storage.config.storage.value !== 'fsa') {
+				alert([
+					`スレッドの保存:`,
+					`${storage.config.storage.value} ストレージはサポート外になりました。`,
+					`設定で local (FileSystemAccess) ストレージを選択してください。`
+				].join('\n'));
+				return;
+			}
+
+			const localPath = _getLocalPath(location.href);
+			if (!localPath) {
+				alert([
+					`スレッドの保存:`,
+					`ファイル名が不正です。設定でファイル名のテンプレートを修正してください。`
+				].join('\n'));
+				return;
+			}
+
+			busy = true;
+			updateAnchor('スレッド保存中...');
+
+			try {
+				let result;
+				let prePermission;
+
+				if (!threadSaver.fileSystemAccess.isRootDirectoryAvailable) {
+					prePermission = await backend.send(
+						'filesystem',
+						{
+							server: siteInfo.server,
+							board: siteInfo.board,
+							id: THREAD_FILE_SYSTEM_NAME
+						});
+				}
+
+				if (prePermission
+				&&  prePermission.foundSummary
+				&&  !prePermission.granted) {
+					result = {error: 'failed to get pre-permission'};
+				}
+
+				if (!result) {
+					result = await threadSaver.start(bootVars.bodyHTML, localPath)
+				}
+
+				afterSave(result);
+			}
+			finally {
+				busy = false;
+			}
+		}
+
+		async function push (stats) {
+			if (busy) return;
+			if (!threadSaver.running) return;
+			if (pageModes[0].mode != 'reply') return;
+
+			busy = true;
+			updateAnchor('スレッド保存中...');
+
+			try {
+				let result = await threadSaver.push(stats);
+
+				afterSave(result);
+			}
+			finally {
+				busy = false;
+			}
+		}
+
+		function stop () {
+			if (pageModes[0].mode != 'reply') return;
+
+			threadSaver.stop();
+		}
+
+		function afterSave (result) {
+			if (result.error) {
+				stop();
+				alert([
+					`スレッドの保存:`,
+					`保存に失敗しました。`,
+					result.error
+				].join('\n'));
+			}
+			else {
+				updateAnchor('自動保存中', node => {
+					node.setAttribute(
+						'title',
+						[
+							`保存先: ${result.localPath}`,
+							`${result.lastOffset} レス目まで保存済み`
+						].join('\n'));
+				});
+			}
+		}
+
+		function updateAnchor (text, callback) {
+			$qsa('a[href="#autosave"]').forEach(node => {
+				$t(node, text);
+				callback && callback(node);
+			});
+		}
+
+		function _getLocalPath (url, anchor) {
+			return getLocalPath(
+				url, anchor,
+				storage.config.save_thread_name_template.value);
+		}
+
+		return {
+			push, start, stop,
+			get busy () {return busy},
+			get running () {return threadSaver.running},
+			get fileSystemAccess () {return threadSaver.fileSystemAccess}
+		}
+	}
+
+	async function asset () {
+		if (!savers[ASSET_FILE_SYSTEM_NAME]) {
+			const fileSystemAccess = await fileSystemManager.get(ASSET_FILE_SYSTEM_NAME);
+			const assetSaver = await getModule()
+				.then(module => module.createAssetSaver(fileSystemAccess));
+			savers[ASSET_FILE_SYSTEM_NAME] = createAssetSaverWrap(assetSaver);
+		}
+		return savers[ASSET_FILE_SYSTEM_NAME];
+	}
+
+	async function thread () {
+		if (!savers[THREAD_FILE_SYSTEM_NAME]) {
+			const fileSystemAccess = await fileSystemManager.get(THREAD_FILE_SYSTEM_NAME);
+			const threadSaver = await getModule()
+				.then(module => module.createThreadSaver(fileSystemAccess));
+			savers[THREAD_FILE_SYSTEM_NAME] = createThreadSaverWrap(threadSaver);
+		}
+		return savers[THREAD_FILE_SYSTEM_NAME];
+	}
+
 	return {
-		startBlink: startBlink,
-		stopBlink: stopBlink
+		asset, thread,
+		get fileSystemManager () {return fileSystemManager},
+		get threadSaverRunning () {return threadSaverRunning()}
 	};
 }
 
 function createFutabaXML (mode) {
 	const xml = document.implementation.createDocument(null, 'futaba', null);
-	const meta = xml.documentElement.appendChild(xml[CRE]('meta'));
-	meta.appendChild(xml[CRE]('mode'))
+	const meta = xml.documentElement.appendChild(xml.createElement('meta'));
+	meta.appendChild(xml.createElement('mode'))
 		.appendChild(xml.createTextNode(mode));
-	meta.appendChild(xml[CRE]('url'))
-		.appendChild(xml.createTextNode(window.location.href));
-	meta.appendChild(xml[CRE]('version'))
+	meta.appendChild(xml.createElement('url'))
+		.appendChild(xml.createTextNode(location.href));
+	meta.appendChild(xml.createElement('version'))
 		.appendChild(xml.createTextNode(version));
-	meta.appendChild(xml[CRE]('extension_id'))
-		.appendChild(xml.createTextNode(getExtensionId()));
+	meta.appendChild(xml.createElement('extension_id'))
+		.appendChild(xml.createTextNode(backend.extensionId));
 	return xml;
 }
 
@@ -5857,7 +6810,7 @@ function setupParallax (selector) {
 		marginTop = node.getBoundingClientRect().top;
 		scrollManager.addEventListener(handleScroll);
 		handleScroll();
-		setTimeout(function () {
+		setTimeout(() => {
 			$qsa('iframe[data-src]').forEach(iframe => {
 				iframe.src = iframe.getAttribute('data-src');
 				iframe.removeAttribute('data-src');
@@ -5920,7 +6873,7 @@ function setupVideoViewer () {
 				const markup = node.getAttribute('data-markup');
 				if (markup && node.childNodes.length == 0) {
 					setBottomStatus(`読み込み中: ${node.parentNode.getElementsByTagName('a')[0].href}`);
-					node[IAHTML]('beforeend', markup);
+					node.insertAdjacentHTML('beforeend', markup);
 				}
 			}
 		});
@@ -5990,8 +6943,8 @@ function setupMouseHoverEvent (element, nodeName, hoverCallback, leaveCallback) 
 	element = $(element);
 	if (!element) return;
 	nodeName = nodeName.toLowerCase();
-	hoverCallback && element.addEventListener(MOVER_EVENT_NAME, mover);
-	leaveCallback && element.addEventListener(MOUT_EVENT_NAME, mout);
+	hoverCallback && element.addEventListener('mouseover', mover);
+	leaveCallback && element.addEventListener('mouseout', mout);
 }
 
 function setupWindowResizeEvent (frequencyMsecs, handler) {
@@ -6038,7 +6991,7 @@ function setupPostFormItemEvent (items) {
 		const linesOvered = item.lines ? lines.length > item.lines : false;
 		const bytesOvered = item.bytes ? bytes > item.bytes : false;
 
-		const span = $('comment-info-details').appendChild(document[CRE]('span'));
+		const span = $('comment-info-details').appendChild(document.createElement('span'));
 		if (linesOvered || bytesOvered) {
 			span.classList.add('warn');
 			result = true;
@@ -6296,7 +7249,7 @@ function setupPostFormItemEvent (items) {
 			p = getImageFrom(file).then(img => {
 				if (!img) return;
 
-				const canvas = document[CRE]('canvas');
+				const canvas = document.createElement('canvas');
 				canvas.width = img.naturalWidth;
 				canvas.height = img.naturalHeight;
 
@@ -6442,17 +7395,15 @@ function setupPostFormItemEvent (items) {
 	document.addEventListener('dragleave', handleDragLeave, true);
 	document.addEventListener('drop', handleDrop);
 
-	(com => {
-		if (!com) return;
+	$qsa('#com').forEach(com => {
 		updateInfo();
-	})($('com'));
+	});
 
-	(upfile => {
-		if (!upfile) return;
+	$qsa('#upfile').forEach(upfile => {
 		upfile.addEventListener('change', e => {
 			pasteFile(e, e.target.files[0]);
 		});
-	})($('upfile'));
+	});
 }
 
 function setupWheelReload () {
@@ -6538,7 +7489,7 @@ function setupCustomEventHandler () {
 	let navStatusHideTimer;
 	let shrinkChars;
 
-	document.addEventListener(`${APP_NAME}.wheelStatus`, function (e) {
+	document.addEventListener(`${APP_NAME}.wheelStatus`, e => {
 		if ($qs('#dialog-wrap:not(.hide)')) return;
 
 		const ws = $('wheel-status');
@@ -6562,7 +7513,7 @@ function setupCustomEventHandler () {
 		}
 	}, false);
 
-	document.addEventListener(`${APP_NAME}.bottomStatus`, function (e) {
+	document.addEventListener(`${APP_NAME}.bottomStatus`, e => {
 		if ($qs('#dialog-wrap:not(.hide)')) return;
 
 		const nav = $('nav-normal');
@@ -6661,761 +7612,6 @@ function setupSearchResultPopup () {
 }
 
 /*
- * <<<1 lightbox functions
- */
-
-function lightbox (anchor) {
-	const RUNNING_EXCLUSION_KEY = 'data-lightbox-status';
-	const MARGIN = 32;
-	const CLICK_THRESHOLD_DISTANCE = 4;
-	const CLICK_THRESHOLD_TIME = 500;
-	const WHEEL_SCROLL_UNIT_FACTOR = 0.33;
-	const DIMMER_TRANSITION_DURATION_MSECS = 400;
-	const IMAGE_TRANSITION_DURATION_MSECS = 300;
-
-	let lightboxWrap;
-	let dimmer;
-	let imageWrap;
-	let loaderWrap;
-	let receiver;
-	let image;
-	let zoomMode;
-	let rotation;
-	let isInTransition;
-	let dragState = {
-		x: 0,
-		y: 0,
-		region: -2,
-		imageRect: null
-	};
-
-	/*
-	 * private functions
-	 */
-
-	function isScrollableHorizontally () {
-		return image && imageWrap.offsetWidth > viewportRect.width;
-	}
-
-	function isScrollableVertically () {
-		return image && imageWrap.offsetHeight > viewportRect.height;
-	}
-
-	function isScrollable () {
-		return isScrollableHorizontally() || isScrollableVertically();
-	}
-
-	function isRotated () {
-		return rotation == 'left' || rotation == 'right';
-	}
-
-	function appendPxSuffix (obj, suffix) {
-		const result = {};
-		suffix || (suffix = 'px');
-		for (let i in obj) {
-			if (typeof obj[i] == 'number') {
-				result[i] = obj[i] + 'px';
-			}
-		}
-		return result;
-	}
-
-	function getRegionId (e) {
-		const imageRect = dragState.imageRect;
-		const imageWrapRect = image.getBoundingClientRect();
-
-		let result;
-
-		if (imageRect
-		&&  e.clientX >= imageRect.left && e.clientX < imageRect.right
-		&&  e.clientY >= imageRect.top  && e.clientY < imageRect.bottom) {
-			result = 0;
-		}
-		/*else if (e.clientX >= imageWrapRect.left && e.clientX < imageWrapRect.right
-		     &&  e.clientY >= imageWrapRect.top  && e.clientY < imageWrapRect.bottom) {
-			result = -1;
-		}*/
-		else {
-			result = -1;
-		}
-		return result;
-	}
-
-	function getDistance (e) {
-		return Math.sqrt(
-			Math.pow(dragState.x - e.clientX, 2) +
-			Math.pow(dragState.y - e.clientY, 2));
-	}
-
-	function getImageRect () {
-		let vleft, vtop, vwidth, vheight;
-		let width = 0, height = 0;
-		let zm = zoomMode;
-
-		if (arguments.length >= 1 && typeof arguments[0] == 'object') {
-			vleft = arguments[0].left;
-			vtop = arguments[0].top;
-			vwidth = arguments[0].width;
-			vheight = arguments[0].height;
-			zm = 'whole';
-		}
-		else {
-			vleft = MARGIN;
-			vtop = MARGIN;
-			vwidth = viewportRect.width - MARGIN * 2;
-			vheight = viewportRect.height - MARGIN * 2;
-		}
-
-		const nwidth = isRotated() ? image.naturalHeight : image.naturalWidth;
-		const nheight = isRotated() ? image.naturalWidth : image.naturalHeight;
-
-		switch (zm) {
-		case 'whole':
-			if (nwidth <= vwidth && nheight <= vheight) {
-				width = nwidth;
-				height = nheight;
-			}
-			else {
-				// portrait image
-				if (nwidth < nheight) {
-					let ratio = nwidth / nheight;
-					width = Math.floor(vheight * ratio);
-					height = vheight;
-					if (width > vwidth) {
-						ratio = nheight / nwidth;
-						width = vwidth;
-						height = Math.floor(vwidth * ratio);
-					}
-				}
-				// landscape image
-				else {
-					let ratio = nheight / nwidth;
-					width = vwidth;
-					height = Math.floor(vwidth * ratio);
-					if (height > vheight) {
-						ratio = nwidth / nheight;
-						width = Math.floor(vheight * ratio);
-						height = vheight;
-					}
-				}
-			}
-			break;
-
-		case 'actual-size':
-			width = nwidth;
-			height = nheight;
-			break;
-
-		case 'fit-to-width':
-			width = vwidth;
-			height = Math.floor(width * (nheight / nwidth));
-			break;
-
-		case 'fit-to-height':
-			height = vheight;
-			width = Math.floor(height * (nwidth / nheight));
-			break;
-		}
-
-		const result = {
-			left: vleft + vwidth / 2 - width / 2,
-			top: vtop + vheight / 2 - height / 2,
-			width: width,
-			height: height
-		};
-		return result;
-	}
-
-	function applyGeometory (rect) {
-		let result;
-		let updated = false;
-
-		// positioning
-		const currentRect = imageWrap.getBoundingClientRect();
-		if (rect.left != currentRect.left
-		||  rect.top != currentRect.top
-		||  rect.width != currentRect.width
-		||  rect.height != currentRect.height) {
-			// styling image wrapper
-			Object.assign(imageWrap.style, appendPxSuffix(rect));
-
-			// styling image itself
-			if (isRotated()) {
-				image.style.width = rect.height + 'px';
-				image.style.height = rect.width + 'px';
-			}
-			else {
-				image.style.width = rect.width + 'px';
-				image.style.height = rect.height + 'px';
-			}
-			updated = true;
-		}
-
-		// rotation
-		const degrees = {
-			'normal': 0,
-			'left': -90,
-			'right': 90,
-			'180': 180
-		};
-		const currentTransform = /rotate\(([-0-9]+)deg\)/.exec(image.style.transform) || ['', 0];
-		const currentDegree = parseInt(currentTransform[1], 10);
-		let newDegree = degrees[rotation];
-		if (newDegree == 180) {
-			newDegree *= currentDegree >= 0 ? 1 : -1;
-		}
-		if (newDegree != currentDegree) {
-			image.style.transform = `rotate(${newDegree}deg)`;
-			updated = true;
-		}
-
-		//
-		if (updated) {
-			image.style.opacity = 1.0;
-			result = transitionendp(image, IMAGE_TRANSITION_DURATION_MSECS);
-		}
-		else {
-			result = Promise.resolve(true);
-		}
-
-		isInTransition = true;
-		return result.then(() => {
-			// show info panel
-			$qs('.info', lightboxWrap).style.top = '0';
-
-			// update mode links
-			updateModeLinks();
-
-			// update geometory info
-			updateGeometoryInfo();
-
-			isInTransition = false;
-		});
-	}
-
-	function setZoomMode (zm, opts) {
-		opts || (opts = {});
-		if (!image) return;
-		if (zm != 'whole'
-		&& zm != 'actual-size'
-		&& zm != 'fit-to-width'
-		&& zm != 'fit-to-height') return;
-
-		zoomMode = zm;
-		storage.runtime.lightbox.zoomMode = zm;
-		storage.saveRuntime();
-
-		let rect;
-		if (zoomMode == 'actual-size'
-		&& opts.event && getRegionId(opts.event) == 0
-		&& (image.naturalWidth > viewportRect.width - MARGIN * 2 || image.naturalHeight > viewportRect.height - MARGIN * 2)) {
-			const ratio = image.offsetWidth / image.naturalWidth;
-			const imageRect = image.getBoundingClientRect();
-			const offsetX = (opts.event.clientX - imageRect.left) / ratio;
-			const offsetY = (opts.event.clientY - imageRect.top) / ratio;
-
-			rect = getImageRect();
-			if (image.naturalWidth > viewportRect.width - MARGIN * 2) {
-				rect.left = opts.event.clientX - offsetX;
-			}
-			if (image.naturalHeight > viewportRect.height - MARGIN * 2) {
-				rect.top = opts.event.clientY - offsetY;
-			}
-		}
-
-		if (!rect) {
-			rect = getImageRect();
-		}
-
-		applyGeometory(rect);
-	}
-
-	function updateModeLinks () {
-		$qsa('#lightbox-zoom-modes a').forEach(node => {
-			if (node.getAttribute('href') == '#lightbox-' + zoomMode) {
-				node.classList.add('selected');
-			}
-			else {
-				node.classList.remove('selected');
-			}
-		});
-
-		$qsa('#lightbox-rotate-modes a').forEach(node => {
-			if (node.getAttribute('href') == '#lightbox-' + rotation) {
-				node.classList.add('selected');
-			}
-			else {
-				node.classList.remove('selected');
-			}
-		});
-	}
-
-	function updateGeometoryInfo () {
-		if (!image) return;
-		if (!image.naturalWidth || !image.naturalHeight) return;
-
-		const size = `${image.naturalWidth}x${image.naturalHeight}`;
-		const zoomRatio = `   ${(parseInt(image.style.width, 10) / image.naturalWidth * 100).toFixed(2)}%`.substr(-7); // max: '100.00%'.length == 7
-
-		$t('lightbox-ratio', `${size}, ${zoomRatio}`);
-	}
-
-	/*
-	 * event handlers
-	 */
-
-	function handlePointerDown (e) {
-		if (isInTransition) return;
-		if (e.target != receiver) return;
-
-		receiver.setPointerCapture(e.pointerId);
-
-		e.preventDefault();
-
-		if (e.target != e.currentTarget || e.buttons != 1) {
-			dragState.region = -9;
-			return;
-		}
-
-		dragState.time = Date.now();
-		dragState.x = e.clientX;
-		dragState.y = e.clientY;
-
-		if (image) {
-			dragState.imageRect = image.getBoundingClientRect();
-			dragState.region = getRegionId(e);
-
-			if (imageWrap.classList.contains('dragging')) {
-				dragState.x = dragState.y = -1;
-				dragState.region = -2;
-			}
-			else {
-				receiver.addEventListener('pointermove', handlePointerMove);
-				imageWrap.classList.add('dragging');
-			}
-		}
-		else {
-			dragState.imageRect = null;
-			dragState.region = -2;
-		}
-	}
-
-	function handlePointerMove (e) {
-		if (isInTransition) return;
-		if (dragState.region != 0) return;
-
-		let left, top;
-		switch (zoomMode) {
-		case 'actual-size':
-			//if (isScrollableHorizontally()) {
-				left = dragState.imageRect.left + (e.clientX - dragState.x);
-			//}
-			//if (isScrollableVertically()) {
-				top = dragState.imageRect.top + (e.clientY - dragState.y);
-			//}
-			break;
-
-		case 'fit-to-width':
-			if (isScrollableVertically()) {
-				top = dragState.imageRect.top + (e.clientY - dragState.y);
-			}
-			break;
-
-		case 'fit-to-height':
-			if (isScrollableHorizontally()) {
-				left = dragState.imageRect.left + (e.clientX - dragState.x);
-			}
-			break;
-		}
-
-		if (left != undefined) {
-			imageWrap.style.left = left + 'px';
-		}
-
-		if (top != undefined) {
-			imageWrap.style.top = top + 'px';
-		}
-	}
-
-	function handlePointerUp (e) {
-		if (isInTransition) return;
-
-		image && imageWrap.classList.remove('dragging');
-		receiver.releasePointerCapture(e.pointerId);
-		receiver.removeEventListener('pointermove', handlePointerMove);
-
-		// clicked?
-		if (Date.now() - dragState.time < CLICK_THRESHOLD_TIME
-		&&  getDistance(e) < CLICK_THRESHOLD_DISTANCE) {
-			switch (dragState.region) {
-			case 0: // inside image
-				setZoomMode(
-					zoomMode == 'whole' ? 'actual-size' : 'whole',
-					{event: e});
-				break;
-			default: // outside image
-				leave();
-				break;
-			}
-		}
-
-		// dragged?
-		else if (image) {
-			const rect = imageWrap.getBoundingClientRect();
-			let left = rect.left;
-			let top = rect.top;
-
-			if (isScrollableHorizontally()) {
-				if (left > MARGIN) {
-					left = MARGIN;
-				}
-				if (left < viewportRect.width - imageWrap.offsetWidth - MARGIN) {
-					left = viewportRect.width - imageWrap.offsetWidth - MARGIN;
-				}
-			}
-			else {
-				left = viewportRect.width / 2 - imageWrap.offsetWidth / 2;
-			}
-
-			if (isScrollableVertically()) {
-				if (top > MARGIN) {
-					top = MARGIN;
-				}
-				if (top < viewportRect.height - imageWrap.offsetHeight - MARGIN) {
-					top = viewportRect.height - imageWrap.offsetHeight - MARGIN;
-				}
-			}
-			else {
-				top = viewportRect.height / 2 - imageWrap.offsetHeight / 2;
-			}
-
-			if (left != rect.left || top != rect.top) {
-				isInTransition = true;
-				imageWrap.style.left = left + 'px';
-				imageWrap.style.top = top + 'px';
-				transitionendp(image, IMAGE_TRANSITION_DURATION_MSECS).then(() => {
-					isInTransition = false;
-				});
-			}
-		}
-	}
-
-	function handlePointerWheel (e) {
-		if (isInTransition) return;
-
-		e.preventDefault();
-		e.stopPropagation();
-
-		if (!image) return;
-
-		let top;
-		let imageRect = imageWrap.getBoundingClientRect();
-		switch (zoomMode) {
-		case 'actual-size':
-		case 'fit-to-width':
-			if (imageWrap.offsetHeight > viewportRect.height) {
-				let sign;
-				if (e.deltaY) {
-					sign = e.deltaY > 0 ? -1 : 1;
-				}
-				else {
-					sign = e.shiftKey ? 1 : -1;
-				}
-				top = imageRect.top +
-					  Math.floor(viewportRect.height * WHEEL_SCROLL_UNIT_FACTOR) * sign;
-			}
-			break;
-		}
-
-		if (top != undefined) {
-			if (top > MARGIN) {
-				top = MARGIN;
-			}
-			if (top < viewportRect.height - imageWrap.offsetHeight - MARGIN) {
-				top = viewportRect.height - imageWrap.offsetHeight - MARGIN;
-			}
-			isInTransition = true;
-			imageWrap.style.top = top + 'px';
-			transitionendp(image, IMAGE_TRANSITION_DURATION_MSECS).then(() => {
-				isInTransition = false;
-			});
-		}
-	}
-
-	function handleZoomModeClick (e, t) {
-		if (isInTransition) return;
-		if (!image) return;
-		setZoomMode(t.getAttribute('href').replace('#lightbox-', ''));
-	}
-
-	function handleRotateModeClick (e, t) {
-		if (isInTransition) return;
-		if (!image) return;
-		rotation = t.getAttribute('href').replace('#lightbox-', '');
-		setZoomMode('whole');
-	}
-
-	function handleZoomModeKey (e) {
-		if (isInTransition) return;
-		if (!image) return;
-		setZoomMode({
-			'O': 'whole',
-			'A': 'actual-size',
-			'W': 'fit-to-width',
-			'H': 'fit-to-height'
-		}[e.key]);
-	}
-
-	function handleRotateModeKey (e) {
-		if (isInTransition) return;
-		if (!image) return;
-		rotation = {
-			'n': 'normal',
-			'l': 'left',
-			'r': 'right',
-			'v': '180'
-		}[e.key];
-		setZoomMode('whole');
-	}
-
-	function handleSearch (e) {
-		if (isInTransition) return;
-		if (!image) return;
-		const lang = window.navigator.browserLanguage
-			|| window.navigator.language
-			|| window.navigator.userLanguage;
-		const url = 'http://www.google.com/searchbyimage'
-			+ `?sbisrc=${APP_NAME}`
-			+ `&hl=${lang.toLowerCase()}`
-			+ `&image_url=${encodeURIComponent(image.src)}`;
-		sendToBackend('open', {
-			url: url,
-			selfUrl: window.location.href
-		});
-	}
-
-	function handleCopyClick (e) {
-		if (isInTransition) return;
-		if (!image) return;
-		if (location.protocol != 'https:') return;
-
-		const canvas = document[CRE]('canvas');
-		canvas.width = image.naturalWidth;
-		canvas.height = image.naturalHeight;
-		canvas.getContext('2d').drawImage(image, 0, 0);
-
-		getBlobFrom(canvas)
-			.then(blob => navigator.clipboard.write([new ClipboardItem({[blob.type]: blob})]))
-			.then(() => {
-				sounds.imageSaved.play();
-			})
-			.catch(err => {
-				console.error(err);
-			});
-	}
-
-	function handleStroke (e) {
-		if (isInTransition) return;
-		if (!image) return;
-		const view = window[USW] || window;
-		const ev = new WheelEvent('wheel', {
-			bubbles: true, cancelable: true, view: view,
-			detail: 0, screenX: 0, screenY: 0, clientX: 0, clientY: 0,
-			ctrlKey: e.ctrl, altKey: false, shiftKey: e.shift, metaKey: false,
-			button: 0, relatedTarget: null
-		});
-		receiver.dispatchEvent(ev);
-	}
-
-	/*
-	 * entry functions
-	 */
-
-	function init () {
-		if (document.body.getAttribute(RUNNING_EXCLUSION_KEY) != null) return;
-
-		// block recursive execution
-		document.body.setAttribute(RUNNING_EXCLUSION_KEY, 'loading');
-
-		// initialize variables
-		lightboxWrap = $('lightbox-wrap');
-		dimmer = $qs('.dimmer', lightboxWrap);
-		imageWrap = $qs('.image-wrap', lightboxWrap);
-		loaderWrap = $qs('.loader-wrap', lightboxWrap);
-		receiver = $qs('.receiver', lightboxWrap);
-		rotation = 'normal';
-
-		// initialize zoom mode
-		zoomMode = storage.config.lightbox_zoom_mode.value;
-		if (zoomMode == 'last') {
-			zoomMode = storage.runtime.lightbox.zoomMode;
-		}
-
-		// info
-		$t('lightbox-ratio', '読み込み中...');
-		const link = $('lightbox-link');
-		$t(link, anchor.href.match(/\/([^\/]+)$/)[1]);
-		link.href = anchor.href;
-
-		// start
-		document.body.style.userSelect = 'none';
-		lightboxWrap.classList.remove('hide');
-		Promise.all([
-			getImageFrom(anchor.href).then(loadedImage => {
-				loaderWrap.classList.add('hide');
-				image = loadedImage;
-				if (image) {
-					imageWrap.appendChild(image);
-
-					const thumb = $qs('img', anchor);
-					if (thumb) {
-						const rect1 = thumb.getBoundingClientRect();
-						const rect2 = getImageRect(rect1);
-						const rect3 = appendPxSuffix(rect2);
-						Object.assign(imageWrap.style, rect3);
-						image.style.width = rect3.width;
-						image.style.height = rect3.height;
-					}
-					else {
-						const rect1 = anchor.getBoundingClientRect();
-						const size = Math.max(rect1.width, rect1.height);
-						const rect2 = getImageRect({
-							left: rect1.left + rect1.width / 2 - size / 2,
-							top: rect1.top + rect1.height / 2 - size / 2,
-							width: size,
-							height: size
-						});
-						const rect3 = appendPxSuffix(rect2);
-						Object.assign(imageWrap.style, rect3);
-						image.style.width = rect3.width;
-						image.style.height = rect3.height;
-					}
-
-					imageWrap.classList.remove('hide');
-
-					return delay(100).then(() => applyGeometory(getImageRect()));
-				}
-				else {
-					loaderWrap.classList.remove('hide');
-					$t($qs('p', loaderWrap), '読み込みに失敗しました。');
-				}
-			}),
-			delay(0)
-				.then(() => dimmer.classList.add('run'))
-				.then(() => transitionendp(dimmer, DIMMER_TRANSITION_DURATION_MSECS))
-				.then(() => {
-					appStates.unshift('lightbox');
-
-					receiver.addEventListener('pointerdown', handlePointerDown);
-					receiver.addEventListener('pointermove', handlePointerMove);
-					receiver.addEventListener('pointerup', handlePointerUp);
-					receiver.addEventListener('wheel', handlePointerWheel);
-
-					// debug handler
-					if (false) {
-						const handler = e => {
-							e.preventDefault();
-							handleZoomModeClick(e, e.target);
-						};
-						$qsa('#lightbox-zoom-modes a').forEach(node => {
-							node.addEventListener('click', handler);
-						});
-					}
-					if (false) {
-						const handler = e => {
-							e.preventDefault();
-							handleRotateModeClick(e, e.target);
-						};
-						$qsa('#lightbox-rotate-modes a').forEach(node => {
-							node.addEventListener('click', handler);
-						});
-					}
-
-					clickDispatcher
-						.add('#lightbox-whole', handleZoomModeClick)
-						.add('#lightbox-actual-size', handleZoomModeClick)
-						.add('#lightbox-fit-to-width', handleZoomModeClick)
-						.add('#lightbox-fit-to-height', handleZoomModeClick)
-						.add('#lightbox-normal', handleRotateModeClick)
-						.add('#lightbox-left', handleRotateModeClick)
-						.add('#lightbox-right', handleRotateModeClick)
-						.add('#lightbox-180', handleRotateModeClick)
-						.add('#lightbox-search', handleSearch)
-						.add('#lightbox-copy', handleCopyClick)
-						.add('#lightbox-close', leave);
-
-					keyManager
-						.addStroke('lightbox', ['O', 'A', 'W', 'H'], handleZoomModeKey)
-						.addStroke('lightbox', ['n', 'l', 'r', 'v'], handleRotateModeKey)
-						.addStroke('lightbox', '\u001b', leave)
-						.addStroke('lightbox', 's', handleSearch)
-						.addStroke('lightbox', 'c', handleCopyClick)
-						.addStroke('lightbox', [' ', '<S-space>'], handleStroke, true)
-						.updateManifest();
-
-					selectionMenu.enabled = false;
-
-					document.body.setAttribute(RUNNING_EXCLUSION_KEY, 'running');
-				}),
-			delay(1000)
-				.then(() => {
-					if (!image && loaderWrap.classList.contains('hide')) {
-						loaderWrap.classList.remove('hide');
-						$t($qs('p', loaderWrap), '読み込み中...');
-					}
-				})
-		]);
-	}
-
-	function leave () {
-		$qs('.info', lightboxWrap).style.top = '';
-		if (image) {
-			image.style.opacity = '';
-		}
-		imageWrap.classList.add('hide');
-		loaderWrap.classList.add('hide');
-		empty(imageWrap);
-
-		receiver.removeEventListener('pointerdown', handlePointerDown);
-		receiver.removeEventListener('pointermove', handlePointerMove);
-		receiver.removeEventListener('pointerup', handlePointerUp);
-		receiver.removeEventListener('wheel', handlePointerWheel);
-
-		clickDispatcher
-			.remove('#lightbox-whole')
-			.remove('#lightbox-actual-size')
-			.remove('#lightbox-fit-to-width')
-			.remove('#lightbox-fit-to-height')
-			.remove('#lightbox-normal')
-			.remove('#lightbox-left')
-			.remove('#lightbox-right')
-			.remove('#lightbox-180')
-			.remove('#lightbox-search')
-			.remove('#lightbox-close');
-
-		keyManager
-			.removeStroke('lightbox');
-
-		delay(0)
-			.then(() => dimmer.classList.remove('run'))
-			.then(() => transitionendp(dimmer, DIMMER_TRANSITION_DURATION_MSECS))
-			.then(() => {
-				lightboxWrap.classList.add('hide');
-				anchor = image = lightboxWrap =
-				dimmer = imageWrap = receiver = null;
-
-				selectionMenu.enabled = true;
-				appStates.shift();
-				keyManager.updateManifest();
-				document.body.removeAttribute(RUNNING_EXCLUSION_KEY);
-				document.body.style.userSelect = '';
-			});
-	}
-
-	init();
-}
-
-/*
  * <<<1 modal dialog functions
  */
 
@@ -7434,11 +7630,7 @@ function modalDialog (opts) {
 			get content () {return content},
 			get isPending () {return isPending},
 			set isPending (v) {isPending = !!v},
-			initTitle: initTitle,
-			initButtons: initButtons,
-			enableButtons: enableButtons,
-			disableButtonsWithout: disableButtonsWithout,
-			initFromXML: initFromXML,
+			initTitle, initButtons, enableButtons, disableButtonsWithout, initFromXML,
 			close: () => {
 				isPending = false;
 				leave();
@@ -7486,8 +7678,8 @@ function modalDialog (opts) {
 			footer.removeChild(footer.firstChild);
 		}
 
-		(opt || '').split(/\s*,\s*/).forEach(function (opt) {
-			buttons.forEach(function (button, i) {
+		(opt || '').split(/\s*,\s*/).forEach(opt => {
+			buttons.forEach((button, i) => {
 				if (!button) return;
 				if (button.getAttribute('href') != `#${opt}-dialog`) return;
 				button.classList.remove('hide');
@@ -7496,7 +7688,7 @@ function modalDialog (opts) {
 			});
 		});
 
-		buttons.forEach(function (button) {
+		buttons.forEach(button => {
 			if (!button) return;
 			button.classList.add('hide');
 			footer.appendChild(button);
@@ -7539,7 +7731,7 @@ function modalDialog (opts) {
 					return;
 				}
 
-				appendFragment(content, f);
+				extractDisableOutputEscapingTags(content, f);
 			}
 			finally {
 				isPending = false;
@@ -7566,17 +7758,16 @@ function modalDialog (opts) {
 				|| !t.classList.contains('config-item')) {
 					return keyManager.PASS_THROUGH;
 				}
-			})
-			.updateManifest();
+			});
 
 		contentWrap.addEventListener('mousedown', handleMouseCancel, false);
-		contentWrap.addEventListener(MMOVE_EVENT_NAME, handleMouseCancel, false);
+		contentWrap.addEventListener('mousemove', handleMouseCancel, false);
 		contentWrap.addEventListener('mouseup', handleMouseCancel, false);
 
 		opts.onopen && opts.onopen(getRemoteController('open'));
 		state = 'running';
 
-		setTimeout(function () {
+		setTimeout(() => {
 			window.scrollTo(0, scrollTop);
 			contentWrap.classList.add('run');
 			dimmer.classList.add('run');
@@ -7674,18 +7865,17 @@ function modalDialog (opts) {
 		keyManager.removeStroke('dialog');
 
 		contentWrap.removeEventListener('mousedown', handleMouseCancel, false);
-		contentWrap.removeEventListener(MMOVE_EVENT_NAME, handleMouseCancel, false);
+		contentWrap.removeEventListener('mousemove', handleMouseCancel, false);
 		contentWrap.removeEventListener('mouseup', handleMouseCancel, false);
 
-		transitionend(contentWrap, function () {
+		transitionend(contentWrap, () => {
 			opts.onclose && opts.onclose(content);
 			dialogWrap.classList.add('hide');
 			dialogWrap = contentWrap = content = dimmer = null;
 			appStates.shift();
-			keyManager.updateManifest();
 		});
 
-		setTimeout(function () {
+		setTimeout(() => {
 			contentWrap.classList.remove('run');
 			dimmer.classList.remove('run');
 		}, 0);
@@ -7696,104 +7886,39 @@ function modalDialog (opts) {
 }
 
 /*
- * <<<1 misc functions
+ * <<<1 application independent utility functions
  */
 
-function $ (id) {
-	return typeof id == 'string' ? document.getElementById(id) : id;
-}
+let $, $t, $qs, $qsa, empty, fixFragment, serializeXML, getCookie, setCookie,
+	getDOMFromString, getImageMimeType, docScrollTop, docScrollLeft,
+	transitionend, delay, transitionendp, dumpNode, getBlobFrom, getImageFrom,
+	getReadableSize, regalizeEditable, getContentsFromEditable,
+	setContentsToEditable, isHighSurrogate, isLowSurrogate, isSurrogate,
+	resolveCharacterReference, 新字体の漢字を舊字體に変換, osaka, mergeDeep,
+	getErrorDescription, load, substringWithStrictUnicode, invokeMousewheelEvent,
+	voice;
 
-function $t (node, content) {
-	node = $(node);
-	if (!node) return undefined;
-	if (content != undefined) {
-		if (node.nodeName == 'INPUT' || node.nodeName == 'TEXTAREA') {
-			node.value = content;
-		}
-		else {
-			node.textContent = content;
-		}
-	}
-	return node.textContent;
-}
+/*
+ * <<<1 application depending misc functions
+ */
 
-function $qs (selector, node) {
-	return ($(node) || document).querySelector(selector);
-}
-
-function $qsa (selector, node) {
-	return ($(node) || document).querySelectorAll(selector);
-}
-
-function sendToBackend () { /*returns promise*/
-	if (!backend) return;
-
-	const args = Array.from(arguments);
-	let data, callback;
-
-	if (args.length > 1 && typeof args[args.length - 1] == 'function') {
-		callback = args.pop();
-	}
-	if (args.length > 1) {
-		data = args.pop();
+function modules (...args) {
+	if (args.length == 1) {
+		return import(chrome.runtime.getURL(`lib/${args[0]}.js`));
 	}
 	else {
-		data = {};
-	}
-
-	data.type = args[0];
-	if (callback) {
-		try {
-			backend.postMessage(data, callback);
-		}
-		catch (err) {
-			console.error(`${APP_NAME}: sendToBackend: ${err.stack}`);
-			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
-		}
-	}
-	else {
-		return new Promise(resolve => {
-			backend.postMessage(data, resolve);
-		}).catch(err => {
-			console.error(`${APP_NAME}: sendToBackend: ${err.stack}`);
-			throw new Error(MESSAGE_BACKEND_CONNECTION_ERROR);
-		});
+		return Promise.all(args.map(name => modules(name)));
 	}
 }
 
-function getExtensionId () {
-	// extension id can be retrieved by chrome.runtime.id in chrome,
-	// but Firefox's WebExtensions distinguishes extension id from
-	// runtime UUID.
-	const url = chrome.extension.getURL('README.md');
-	let re = /^[^:]+:\/\/([^\/]+)/.exec(url);
-	return re[1];
-}
-
-function empty (node) {
-	node = $(node);
-	if (!node) return;
-	const r = document.createRange();
-	r.selectNodeContents(node);
-	r.deleteContents();
-}
-
-function fixFragment (f, tagName) {
-	const element = $qs(tagName || 'body', f);
-	if (!element) return f;
-	const r = document.createRange();
-	r.selectNodeContents(element);
-	return r.cloneContents();
-}
-
-function appendFragment (container, f) {
+function extractDisableOutputEscapingTags (container, extraFragment) {
 	container = $(container);
 	if (!container) return;
-	if (f) container.appendChild(f);
+	if (extraFragment) container.appendChild(extraFragment);
 	$qsa('[data-doe]', container).forEach(node => {
 		const doe = node.getAttribute('data-doe');
 		node.removeAttribute('data-doe');
-		node[IAHTML]('beforeend', doe);
+		node.insertAdjacentHTML('beforeend', doe);
 	});
 	return container;
 }
@@ -7806,56 +7931,15 @@ function resolveRelativePath (url, baseUrl) {
 
 	// absolute path
 	else if (/^\//.test(url)) {
-		return `${window.location.protocol}//${window.location.host}${url}`;
+		return `${location.protocol}//${location.host}${url}`;
 	}
 
 	// relative path
 	if (baseUrl == undefined) {
-		baseUrl = (document.getElementsByTagName('base')[0] || window.location).href;
+		baseUrl = (document.getElementsByTagName('base')[0] || location).href;
 	}
 	baseUrl = baseUrl.replace(/\/[^\/]*$/, '/');
 	return baseUrl + url;
-}
-
-function restoreDistributedImageURL (url) {
-	// $1: scheme
-	// $2: base host
-	// $3: original server
-	// $4: rest file name
-	return url.replace(/^([^:]+:\/\/)[^.]+(\.2chan\.net(?::\d+)?)\/([^\/]+)\/([^\/]+\/(?:cat|thumb|src)\/.*)/, '$1$3.2chan.net/$4');
-}
-
-function serializeXML (xml) {
-	return (new window.XMLSerializer())
-		.serializeToString(xml)
-		.replace(/<\/\w+>/g, '$&\n')
-		.replace(/></g, '>\n<');
-}
-
-function getCookie (key) {
-	let result;
-	document.cookie.split(';').some(function (a) {
-		a = a.split('=', 2);
-		if (a[0].replace(/^\s+|\s+$/g, '') == key) {
-			result = unescape(a[1]);
-			return true;
-		}
-	});
-	return result;
-}
-
-function setCookie (key, value, lifeDays, path) {
-	const s = [];
-	s.push(`${key}=${escape(value)}`);
-	if (lifeDays) {
-		const d = new Date;
-		d.setDate(d.getDate() + lifeDays);
-		s.push('expires=' + d.toUTCString());
-	}
-	if (path) {
-		s.push('path=' + path);
-	}
-	document.cookie = s.join('; ');
 }
 
 function setBoardCookie (key, value, lifeDays) {
@@ -7896,200 +7980,6 @@ function setWheelStatus (s) {
 	document.dispatchEvent(ev);
 }
 
-function getDOMFromString (s) {
-	try {
-		return (new window.DOMParser()).parseFromString(
-			s.replace(/\r?\n/g, ' ')
-				.replace(/<script[^>]*>.*?<\/script>/gi, '')
-				.replace(/<img[^>]*>/gi, $0 => $0.replace(/\bsrc=/g, 'data-src=')),
-			'text/html');
-	}
-	catch (e) {
-		console.error(`${APP_NAME}: getDOMFromString failed: ${e.stack}`);
-	}
-}
-
-function getImageMimeType (href) {
-	if (/\.jpe?g\b/i.test(href)) {
-		return 'image/jpeg';
-	}
-	if (/\.png\b/i.test(href)) {
-		return 'image/png';
-	}
-	if (/\.gif\b/i.test(href)) {
-		return 'image/gif';
-	}
-	if (/\.webp\b/i.test(href)) {
-		return 'image/webp';
-	}
-	if (/\.webm\b/i.test(href)) {
-		return 'video/webm';
-	}
-	if (/\.mp4\b/i.test(href)) {
-		return 'video/mp4';
-	}
-	return 'application/octet-stream';
-}
-
-function getImageName (href, targetNode) {
-	let dateAvailable = true;
-	let re;
-	let imageDate;
-
-	// image on image board of futaba server:
-	//
-	// https://img.2chan.net/b/src/999999999.jpg
-	//         ^^^           ^     ^^^^^^^^^
-	//          1            2         3
-	re = /^https?:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/src\/(\d+)\.([^.]+)/.exec(restoreDistributedImageURL(href));
-
-	// image on up/up2 of futaba server:
-	//
-	// https://dec.2chan.net/up2/src/fu999999.jpg
-	//         ^^^           ^^^     ^^^^^^^^
-	//          1             2          3
-	if (!re) {
-		re = /^https?:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/src\/(\w+\d+)\.([^.]+)/.exec(href);
-		if (re) {
-			dateAvailable = false;
-		}
-	}
-
-	// image on siokara server:
-	//
-	// https://www.nijibox5.com/futabafiles/tubu/src/su999999.jpg
-	//             ^^^^^^^^                 ^^^^     ^^^^^^^^
-	//                 1                      2          3
-	if (!re) {
-		re = /^https?:\/\/[^.]+\.(nijibox\d+)\.com(?::\d+)?\/futabafiles\/([^\/]+)\/src\/(\w+\d+)\.([^.]+)/.exec(href);
-		if (re) {
-			dateAvailable = false;
-			re[1] = 'siokara';
-		}
-	}
-
-	if (!re) return;
-
-	/*
-	 * re[1]: server key
-	 * re[2]: board key
-	 * re[3]: image serial number (unix timestamp + 3 digits of msec value)
-	 * re[4]: file name extension (excludes a dot)
-	 */
-
-	if (dateAvailable) {
-		imageDate = new Date(re[3] - 0);
-	}
-	else {
-		// images on siokara server has not created timestamp:
-		// so pick up current date
-		imageDate = new Date;
-	}
-
-	// retrieve thread number and first comment text
-	let threadNumber = 0;
-	let firstCommentText = '';
-	let defaultCommentText = '';
-	let p = targetNode;
-	while (p) {
-		if (p.nodeName == 'ARTICLE') {
-			const topicWrap = $qs('.topic-wrap', p);
-			if (topicWrap) {
-				threadNumber = topicWrap.getAttribute('data-number') - 0 || 0;
-			}
-
-			Array.prototype.some.call($qsa('.comment', p), node => {
-				const comment = commentToString(node);
-				if (/^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
-					defaultCommentText = comment;
-					return false;
-				}
-				else {
-					firstCommentText = comment;
-					return true;
-				}
-			});
-
-			break;
-		}
-		else {
-			p = p.parentNode;
-		}
-	}
-	if (firstCommentText == '') {
-		firstCommentText = defaultCommentText;
-	}
-	if (firstCommentText == '') {
-		firstCommentText = 'ｷﾀ━━━(ﾟ∀ﾟ)━━━!!';
-	}
-	// substitute control characters
-	firstCommentText = firstCommentText.replace(/[\u0000-\u001f]+/g, ' ');
-	// strip Unicode BiDi overrides
-	firstCommentText = firstCommentText.replace(/[\u202d\u202e]/g, '');
-	// substitute reserved characters on some platforms
-	// @see: https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file
-	const map = {
-		'<': '＜',
-		'>': '＞',
-		':': '：',
-		'/': '／',
-		'\\': '＼',
-		'?': '？',
-		'*': '＊'
-	};
-	firstCommentText = firstCommentText.replace(
-		/[<>:\/\\?*]/g, $0 => map[$0]);
-
-	// limit length of firstCommentText
-	// (it may have to be configurable?)
-	firstCommentText = firstCommentText.substring(0, 50);
-	firstCommentText = firstCommentText.replace(/[\ud800-\udbff]$/, '');
-
-	// trim surrounding spaces
-	firstCommentText = firstCommentText.replace(/^\s*|\s*$/g, '');
-
-
-
-	let f = storage.config.save_image_name_template.value
-		.replace(/[\r\n]/g, '')
-		.replace(/\$([A-Z]+)/g, ($0, $1) => {
-			switch ($1) {
-			case 'SERVER':
-				return siteInfo.server;
-			case 'BOARD':
-				return siteInfo.board;
-			case 'THREAD':
-				return threadNumber;
-			case 'YEAR':
-				return imageDate.getFullYear();
-			case 'MONTH':
-				return ('00' + (imageDate.getMonth() + 1)).substr(-2);
-			case 'DAY':
-				return ('00' + (imageDate.getDate())).substr(-2);
-			case 'SERIAL':
-				return re[3];
-			case 'DIST':
-				return re[3].substr(-3);
-			case 'EXT':
-				return re[4];
-			case 'TEXT':
-				return firstCommentText;
-			default:
-				return $0;
-			}
-		});
-
-	f = '/' + f;
-	f = f.replace(/\\/g, '/');
-	f = f.replace(/\/\/+/g, '/');
-
-	// check incompatible patterns
-	if (/\.\./.test(f)) return;
-	if (/\/(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])/i.test(f)) return;
-
-	return f;
-}
-
 function getWrapElement (element) {
 	return element ? element.closest('.topic-wrap, .reply-wrap') : null;
 }
@@ -8114,65 +8004,6 @@ function getPostNumber (element) {
 	return null;
 }
 
-function docScrollTop () {
-	return Math.max(
-		document.documentElement.scrollTop,
-		document.body.scrollTop);
-}
-
-function docScrollLeft () {
-	return Math.max(
-		document.documentElement.scrollLeft,
-		document.body.scrollLeft);
-}
-
-function transitionend (element, callback, backupMsec) {
-	element = $(element);
-	if (!element) {
-		if (callback) {
-			callback({
-				type: 'transitionend-backup',
-				target: null,
-			});
-		}
-		return;
-	}
-
-	let backupTimer;
-	let handler = function handleTransitionEnd (e) {
-		if (backupTimer) {
-			clearTimeout(backupTimer);
-			backupTimer = null;
-		}
-		if (element) {
-			element.removeEventListener('transitionend', handleTransitionEnd);
-		}
-		if (callback) {
-			callback(e);
-		}
-		handler = element = callback = e = null;
-	};
-
-	element.addEventListener('transitionend', handler);
-	backupTimer = setTimeout(handler, backupMsec || 1000, {
-		type: 'transitionend-backup',
-		target: element,
-	});
-}
-
-function delay (msecs) { /*returns promise*/
-	return new Promise(resolve => setTimeout(resolve, msecs));
-}
-
-function transitionendp (element, backupMsec) { /*returns promise*/
-	return new Promise(resolve => transitionend(element, resolve, backupMsec));
-}
-
-function log () {
-	devMode && console.log(
-		Array.from(arguments).join(' '));
-}
-
 function getTextForCatalog (text, maxLength) {
 	let score = 0;
 	let result = '';
@@ -8190,6 +8021,7 @@ function getTextForCatalog (text, maxLength) {
 function sanitizeComment (commentNode) {
 	const result = commentNode.cloneNode(true);
 
+	/*
 	$qsa('.link-siokara', result).forEach(node => {
 		const anchor = node.nodeName == 'A' ? node : $qs('a', node);
 		if (anchor) {
@@ -8198,13 +8030,14 @@ function sanitizeComment (commentNode) {
 				node);
 		}
 	});
+	*/
 
 	const strippedItems = [
 		'video',
 		'audio',
 		'iframe',
 		'.inline-save-image-wrap',
-		'.siokara-media-container',
+		//'.siokara-media-container',
 		'.up-media-container'
 	];
 	$qsa(strippedItems.join(','), result).forEach(node => {
@@ -8239,179 +8072,63 @@ function commentToString (container) {
 }
 
 function rangeToString (range) {
-	const container = document[CRE]('div');
+	const container = document.createElement('div');
 	container.appendChild(range.cloneContents());
 	return commentToString(container);
-}
-
-function dumpNode (node, tag) {
-	console.log((tag ? `${tag}: ` : '') + node.innerHTML
-		.replace(/\r/g, '\\r')
-		.replace(/\n/g, '\\n')
-		.replace(/\t/g, '\\t')
-		.replace(/\f/g, '\\f')
-		.replace(/[\x00-\x1f]/g, $0 => `\\x${('00' + $0.charCodeAt(0).toString(16)).substr(-2)}`));
-}
-
-function getBlobFrom (url, mimeType = 'image/png', quality = 0.9) { /*returns promise*/
-	if (url instanceof HTMLCanvasElement) {
-		return new Promise(resolve => {
-			url.toBlob(blob => {resolve(blob)}, mimeType, quality);
-		});
-	}
-	else {
-		// http://stackoverflow.com/a/30666203
-		return new Promise(resolve => {
-			let xhr = transport.create();
-
-			xhr.open('GET', url);
-			// Can't use blob directly because of https://crbug.com/412752
-			xhr.responseType = 'arraybuffer';
-			xhr.onload = () => {
-				const mime = xhr.getResponseHeader('content-type');
-				resolve(new window.Blob([xhr.response], {type: mime}));
-			};
-			xhr.onerror = () => {
-				resolve();
-			};
-			xhr.onloadend = () => {
-				xhr = null;
-			};
-
-			xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
-			xhr.send();
-		});
-	}
-}
-
-function getImageFrom (target) { /*returns promise*/
-	return new Promise(resolve => {
-		let url;
-		let needRevoke = false;
-		let tagName = 'img';
-		let loadEvent = 'onload';
-
-		if (target instanceof File || target instanceof Blob) {
-			url = URL.createObjectURL(target);
-			needRevoke = true;
-			if (target.type.startsWith('video/')) {
-				tagName = 'video';
-				loadEvent = 'oncanplay';
-			}
-		}
-		else {
-			url = target;
-		}
-
-		let media = document[CRE](tagName);
-		media[loadEvent] = () => {
-			needRevoke && URL.revokeObjectURL(url);
-			resolve(media);
-			media = null;
-		};
-		media.onerror = () => {
-			needRevoke && URL.revokeObjectURL(url);
-			resolve();
-			media = null;
-		};
-		media.src = url;
-	});
 }
 
 function getPostTimeRegex () {
 	return /(\d+)\/(\d+)\/(\d+)\(.\)(\d+):(\d+):(\d+)/;
 }
 
-function getReadableSize (size) {
-	const s = typeof size == 'string' ? size - 0 : size;
-	if (typeof s != 'number' || isNaN(s) || !isFinite(s) || s < 0) return size;
-
-	const UNIT = 1024;
-	const index = Math.log(size) / Math.log(UNIT) | 0;
-	if (index == 0) {
-		return s == 1 ? `${s}Byte` : `${s}Bytes`;
-	}
-
-	return (s / Math.pow(UNIT, index)).toFixed(20).replace(/(\...).*/, '$1') +
-		' KMGTPEZY'.charAt(index) +
-		'iB';
-}
-
-function regalizeEditable (el) {
-	const r = document.createRange();
-	let div;
-	el.normalize();
-	while ((div = el.querySelector('div'))) {
-		r.selectNodeContents(div);
-		const prevBreak = div.previousSibling && div.previousSibling.nodeName == 'BR';
-		if (!prevBreak) {
-			div.parentNode.insertBefore(document[CRE]('br'), div);
-		}
-
-		div.parentNode.insertBefore(r.extractContents(), div);
-		div.parentNode.removeChild(div);
-	}
-	return el;
-}
-
-function getContentsFromEditable (el) {
-	let value, debugInfo;
-	if ('value' in el) {
-		value = el.value;
-	}
-	else {
-		const div = regalizeEditable(el.cloneNode(true));
-		const iterator = document.createNodeIterator(
-			div, window.NodeFilter.SHOW_ELEMENT | window.NodeFilter.SHOW_TEXT);
-		const result = [];
-		let current;
-		while ((current = iterator.nextNode())) {
-			switch (current.nodeType) {
-			case 1:
-				current.nodeName == 'BR' && result.push('\n');
-				break;
-			case 3:
-				result.push(current.nodeValue);
-				break;
-			}
-		}
-
-		value = result.join('').replace(/^\s+|\s+$/g, '');
-
-		/*
-		if (devMode && /\n\n/.test(value)) {
-			sounds.imageSaved.play();
-			console.log('*** debug: Extra Newlines Found ***');
-		}
-		*/
-
-		debugInfo = [
-			`*** original html ***`,
-			`"${el.innerHTML}"`,
-			`*** regalized html ***`,
-			`"${div.innerHTML}"`,
-			`--- result text ---`,
-			`"${value}"`
-		].join('\n');
-	}
-	return {
-		value: value,
-		debugInfo: debugInfo
-	};
-}
-
-function setContentsToEditable (el, s) {
-	if ('value' in el) {
-		el.value = s;
-	}
-	else {
-		el.textContent = s;
-	}
+function displayLightbox (anchor) {
+	return modules('lightbox').then(module => {
+		return new Promise(resolve => {
+			module.lightbox({
+				clickDispatcher, keyManager, storage,
+				onenter: () => {
+					appStates.unshift('lightbox');
+					selectionMenu.enabled = false;
+				},
+				onleave: () => {
+					selectionMenu.enabled = true;
+					appStates.shift();
+					resolve();
+				},
+				onsearch: imageSource => {
+					const lang = window.navigator.browserLanguage
+						|| window.navigator.language
+						|| window.navigator.userLanguage;
+					const url = 'http://www.google.com/searchbyimage'
+						+ `?sbisrc=${APP_NAME}`
+						+ `&hl=${lang.toLowerCase()}`
+						+ `&image_url=${encodeURIComponent(imageSource)}`;
+					backend.send('open', {
+						url: url,
+						selfUrl: location.href
+					});
+				},
+				oncopy: canvas => {
+					getBlobFrom(canvas).then(blob => {
+						navigator.clipboard.write([
+							new ClipboardItem({
+								[blob.type]: blob
+							})
+						]);
+						sounds.imageSaved.play();
+					});
+				},
+				get viewportRect () {
+					return viewportRect;
+				}
+			}).start(anchor);
+		});
+	});
 }
 
 function displayInlineVideo (anchor) {
 	function createMedia () {
-		const media = document[CRE]('video');
+		const media = document.createElement('video');
 		const props = {
 			autoplay: true,
 			controls: true,
@@ -8438,6 +8155,7 @@ function displayInlineVideo (anchor) {
 	let parent;
 
 	// siokara video
+	/*
 	if ((parent = anchor.closest('.link-siokara'))) {
 		const firstAnchor = $qs('a', parent);
 		const thumbContainer = $qs('.siokara-thumbnail', parent);
@@ -8450,7 +8168,7 @@ function displayInlineVideo (anchor) {
 				thumbContainer.classList.remove('hide');
 			}
 			else {
-				const mediaContainer = document[CRE]('div');
+				const mediaContainer = document.createElement('div');
 				thumbContainer.classList.add('hide');
 				firstAnchor.parentNode.insertBefore(mediaContainer, firstAnchor.nextSibling);
 				mediaContainer.className = 'siokara-media-container';
@@ -8464,16 +8182,17 @@ function displayInlineVideo (anchor) {
 				});
 			}
 			else {
-				const mediaContainer = document[CRE]('div');
+				const mediaContainer = document.createElement('div');
 				anchor.appendChild(mediaContainer);
 				mediaContainer.className = 'siokara-media-container';
 				mediaContainer.appendChild(createMedia());
 			}
 		}
 	}
+	*/
 
 	// up video
-	else if ((parent = anchor.closest('.link-up, .link-futaba'))) {
+	if ((parent = anchor.closest('.link-up, .link-futaba'))) {
 		let thumbContainer = anchor;
 
 		if (!$qs('img', anchor)) {
@@ -8516,7 +8235,7 @@ function displayInlineVideo (anchor) {
 			thumbContainer.classList.remove('hide');
 		}
 		else {
-			const mediaContainer = document[CRE]('div');
+			const mediaContainer = document.createElement('div');
 			thumbContainer.classList.add('hide');
 			parent.parentNode.insertBefore(createMedia(), parent);
 		}
@@ -8525,7 +8244,7 @@ function displayInlineVideo (anchor) {
 
 function displayInlineAudio (anchor) {
 	function createMedia () {
-		const media = document[CRE]('audio');
+		const media = document.createElement('audio');
 		const props = {
 			autoplay: true,
 			controls: true,
@@ -8549,6 +8268,7 @@ function displayInlineAudio (anchor) {
 	let parent;
 
 	// siokara audio
+	/*
 	if ((parent = anchor.closest('.link-siokara'))) {
 		const firstAnchor = $qs('a', parent);
 		const thumbContainer = $qs('.siokara-thumbnail', parent);
@@ -8561,7 +8281,7 @@ function displayInlineAudio (anchor) {
 				thumbContainer.classList.remove('hide');
 			}
 			else {
-				const mediaContainer = document[CRE]('div');
+				const mediaContainer = document.createElement('div');
 				thumbContainer.classList.add('hide');
 				firstAnchor.parentNode.insertBefore(mediaContainer, firstAnchor.nextSibling);
 				mediaContainer.className = 'siokara-media-container';
@@ -8575,23 +8295,24 @@ function displayInlineAudio (anchor) {
 				});
 			}
 			else {
-				const mediaContainer = document[CRE]('div');
+				const mediaContainer = document.createElement('div');
 				anchor.appendChild(mediaContainer);
 				mediaContainer.className = 'siokara-media-container';
 				mediaContainer.appendChild(createMedia());
 			}
 		}
 	}
+	*/
 
 	// up audio
-	else if ((parent = anchor.closest('.link-up'))) {
+	if ((parent = anchor.closest('.link-up'))) {
 		const neighbor = anchor.nextElementSibling;
 
 		if (neighbor && neighbor.classList.contains('up-media-container')) {
 			neighbor.parentNode.removeChild(neighbor);
 		}
 		else {
-			const mediaContainer = document[CRE]('div');
+			const mediaContainer = document.createElement('div');
 			anchor.parentNode.insertBefore(mediaContainer, neighbor);
 			mediaContainer.className = 'up-media-container';
 			mediaContainer.appendChild(createMedia());
@@ -8599,77 +8320,56 @@ function displayInlineAudio (anchor) {
 	}
 }
 
-function isHighSurrogate (ch) {
-	if (typeof ch == 'string') {
-		ch = ch.charCodeAt(0);
+function execEditorCommand (name, e) {
+	if (storage.config.hook_edit_shortcuts.value) {
+		if (editorHelper) {
+			return editorHelper[name](e);
+		}
+		else {
+			modules('editor-helper').then(module => {
+				editorHelper = module.createEditorHelper();
+				editorHelper[name](e);
+			});
+		}
 	}
-	return 0xd800 <= ch && ch <= 0xdbff;
-}
-
-function isLowSurrogate (ch) {
-	if (typeof ch == 'string') {
-		ch = ch.charCodeAt(0);
+	else {
+		return keyManager.PASS_THROUGH;
 	}
-	return 0xdc00 <= ch && ch <= 0xdfff;
 }
 
-function isSurrogate (ch) {
-	return isHighSurrogate(ch) || isLowSurrogate(ch);
+function getVersion () {
+	let app, machine = [];
+
+	const ua = navigator.userAgent;
+	if (typeof InstallTrigger == 'object' && /\bfirefox\/(\d+(?:\.\d+)*)/i.test(ua)) {
+		app = `Firefox/${RegExp.$1}`;
+	}
+	else if (/\bvivaldi\/(\d+(?:\.\d+)*)/i.test(ua)) {
+		app = `Vivaldi/${RegExp.$1}`;
+	}
+	else if (/\bopr\/(\d+(?:\.\d+)*)/i.test(ua)) {
+		app = `Opera/${RegExp.$1}`;
+	}
+	else if (/\bchromium\/(\d+(?:\.\d+)*)/i.test(ua)) {
+		app = `Chromium/${RegExp.$1}`;
+	}
+	else if (/\bchrome\/(\d+(?:\.\d+)*)/i.test(ua)) {
+		app = `Chrome/${RegExp.$1}`;
+	}
+
+	if (backend.browserInfo.name && backend.browserInfo.version) {
+		app = `${backend.browserInfo.name}/${backend.browserInfo.version}`;
+	}
+	else if (backend.browserInfo.name) {
+		app = backend.browserInfo.name;
+	}
+
+	'platform' in navigator && machine.push(navigator.platform);
+	'deviceMemory' in navigator && machine.push(`${navigator.deviceMemory}GB`);
+	'hardwareConcurrency' in navigator && machine.push(`${navigator.hardwareConcurrency}CPUs`);
+
+	return `akahukuplus/${version} on ${app} (${machine.join(', ')})`;
 }
-
-const resolveCharacterReference = (() => {
-	const cache = {};
-
-	return function (s) {
-		s = s.replace(/&(?:#(x[0-9a-f]+|[0-9]+)|([0-9a-z]+));?/gi, ($0, $1, $2) => {
-			if ($1 != undefined) {
-				if ($1.charAt(0).toLowerCase() == 'x') {
-					$1 = parseInt($1.substring(1), 16);
-				}
-				else {
-					$1 = parseInt($1, 10);
-				}
-
-				try {
-					return String.fromCodePoint($1);
-				}
-				catch (err) {
-					return '';
-				}
-			}
-			else if ($2 != undefined) {
-				const source = `&${$2};`;
-
-				if (source in cache) {
-					return cache[source];
-				}
-
-				// for after transform is complete
-				let converter = $('charref-converter');
-				if (converter) {
-					converter.innerHTML = source;
-					return cache[source] = converter.textContent;
-				}
-
-				// for boot time
-				converter = document.body.appendChild(document[CRE]('div'));
-				try {
-					converter.innerHTML = source;
-					return cache[source] = converter.textContent;
-				}
-				finally {
-					converter.parentNode.removeChild(converter);
-				}
-			}
-		});
-
-		// fold continuous Nonspacing Marks
-		// Firefox does not support following regexp!
-		//s = s.replace(/(\p{gc=Mn})\1+/ug, '$1');
-
-		return s;
-	};
-})();
 
 function dumpDebugText (text) {
 	if (!devMode) return;
@@ -8679,7 +8379,7 @@ function dumpDebugText (text) {
 
 	if (text != undefined) {
 		if (!node) {
-			node = document.body.appendChild(document[CRE]('pre'));
+			node = document.body.appendChild(document.createElement('pre'));
 			node.id = ID;
 			node.style.fontFamily = 'Consolas,monospace';
 			node.style.whiteSpace = 'pre-wrap';
@@ -8693,436 +8393,6 @@ function dumpDebugText (text) {
 			node.parentNode.removeChild(node);
 		}
 	}
-}
-
-const 新字体の漢字を舊字體に変換 = (function () {
-	const map = {
-		亜:'亞',悪:'惡',圧:'壓',囲:'圍',為:'爲',医:'醫',壱:'壹',稲:'稻',飲:'飮',隠:'隱',
-		営:'營',栄:'榮',衛:'衞',駅:'驛',悦:'悅',閲:'閱',円:'圓',縁:'緣',艶:'艷',塩:'鹽',
-		奥:'奧',応:'應',横:'橫',欧:'歐',殴:'毆',黄:'黃',温:'溫',穏:'穩',仮:'假',価:'價',
-		画:'畫',会:'會',回:'囘',壊:'壞',懐:'懷',絵:'繪',概:'槪',拡:'擴',殻:'殼',覚:'覺',
-		学:'學',岳:'嶽',楽:'樂',渇:'渴',鎌:'鐮',勧:'勸',巻:'卷',寛:'寬',歓:'歡',缶:'罐',
-		観:'觀',間:'閒',関:'關',陥:'陷',巌:'巖',顔:'顏',帰:'歸',気:'氣',亀:'龜',偽:'僞',
-		戯:'戲',犠:'犧',却:'卻',糾:'糺',旧:'舊',拠:'據',挙:'擧',虚:'虛',峡:'峽',挟:'挾',
-		教:'敎',強:'强',狭:'狹',郷:'鄕',尭:'堯',暁:'曉',区:'區',駆:'驅',勲:'勳',薫:'薰',
-		群:'羣',径:'徑',恵:'惠',掲:'揭',携:'攜',渓:'溪',経:'經',継:'繼',茎:'莖',蛍:'螢',
-		軽:'輕',鶏:'鷄',芸:'藝',撃:'擊',欠:'缺',倹:'儉',剣:'劍',圏:'圈',検:'檢',権:'權',
-		献:'獻',県:'縣',研:'硏',険:'險',顕:'顯',験:'驗',厳:'嚴',呉:'吳',娯:'娛',効:'效',
-		広:'廣',恒:'恆',鉱:'鑛',号:'號',国:'國',黒:'黑',歳:'歲',済:'濟',砕:'碎',斎:'齋',
-		剤:'劑',冴:'冱',桜:'櫻',冊:'册',雑:'雜',産:'產',参:'參',惨:'慘',桟:'棧',蚕:'蠶',
-		賛:'贊',残:'殘',糸:'絲',姉:'姊',歯:'齒',児:'兒',辞:'辭',湿:'濕',実:'實',舎:'舍',
-		写:'寫',釈:'釋',寿:'壽',収:'收',従:'從',渋:'澁',獣:'獸',縦:'縱',粛:'肅',処:'處',
-		緒:'緖',叙:'敍',尚:'尙',奨:'奬',将:'將',床:'牀',渉:'涉',焼:'燒',称:'稱',証:'證',
-		乗:'乘',剰:'剩',壌:'壤',嬢:'孃',条:'條',浄:'淨',状:'狀',畳:'疊',穣:'穰',譲:'讓',
-		醸:'釀',嘱:'囑',触:'觸',寝:'寢',慎:'愼',晋:'晉',真:'眞',刃:'刄',尽:'盡',図:'圖',
-		粋:'粹',酔:'醉',随:'隨',髄:'髓',数:'數',枢:'樞',瀬:'瀨',清:'淸',青:'靑',声:'聲',
-		静:'靜',斉:'齊',税:'稅',跡:'蹟',説:'說',摂:'攝',窃:'竊',絶:'絕',専:'專',戦:'戰',
-		浅:'淺',潜:'潛',繊:'纖',践:'踐',銭:'錢',禅:'禪',曽:'曾',双:'瘦',痩:'雙',遅:'遲',
-		壮:'壯',捜:'搜',挿:'插',巣:'巢',争:'爭',窓:'窗',総:'總',聡:'聰',荘:'莊',装:'裝',
-		騒:'騷',増:'增',臓:'臟',蔵:'藏',即:'卽',属:'屬',続:'續',堕:'墮',体:'體',対:'對',
-		帯:'帶',滞:'滯',台:'臺',滝:'瀧',択:'擇',沢:'澤',単:'單',担:'擔',胆:'膽',団:'團',
-		弾:'彈',断:'斷',痴:'癡',昼:'晝',虫:'蟲',鋳:'鑄',庁:'廳',徴:'徵',聴:'聽',勅:'敕',
-		鎮:'鎭',脱:'脫',逓:'遞',鉄:'鐵',転:'轉',点:'點',伝:'傳',党:'黨',盗:'盜',灯:'燈',
-		当:'當',闘:'鬭',徳:'德',独:'獨',読:'讀',届:'屆',縄:'繩',弐:'貳',妊:'姙',粘:'黏',
-		悩:'惱',脳:'腦',覇:'霸',廃:'廢',拝:'拜',売:'賣',麦:'麥',発:'發',髪:'髮',抜:'拔',
-		晩:'晚',蛮:'蠻',秘:'祕',彦:'彥',姫:'姬',浜:'濱',瓶:'甁',払:'拂',仏:'佛',併:'倂',
-		並:'竝',変:'變',辺:'邊',弁:'辨',/*弁:'瓣',弁:'辯',*/舗:'舖',歩:'步',穂:'穗',宝:'寶',
-		萌:'萠',褒:'襃',豊:'豐',没:'沒',翻:'飜',槙:'槇',毎:'每',万:'萬',満:'滿',麺:'麵',
-		黙:'默',餅:'餠',歴:'歷',恋:'戀',戻:'戾',弥:'彌',薬:'藥',訳:'譯',予:'豫',余:'餘',
-		与:'與',誉:'譽',揺:'搖',様:'樣',謡:'謠',遥:'遙',瑶:'瑤',欲:'慾',来:'來',頼:'賴',
-		乱:'亂',覧:'覽',略:'畧',竜:'龍',両:'兩',猟:'獵',緑:'綠',隣:'鄰',凛:'凜',塁:'壘',
-		涙:'淚',励:'勵',礼:'禮',隷:'隸',霊:'靈',齢:'齡',暦:'曆',錬:'鍊',炉:'爐',労:'勞',
-		楼:'樓',郎:'郞',禄:'祿',録:'錄',亘:'亙',湾:'灣',
-
-		逸:'逸',羽:'羽',鋭:'銳',益:'益',謁:'謁',禍:'禍',悔:'悔',海:'海',慨:'慨',喝:'喝',
-		褐:'褐',漢:'漢',館:'館',器:'器',既:'既',既:'旣',祈:'祈',響:'響',勤:'勤',謹:'謹',
-		契:'契',戸:'戶',穀:'穀',殺:'殺',祉:'祉',視:'視',飼:'飼',煮:'煮',社:'社',者:'者',
-		臭:'臭',祝:'祝',暑:'暑',署:'署',諸:'諸',祥:'祥',神:'神',晴:'晴',精:'精',節:'節',
-		祖:'祖',僧:'僧',層:'層',憎:'憎',贈:'贈',琢:'琢',嘆:'嘆',着:'著',猪:'猪',懲:'懲',
-		塚:'塚',都:'都',闘:'鬭',突:'突',難:'難',梅:'梅',繁:'繁',飯:'飯',卑:'卑',碑:'碑',
-		賓:'賓',頻:'頻',敏:'敏',侮:'侮',福:'福',塀:'塀',勉:'勉',墨:'墨',免:'免',祐:'祐',
-		欄:'欄',隆:'隆',虜:'虜',旅:'旅',類:'類',廉:'廉',練:'練',廊:'廊',朗:'朗'
-	};
-	const key = new RegExp('[\
-亜悪圧囲為医壱稲飲隠営栄衛駅悦閲円縁艶塩奥応横欧殴黄温穏仮価画会回壊懐絵概拡殻覚\
-学岳楽渇鎌勧巻寛歓缶観間関陥巌顔帰気亀偽戯犠却糾旧拠挙虚峡挟教強狭郷尭暁区駆勲薫\
-群径恵掲携渓経継茎蛍軽鶏芸撃欠倹剣圏検権献県研険顕験厳呉娯効広恒鉱号国黒歳済砕斎\
-剤冴桜冊雑産参惨桟蚕賛残糸姉歯児辞湿実舎写釈寿収従渋獣縦粛処緒叙尚奨将床渉焼称証\
-乗剰壌嬢条浄状畳穣譲醸嘱触寝慎晋真刃尽図粋酔随髄数枢瀬清青声静斉税跡説摂窃絶専戦\
-浅潜繊践銭禅曽双痩遅壮捜挿巣争窓総聡荘装騒増臓蔵即属続堕体対帯滞台滝択沢単担胆団\
-弾断痴昼虫鋳庁徴聴勅鎮脱逓鉄転点伝党盗灯当闘徳独読届縄弐妊粘悩脳覇廃拝売麦発髪抜\
-晩蛮秘彦姫浜瓶払仏併並変辺弁弁弁舗歩穂宝萌褒豊没翻槙毎万満麺黙餅歴恋戻弥薬訳予余\
-与誉揺様謡遥瑶欲来頼乱覧略竜両猟緑隣凛塁涙励礼隷霊齢暦錬炉労楼郎禄録亘湾\
-逸羽鋭益謁禍悔海慨喝褐漢館器既既祈響勤謹契戸穀殺祉視飼煮社者臭祝暑署諸祥神晴精節\
-祖僧層憎贈琢嘆着猪懲塚都闘突難梅繁飯卑碑賓頻敏侮福塀勉墨免祐欄隆虜旅類廉練廊朗\
-]', 'g');
-	return s => ('' + s).replace(key, $0 => map[$0]);
-})();
-
-/*
- * This function is ported from:
- *   http://www2f.biglobe.ne.jp/takan/javac/freeware/nandeyanen.htm
- *   @note It is unknown license.
- */
-const osaka = (() => {
-	const dictMap = new Map;
-	let dict = {
-		'こんばんわ': 'おこんばんわ',
-		'ありがとう(?:ございました)?': 'おおきに',
-		'あなた': 'あんさん',
-		'あんな': 'あないな',
-		'りますので': 'るさかいに',
-		'りますから': 'るさかいに',
-		'あります': 'あるんや',
-		'(?:ある|或)いは': 'せやなかったら',
-		'ありません': 'おまへん',
-		'ありました': 'おました',
-		'いない': 'おらへん',
-		'(?:いま|今)までの': 'ムカシからの',
-		'(?:いま|今)まで': '本日この時まで',
-		'(?:今|いま)(?:時|どき)': 'きょうび',
-		'いわゆる': 'ようみなはん言わはるとこの',
-		'思いますが': '思うんやが',
-		'思います': '思うで',
-		'いただいた': 'もろた',
-		'いただきます': 'もらうで',
-		'いただきました': 'もろた',
-		'いくら': 'なんぼ',
-		'いつも': '毎日毎晩壱年中',
-		'いるか': 'おるか',
-		'いますので': 'おるさかいに',
-		'いますから': 'おるさかいに',
-		'(?:いちど|一度)': 'いっぺん',
-		'いますが': ['おるけど', 'おるけどダンさん'],
-		'いました': 'おったんや',
-		'います': 'いますわ',
-		'エラー': 'アヤマチ',
-		'えない': 'えへん',
-		'おかしな': 'ケッタイな',
-		'おきました': 'おいたんや',
-		'おっと': ['おっとドッコイ、', 'おっとドッコイたこやきはうまいで…あかん、脱線や'],
-		'かなあ': 'かいな',
-		'かならず': 'じぇったい',
-		'かわいい': 'メンコイ',
-		'(?:おそ|恐)らく': 'ワイが思うには',
-		'おもしろい': 'オモロイ',
-		'面白い': 'おもろい',
-		'ください': 'おくんなはれ',
-		'(?:くわ|詳)しく': 'ねちっこく',
-		'けない': 'けへん',
-		'ございます': 'おます',
-		'ございました': 'おました',
-		'こちら': 'ウチ',
-		'(?:僕|俺)': ['ワテ', 'わて'],
-		'こんな': 'こないな',
-		'この(?:頃|ごろ)': 'きょうび',
-		'(?:子|こ)(?:供|ども)': ['ガキ', 'ボウズ'],
-		'コロン': 'てんてん',
-		'下さい': 'くれへんかの',
-		'さよう?なら': 'ほなさいなら',
-		'さん': 'はん',
-		'しかし': ['せやけどね', 'せやけどダンさん'],
-		'おはよう': 'おはようさん',
-		'(?:しかた|仕方)ない': 'しゃあない',
-		'しなければ': 'せな',
-		'しない': 'せん',
-		'しばらく': 'ちーとの間',
-		'している': 'しとる',
-		'しました': 'したんや',
-		'しまいました': 'しもたんや',
-		'しますか': 'しまっか',
-		'しますと': 'すやろ、ほしたら',
-		'しまった': 'しもた',
-		'しますので': 'するさかいに',
-		'じゃ': 'や',
-		'するとき': 'するっちうとき',
-		'すべて': 'ずぅぇえええぇぇええんぶ',
-		'(?:すく|少)なくとも': 'なんぼなんでも',
-		'ずに': 'んと',
-		'すごい': 'どエライ',
-		'少し': 'ちびっと',
-		'スリッパ': 'パッスリ',
-		'せない': 'せへん',
-		'そこで': 'ほんで',
-		'そして': 'ほんで',
-		'そんな': 'そないな',
-		'そうだろ': 'そうやろ',
-		'それから': 'ほんで',
-		'それでは': 'ほなら',
-		'(?:たと|例)えば': ['$&', '$&やね', '例あげたろか、たとえばやなあ'],
-		'たのです': 'たちうワケや',
-		'たので': 'たさかい',
-		'ただし': 'せやけど',
-		'たぶん': ['たぶんやけど', 'タブン…たぶんやで、わいもよーしらんがタブン'],
-		'たくさん': 'ようけ',
-		'だった': 'やった',
-		'だけど': 'やけど',
-		'だから': 'やから',
-		'だが': 'やけど',
-		'だろ': 'やろ',
-		'だね([、。…！？!?]|\\.)*$': 'やね$1',
-		'ちなみに': '余計なお世話やけど',
-		'ちょっと': 'ちーとばかし',
-		'ったし': 'ったことやねんし',
-		'つまり': ' ゴチャゴチャゆうとる場合やあれへん、要は',
-		'つまらない': 'しょーもない',
-		'であった': 'やった',
-		'ている': 'とる',
-		'ていただいた': 'てもろた',
-		'ていただきます': 'てもらうで',
-		'ていただく': 'てもらうで',
-		'ていただ': 'ていただ',
-		'ていた': 'とった',
-		'多く': 'ようけ',
-		'ですか': 'やろか',
-		'ですよ': 'や',
-		'ですが': 'やけどアンタ',
-		'ですね': 'やね',
-		'でした': 'やった',
-		'でしょう': 'でっしゃろ',
-		'できない': 'でけへん',
-		'ではない': 'ではおまへん',
-		'です': 'や',
-		'てない': 'てへん',
-		'どういう(?:わけ|訳)か': 'なんでやろかわいもよー知らんが',
-		'どうだ': 'どや',
-		'どこか': 'どこぞ',
-		'どんな': 'どないな',
-		'という': 'ちう',
-		'とすれば': 'とするやろ、ほしたら',
-		'ところが': 'トコロが',
-		'ところ': 'トコ',
-		'とても': 'どエライ',
-		'(?:なぜ|何故)か': 'なんでやろかわいもよー知らんが',
-		'なった': 'なりよった',
-		'なのですが': 'なんやけど',
-		'なのです': 'なんやこれがホンマに',
-		'なので': 'やので',
-		'なぜ': 'なんでやねん',
-		'など': 'やらなんやら',
-		'ならない': 'ならへん',
-		'なりました': 'なったんや',
-		'のちほど': 'ノチカタ',
-		'のです': 'のや',
-		'(?:はじ|初)めまして': 'はじめてお目にかかりまんなあ',
-		'(?:はじ|初)めて': ['初めて', 'この世におぎゃあいうて生まれてはじめて'],
-		'びっくり仰天': 'クリビツテンギョー',
-		'(?:ひと|人)(?:たち|達)': 'ヤカラ',
-		'ヘルプ': '助け船',
-		'ほんとう?': 'ホンマ',
-		'まいますので': 'まうさかいに',
-		'まったく': 'まるっきし',
-		'全く': 'まるっきし',
-		'ません': 'まへん',
-		'ました': 'たんや',
-		'ますか': 'まっしゃろか',
-		'ますが': 'まっけど',
-		'ましょう': 'まひょ',
-		'ますので': 'よるさかいに',
-		'むずかしい': 'ややこしい',
-		'めない': 'めへん',
-		'メッセージ': '文句',
-		'もらった': 'もろた',
-		'もらって': 'もろて',
-		'よろしく': 'シブロクヨンキュー',
-		'ります': 'るんや',
-		'[らり]ない': 'りまへん',
-		'れない': 'れへん',
-		'ます': 'まんねん',
-		'もっとも': 'もっとも',
-		'もっと': ['もっともっと', 'もっともっともっともっと', 'もっともっともっともっともっともっともっともっともっと'],
-		'ようやく': 'ようやっと',
-		'よろしく': 'よろしゅう',
-		'るのです': 'るちうワケや',
-		'だ([、。…！？!?]|\\.)*$': 'や$1',
-		'りました': 'ったんや',
-		'る([、。…！？!?]|\\.)*$': ['$&', 'るんや$1', 'るちうわけや$1'],
-		'い([、。…！？!?]|\\.)*$': ['$&', 'いんや$1', 'いちうわけや$1'],
-		'た([、。…！？!?]|\\.)*$': ['$&', 'たちうわけや$1'],
-		'う([、。…！？!?]|\\.)*$': 'うわ$1',
-		'わがまま': 'ワガママ',
-		'まま': 'まんま',
-		'われわれ': 'ウチら',
-		'わたし': 'わい',
-		'私': 'ウチ',
-		'アタシ': 'ウチ',
-		'わない': 'いまへん',
-		'本当': 'ホンマ',
-		'全て': 'みな',
-		'全部': 'ぜええんぶひとつのこらず',
-		'全然': 'さらさら',
-		'ぜんぜん': 'サラサラ',
-
-		'日本語': '祖国語',
-		'日本': '大日本帝国',
-		'便利': ['$&', '便器…おっとちゃうわ、便利'],
-		'当局': 'わい',
-		'大変な?': 'エライ',
-		'非常に': 'どエライ',
-		'違う': 'ちゃう',
-		'ANK': ['$&', 'アンコ……ウソやウソ、ANKやわ、はっはっ、'],
-		'古い': '古くさい',
-		'最近': 'きょうび',
-		'以前': 'よりどエライ昔',
-		'無効': 'チャラ',
-		'中止': 'ヤメ',
-		'外国': '異国',
-		'海外': 'アチラ',
-		'難し': 'ややこし',
-		'面倒': '難儀',
-		'遅([いかきく])': 'とろ$1',
-		'良い': 'ええ',
-		'入れる': 'ぶちこむ',
-		'コギャル': 'セーラー服のねえちゃん',
-		'女子高生': 'セーラー服のねえちゃん',
-		'来た': '攻めて来よった',
-		'同時': 'いっぺん',
-		'先頭': 'アタマ',
-		'破壊': 'カンペキに破壊',
-		'挿入': ['ソーニュー', 'ソーニュー(うひひひ…おっとカンニンや)'],
-		'置換': 'とっかえ',
-		'無視': 'シカト',
-		'注意': '用心',
-		'最後': 'ケツ',
-		'我々': 'うちら',
-		'初心者': 'どシロウト',
-		'付属': 'オマケ',
-		'誤って': ['あかん言うて', 'あかーんいうて誤って'],
-		'商人': 'あきんど',
-		'商売': 'ショーバイ',
-		'商業': 'ショーバイ',
-		'誰': 'どなたはん',
-		'再度': 'もっかい',
-		'再び': 'もっかい',
-		'自動的に': 'なあんもせんとホッタラかしといても',
-		'無料': 'タダ',
-		'変化': '変身',
-		'右': '右翼',
-		'左': '左翼',
-		'自分': 'オノレ',
-		'とても': 'ごっつ',
-		'成功': ['$&', '性交…ひひひ、ウソや、成功'],
-		'失敗': 'シッパイ',
-		'優先': 'ヒイキ',
-		'タクシー': 'タク',
-		'カレンダー': '日メクリ',
-		'たばこ': 'モク',
-		'特長': 'ええトコ',
-		'概要': 'おーまかなトコ',
-		'概念': '能書き',
-		'アルゴリズム': '理屈',
-		'実用的': 'アホでも使えるよう',
-		'何も': 'なあんも',
-		'何か': '何ぞ',
-		'いい': 'ええ',
-		'マクドナルド': 'マクド',
-		'なのかな': 'やろか',
-		'かな': 'やろか',
-		'こんにちは': 'もうかってまっか？',
-		'どうも': 'もうかってまっか？',
-		'クライアント': '客',
-		'素人': 'トーシロ',
-	};
-
-	for (const i in dict) {
-		const pattern = new RegExp(i, 'gm');
-		dictMap.set(pattern, dict[i]);
-	}
-
-	dict = undefined;
-
-	return function osaka (s) {
-		for (let [pattern, replacement] of dictMap) {
-			if (replacement instanceof Array) {
-				replacement = replacement[Math.floor(Math.random() * replacement.length)];
-			}
-			s = s.replace(pattern, replacement);
-		}
-
-		return s;
-	}
-})();
-
-function registerModeration (anchor, reason, waitDelay) {
-	const postNumber = getPostNumber(anchor);
-	if (!postNumber) return;
-
-	anchor.classList.add('posted');
-
-	moderatePromise = moderatePromise.then(async () => {
-		const url = `${location.protocol}//${location.host}/del.php`;
-		const opts = {
-			method: 'POST',
-			body: new URLSearchParams({
-				mode: 'post',
-				b: siteInfo.board,
-				d: postNumber,
-				reason: reason,
-				responsemode: 'ajax'
-			})
-		};
-
-		let text;
-		try {
-			const response = await fetch(url, opts);
-			if (response.ok) {
-				text = (new TextDecoder('Shift_JIS'))
-					.decode(await response.arrayBuffer());
-			}
-			else {
-				text = `${response.status} ${response.statusText}`;
-			}
-		}
-		catch (err) {
-			text = err.message;
-		}
-
-		anchor.setAttribute('title', `del済み (${text})`);
-		anchor.removeAttribute('data-busy');
-		console.log(`${(new Date).toLocaleString()}: moderated for ${postNumber}.`);
-
-		return delay(waitDelay || 1000 * 10);
-	});
-}
-
-function mergeDeep (target, source) {
-	function isArray (a) {
-		return Array.isArray(a);
-	}
-
-	function isObject (a) {
-		return a && typeof a == 'object';
-	}
-
-	if (!isObject(target)) return source;
-	if (!isObject(source)) return target;
-
-	for (const key in source) {
-		const t = target[key];
-		const s = source[key];
-
-		// array
-		if (isArray(s)) {
-			if (isArray(t)) {
-				target[key] = t.concat(s);
-			}
-			else {
-				target[key] = [].concat(s);
-			}
-		}
-
-		// object
-		else if (isObject(s)) {
-			target[key] = mergeDeep(Object.assign({}, t), s);
-		}
-
-		// other stuff
-		else {
-			target[key] = s;
-		}
-	}
-
-	return target;
 }
 
 /*
@@ -9162,52 +8432,6 @@ function populateFileFormItems (form, callback) {
 }
 
 function postBase (type, form) { /*returns promise*/
-	function getVersion () {
-		let app, machine = [];
-
-		const ua = navigator.userAgent;
-		/*
-		 * *** browser version info in navigator ***
-		 * Chrome:
-		 *  appVersion: "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36"
-		 *  userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36"
-		 *
-		 * Opera:
-		 *  appVersion: "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36 OPR/72.0.3815.378"
-		 *  userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36 OPR/72.0.3815.378"
-		 *
-		 * Vivaldi:
-		 *  appVersion: "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
-		 *  userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36"
-		 *
-		 *  NOTE: Vivaldi deliberately uses the exact same user agent string as Chrome.
-		 *
-		 * Firefox:
-		 *  appVersion: "5.0 (X11)"
-		 *  userAgent: "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:83.0) Gecko/20100101 Firefox/83.0"
-		 */
-		if (typeof InstallTrigger == 'object' && /\bfirefox\/(\d+(?:\.\d+)*)/i.test(ua)) {
-			app = `Firefox/${RegExp.$1}`;
-		}
-		else if (/\bvivaldi\/(\d+(?:\.\d+)*)/i.test(ua)) {
-			app = `Vivaldi/${RegExp.$1}`;
-		}
-		else if (/\bopr\/(\d+(?:\.\d+)*)/i.test(ua)) {
-			app = `Opera/${RegExp.$1}`;
-		}
-		else if (/\bchromium\/(\d+(?:\.\d+)*)/i.test(ua)) {
-			app = `Chromium/${RegExp.$1}`;
-		}
-		else if (/\bchrome\/(\d+(?:\.\d+)*)/i.test(ua)) {
-			app = `Chrome/${RegExp.$1}`;
-		}
-
-		'platform' in navigator && machine.push(navigator.platform);
-		'deviceMemory' in navigator && machine.push(`${navigator.deviceMemory}GB`);
-		'hardwareConcurrency' in navigator && machine.push(`${navigator.hardwareConcurrency}CPUs`);
-
-		return `akahukuplus/${version} on ${app} (${machine.join(', ')})`;
-	}
 
 	function reverseText (s) {
 		const result = [];
@@ -9433,7 +8657,7 @@ function postBase (type, form) { /*returns promise*/
 	}
 
 	let xhr = transport.create(type);
-	return sendToBackend('iconv', getIconvPayload(form)).then(response => {
+	return backend.send('iconv', getIconvPayload(form)).then(response => {
 		if (!response) {
 			throw new Error('Failed to convert charset.');
 		}
@@ -9450,21 +8674,25 @@ function postBase (type, form) { /*returns promise*/
 	});
 }
 
-function resetForm () {
-	const form = document[CRE]('form');
+function resetForm (...args) {
+	const form = document.createElement('form');
 	const elements = [];
 
-	for (let i = 0; i < arguments.length; i++) {
-		const org = $(arguments[i]);
-		if (!org) continue;
-		if (org.contentEditable == 'true') {
-			empty(org);
-		}
-		else {
-			const clone = org.cloneNode(false);
-			elements.push({org:org, clone:clone});
-			org.parentNode.replaceChild(clone, org);
-			form.appendChild(org);
+	for (const arg of args) {
+		const org = $(arg) || $qs(`#postform [name="${arg}"]`);
+		if (org) {
+			if (org.contentEditable == 'true') {
+				empty(org);
+			}
+			else if (/^(?:text|hidden)$/i.test(org.type)) {
+				org.value = '';
+			}
+			else {
+				const clone = org.cloneNode(false);
+				elements.push({org:org, clone:clone});
+				org.parentNode.replaceChild(clone, org);
+				form.appendChild(org);
+			}
 		}
 	}
 
@@ -9563,19 +8791,19 @@ function reloadBase (type, opts) { /*returns promise*/
 			switch (i) {
 			case 0:
 				// marked
-				node[IAHTML](
+				node.insertAdjacentHTML(
 					'afterbegin',
 					'<font color="#ff0000">marked post</font><br>');
 				break;
 			case 1:
 				// marked with bracked
-				node[IAHTML](
+				node.insertAdjacentHTML(
 					'afterbegin',
 					'[<font color="#ff0000">marked post</font>]<br>');
 				break;
 			case 2:
 				// deleted with mark
-				node[IAHTML](
+				node.insertAdjacentHTML(
 					'afterbegin',
 					'<font color="#ff0000">marked post</font><br>');
 				for (let n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
@@ -9583,7 +8811,7 @@ function reloadBase (type, opts) { /*returns promise*/
 				break;
 			case 3:
 				// deleted with mark
-				node[IAHTML](
+				node.insertAdjacentHTML(
 					'afterbegin',
 					'[<font color="#ff0000">marked post</font>]<br>');
 				for (let n = node; n && n.nodeName != 'TABLE'; n = n.parentNode);
@@ -9593,7 +8821,7 @@ function reloadBase (type, opts) { /*returns promise*/
 		});
 		// for expiration warning test
 		$qsa('small + blockquote', doc).forEach((node, i) => {
-			node[IAHTML](
+			node.insertAdjacentHTML(
 				'afterend',
 				'<font color="#f00000"><b>このスレは古いので、もうすぐ消えます。</b></font><br>'
 			);
@@ -9609,17 +8837,17 @@ function reloadBase (type, opts) { /*returns promise*/
 		const method = (opts.method || 'get').toUpperCase();
 
 		let xhr = transport.create(type);
-		xhr.open(method, window.location.href);
+		xhr.open(method, location.href);
 		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 		DEBUG_IGNORE_LAST_MODIFIED && (siteInfo.lastModified = 0);
 		xhr.setRequestHeader('If-Modified-Since', siteInfo.lastModified || FALLBACK_LAST_MODIFIED);
 
-		xhr.onprogress = function (e) {
+		xhr.onprogress = e => {
 			reloadStatus.lastReceivedBytes += e.loaded;
 			reloadStatus.lastReceivedCompressedBytes += e.loaded;
 		};
 
-		xhr.onload = function (e) {
+		xhr.onload = e => {
 			timingLogger.endTag();
 
 			const lm = xhr.getResponseHeader('Last-Modified');
@@ -9632,7 +8860,7 @@ function reloadBase (type, opts) { /*returns promise*/
 			}
 
 			let headerSize = xhr.getAllResponseHeaders().length;
-			if (window.location.protocol == 'https:') {
+			if (location.protocol == 'https:') {
 				headerSize = Math.ceil(headerSize * 0.33);	// this factor is heuristic.
 			}
 			reloadStatus.lastReceivedBytes += headerSize;
@@ -9709,7 +8937,7 @@ function reloadBase (type, opts) { /*returns promise*/
 			});
 		};
 
-		xhr.onerror = function (e) {
+		xhr.onerror = e => {
 			timingLogger.endTag();
 
 			reject(new Error(
@@ -9717,7 +8945,7 @@ function reloadBase (type, opts) { /*returns promise*/
 				`\n(${xhr.status})`));
 		};
 
-		xhr.onloadend = function () {
+		xhr.onloadend = () => {
 			xhr = null;
 		};
 
@@ -9747,12 +8975,12 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 		xhr.overrideMimeType(`text/html;charset=UTF-8`);
 		xhr.setRequestHeader('If-Modified-Since', FALLBACK_LAST_MODIFIED);
 
-		xhr.onprogress = function (e) {
+		xhr.onprogress = e => {
 			reloadStatus.lastReceivedBytes += e.loaded;
 			reloadStatus.lastReceivedCompressedBytes += e.loaded;
 		};
 
-		xhr.onload = function (e) {
+		xhr.onload = e => {
 			timingLogger.endTag();
 
 			if (devMode) {
@@ -9760,7 +8988,7 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 			}
 
 			let headerSize = xhr.getAllResponseHeaders().length;
-			if (window.location.protocol == 'https:') {
+			if (location.protocol == 'https:') {
 				headerSize = Math.ceil(headerSize * 0.33);	// this factor is heuristic.
 			}
 			reloadStatus.lastReceivedBytes += headerSize;
@@ -9862,7 +9090,7 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 			});
 		};
 
-		xhr.onerror = function (e) {
+		xhr.onerror = e => {
 			timingLogger.endTag();
 
 			reject(new Error(
@@ -9870,7 +9098,7 @@ function reloadBaseViaAPI (type, opts) { /*returns promise*/
 				`\n(${xhr.status})`));
 		};
 
-		xhr.onloadend = function () {
+		xhr.onloadend = () => {
 			xhr = null;
 		};
 
@@ -9890,7 +9118,7 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 		xhr.open('GET', url);
 		xhr.overrideMimeType(`text/html;charset=${FUTABA_CHARSET}`);
 
-		xhr.onload = function (e) {
+		xhr.onload = e => {
 			timingLogger.endTag();
 
 			timingLogger.startTag('parsing html');
@@ -9953,7 +9181,7 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 			});
 		};
 
-		xhr.onerror = function (e) {
+		xhr.onerror = e => {
 			timingLogger.endTag();
 
 			reject(new Error(
@@ -9961,7 +9189,7 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 				`\n(${xhr.status})`));
 		};
 
-		xhr.onloadend = function () {
+		xhr.onloadend = () => {
 			xhr = null;
 		};
 
@@ -9971,65 +9199,150 @@ function reloadCatalogBase (type, query) { /*returns promise*/
 }
 
 function modifyPage () {
-	adjustReplyWidth();
-	extractTweets();
-	replaceSiokaraThumbnails();
-	extractNico2();
-	completeDefectiveLinks();
+	const PROMISE_KEY = 'modify';
+	globalPromises[PROMISE_KEY] = (globalPromises[PROMISE_KEY] || Promise.resolve())
+		.then(() => Promise.all([
+			adjustReplyWidth(),
+			extractTweets(),
+			//replaceSiokaraThumbnails(),
+			extractNico2(),
+			completeDefectiveLinks()
+		]))
+		.then(() => {
+			if (resourceSaver.threadSaverRunning) {
+				return resourceSaver
+					.thread()
+					.then(saver => saver.push(postStats.lastStats));
+			}
+		});
 }
 
-function extractTweets () {
-	const tweets = $qsa('.link-twitter');
-	if (tweets.length == 0) return;
+async function adjustReplyWidth () {
+	let nodes;
+	while ((nodes = $qsa('.reply-wrap .reply-image:not(.width-adjusted)')).length) {
+		const maxTextWidth = Math.floor($qs('.text').offsetWidth * 0.9);
 
-	function invokeTweetLoader (html) {
-		let scriptSource = '';
-		if (!$('twitter-widget-script')) {
-			let re = /<script\b[^>]*src="([^"]+)"/.exec(html);
-			if (re) {
-				scriptSource = re[1];
-			}
+		for (let i = 0; i < nodes.length && i < EXTRACT_UNIT; i++) {
+			const replyImage = nodes[i];
+			const replyWrap = replyImage.closest('.reply-wrap');
+			const heading = $qs('.image_true', replyWrap);
+			const comment = $qs('.comment', replyWrap);
+			const replyImageWidth = replyImage.offsetWidth;
+
+			replyImage.classList.add('hide');
+			heading.classList.add('hide');
+			const normalWidth = comment.offsetWidth;
+			replyImage.classList.remove('hide');
+			heading.classList.remove('hide');
+
+			const minWidth = Math.min(normalWidth + replyImageWidth + 8, maxTextWidth);
+			comment.style.minWidth = `${minWidth}px`;
+			replyImage.classList.add('width-adjusted');
 		}
 
-		const scriptNode = document.head.appendChild(document[CRE]('script'));
-		scriptNode.type = 'text/javascript';
-		scriptNode.charset = 'UTF-8';
-		if (scriptSource != '') {
-			scriptNode.id = 'twitter-widget-script';
-			scriptNode.src = scriptSource;
-		}
-		else {
-			scriptNode.id = 'tweet-loader-' + Math.floor(Math.random() * 0x80000000);
-			scriptNode.src = 'data:text/javascript,' +
-				'window.twttr&&window.twttr.widgets.load();' +
-				`document.head.removeChild(document.getElementById("${scriptNode.id}"));`;
-		}
+		await delay(Math.floor(Math.random() * 1000 + 1000));
 	}
-
-	function getHandler (node) {
-		return function gotTweet (data) {
-			if (data) {
-				node[IAHTML](
-					'afterend',
-					data.html.replace(/<script\b[^>]*>.*?<\/script>/i, ''));
-				invokeTweetLoader(data.html);
-			}
-			node = null;
-		}
-	}
-
-	for (let i = 0; i < tweets.length && i < 10; i++) {
-		const id = tweets[i].getAttribute('data-tweet-id');
-		id && sendToBackend('get-tweet', {url:tweets[i].href, id:id}, getHandler(tweets[i]));
-		tweets[i].classList.remove('link-twitter');
-	}
-
-	setTimeout(extractTweets, 991);
 }
 
-function completeDefectiveLinks () {
-	const files = $qsa('.link-up.incomplete, .link-siokara.incomplete');
-	if (files.length == 0) return;
+async function extractTweets () {
+	let tweets;
+	let lastHtml;
+	while ((tweets = $qsa('.link-twitter')).length) {
+		for (let i = 0; i < tweets.length && i < EXTRACT_UNIT; i++) {
+			const id = tweets[i].getAttribute('data-tweet-id');
+			if (id) {
+				await backend.send('get-tweet', {url: tweets[i].href, id: id}).then(data => {
+					if (data) {
+						tweets[i].insertAdjacentHTML(
+							'afterend',
+							data.html.replace(/<script\b[^>]*>.*?<\/script>/i, ''));
+						lastHtml = data.html;
+					}
+				});
+			}
+			tweets[i].classList.remove('link-twitter');
+		}
+
+		if (lastHtml) {
+			await new Promise(resolve => {
+				let scriptSource = '';
+				if (!$('twitter-widget-script')) {
+					let re = /<script\b[^>]*src="([^"]+)"/.exec(lastHtml);
+					if (re) {
+						scriptSource = re[1];
+					}
+				}
+
+				const scriptNode = document.head.appendChild(document.createElement('script'));
+				scriptNode.type = 'text/javascript';
+				scriptNode.charset = 'UTF-8';
+				if (scriptSource != '') {
+					scriptNode.id = 'twitter-widget-script';
+					scriptNode.src = scriptSource;
+					scriptNode.onload = resolve;
+				}
+				else {
+					scriptNode.id = 'tweet-loader-' + Math.floor(Math.random() * 0x80000000);
+					scriptNode.src = 'data:text/javascript,' +
+						'window.twttr&&window.twttr.widgets.load();' +
+						`document.head.removeChild(document.getElementById("${scriptNode.id}"));`;
+					scriptNode.onload = resolve;
+				}
+			});
+		}
+
+		await delay(Math.floor(Math.random() * 1000 + 1000));
+	}
+}
+
+/*
+async function replaceSiokaraThumbnails () {
+	let files;
+	while ((files = $qsa('.link-siokara.incomplete-thumbnail')).length) {
+		for (let i = 0; i < files.length && i < EXTRACT_UNIT; i++) {
+			const thumbHref = files[i].getAttribute('data-thumbnail-href');
+			if (thumbHref) {
+				await backend.send('load-siokara-thumbnail', {url: thumbHref}).then(data => {
+					if (!data && /\.(webm|mp4|mp3|ogg)$/.test($qs('a', files[i]).href)) {
+						data = chrome.extension.getURL('images/siokara-video.png');
+					}
+					if (data) {
+						const thumbnailImage = $qs('img', files[i]);
+						if (thumbnailImage) {
+							thumbnailImage.src = data;
+						}
+					}
+				});
+			}
+			files[i].classList.remove('incomplete-thumbnail');
+		}
+
+		await delay(Math.floor(Math.random() * 1000 + 1000));
+	}
+}
+*/
+
+async function extractNico2 () {
+	const KEY_NAME = 'data-nico2-key';
+	let files;
+	while ((files = $qsa(`.inline-video.nico2[${KEY_NAME}]`)).length) {
+		for (let i = 0; i < files.length && i < EXTRACT_UNIT; i++) {
+			const key = files[i].getAttribute(KEY_NAME);
+			const scriptNode = files[i].parentNode.insertBefore(document.createElement('script'), files[i]);
+			scriptNode.type = 'application/javascript';
+			scriptNode.src = `https://embed.nicovideo.jp/watch/${key}/script?w=640&h=360`;
+			scriptNode.onload = e => {
+				scriptNode.parentNode.removeChild(scriptNode);
+			};
+			files[i].removeAttribute(KEY_NAME);
+			files[i].parentNode.removeChild(files[i]);
+		}
+
+		await delay(Math.floor(Math.random() * 1000 + 1000));
+	}
+}
+
+async function completeDefectiveLinks () {
 
 	function completeUpLink (node) {
 		const [base] = /^fu?\d+/.exec(node.getAttribute('data-basename'));
@@ -10048,9 +9361,9 @@ function completeDefectiveLinks () {
 
 			// set up internal partial XML
 			const xml = createFutabaXML(pageModes[0].mode);
-			const comment = xml.documentElement.appendChild(xml[CRE]('comment'));
+			const comment = xml.documentElement.appendChild(xml.createElement('comment'));
 			const parent = node.closest('q') ?
-				comment.appendChild(xml[CRE]('q')) :
+				comment.appendChild(xml.createElement('q')) :
 				comment;
 			parent.appendChild(xml.createTextNode(data.name));
 			linkifier.linkify(parent);
@@ -10091,7 +9404,7 @@ function completeDefectiveLinks () {
 		})
 		.catch(err => {
 			console.error(err.stack);
-			const span = node.appendChild(document[CRE]('span'));
+			const span = node.appendChild(document.createElement('span'));
 			span.className = 'link-completion-notice';
 			span.textContent = '(補完失敗)';
 			span.title = err.message;
@@ -10101,226 +9414,146 @@ function completeDefectiveLinks () {
 		});
 	}
 
-	function getSiokaraHandler (node) {
-		return function (data) {
-			if (!data || !/^s[a-z]\d+\..+$/.test(data.base)) {
-				const span = node.appendChild(document[CRE]('span'));
-				span.className = 'link-completion-notice';
-				span.textContent = '(補完失敗)';
-				span.title = 'バッググラウンドから正しいデータが返されませんでした';
-				node = null;
-				return;
-			}
-
-			// set up internal partial XML
-			const xml = createFutabaXML(pageModes[0].mode);
-			const comment = xml.documentElement.appendChild(xml[CRE]('comment'));
-			comment.appendChild(xml.createTextNode(data.base));
-			linkifier.linkify(comment);
-			xsltProcessor.setParameter(null, 'render_mode', 'comment');
-
-			// XSL transform
-			const fragment = fixFragment(xsltProcessor.transformToFragment(xml, document));
-			const newNode = $qs('.link-siokara', fragment);
-			if (!newNode) {
-				const span = node.appendChild(document[CRE]('span'));
-				span.className = 'link-completion-notice';
-				span.textContent = '(補完失敗)';
-				span.title = 'XSLT 再変換の結果がフラグメントを含んでいません';
-				node = null;
-				return;
-			}
-
-			// some adjustments
-			if (/\.(webm|mp4|mp3|ogg)$/.test(data.url)) {
-				data.thumbnail = chrome.extension.getURL('images/siokara-video.png');
-			}
-			$qsa('img', newNode).forEach(img => {
-				img.src = data.thumbnail;
-			});
-			newNode.classList.remove('incomplete');
-
-			// apply transform result
-			node.parentNode.insertBefore(newNode, node);
-			node.parentNode.removeChild(node);
-			node = null;
+	function completeSiokaraLink (node, data) {
+		if (!data || !/^s[a-z]\d+\..+$/.test(data.base)) {
+			const span = node.appendChild(document.createElement('span'));
+			span.className = 'link-completion-notice';
+			span.textContent = '(補完失敗)';
+			span.title = 'バッググラウンドから正しいデータが返されませんでした';
+			return;
 		}
+
+		// set up internal partial XML
+		const xml = createFutabaXML(pageModes[0].mode);
+		const comment = xml.documentElement.appendChild(xml.createElement('comment'));
+		comment.appendChild(xml.createTextNode(data.base));
+		linkifier.linkify(comment);
+		xsltProcessor.setParameter(null, 'render_mode', 'comment');
+
+		// XSL transform
+		const fragment = fixFragment(xsltProcessor.transformToFragment(xml, document));
+		const newNode = $qs('.link-siokara', fragment);
+		if (!newNode) {
+			const span = node.appendChild(document.createElement('span'));
+			span.className = 'link-completion-notice';
+			span.textContent = '(補完失敗)';
+			span.title = 'XSLT 再変換の結果がフラグメントを含んでいません';
+			return;
+		}
+
+		// some adjustments
+		if (/\.(webm|mp4|mp3|ogg)$/.test(data.url)) {
+			data.thumbnail = chrome.extension.getURL('images/siokara-video.png');
+		}
+		$qsa('img', newNode).forEach(img => {
+			img.src = data.thumbnail;
+		});
+		newNode.classList.remove('incomplete');
+
+		// apply transform result
+		node.parentNode.insertBefore(newNode, node);
+		node.parentNode.removeChild(node);
 	}
 
-	for (let i = 0; i < files.length && i < 10; i++) {
-		const id = files[i].getAttribute('data-basename');
-		if (/^fu?\d+/.test(id)) {
-			completeUpLink(files[i]);
-		}
-		else if (/^s[a-z]\d+/.test(id)) {
-			sendToBackend(
-				'complete',
-				{url:files[i].href, id:id},
-				getSiokaraHandler(files[i]));
-		}
-		files[i].classList.remove('incomplete');
-	}
-
-	setTimeout(completeDefectiveLinks, 907);
-}
-
-function replaceSiokaraThumbnails () {
-	const files = $qsa('.link-siokara.incomplete-thumbnail');
-	if (files.length == 0) return;
-
-	function getHandler (node) {
-		return function (data) {
-			if (!data && /\.(webm|mp4|mp3|ogg)$/.test($qs('a', node).href)) {
-				data = chrome.extension.getURL('images/siokara-video.png');
+	let files;
+	while ((files = $qsa('.link-up.incomplete, .link-siokara.incomplete')).length) {
+		for (let i = 0; i < files.length && i < EXTRACT_UNIT; i++) {
+			const id = files[i].getAttribute('data-basename');
+			if (/^fu?\d+/.test(id)) {
+				await completeUpLink(files[i]);
 			}
-			if (data) {
-				const thumbnailImage = $qs('img', node);
-				if (thumbnailImage) {
-					thumbnailImage.src = data;
-				}
+			else if (/^s[a-z]\d+/.test(id)) {
+				await backend.send('complete', {url:files[i].href, id:id}).then(data => {
+					completeSiokaraLink(files[i], data);
+				});
 			}
-			node = null;
+			files[i].classList.remove('incomplete');
 		}
+
+		await delay(Math.floor(Math.random() * 1000 + 1000));
 	}
-
-	for (let i = 0; i < files.length && i < 10; i++) {
-		const thumbHref = files[i].getAttribute('data-thumbnail-href');
-		if (thumbHref) {
-			sendToBackend(
-				'load-siokara-thumbnail',
-				{url: thumbHref},
-				getHandler(files[i]));
-		}
-		files[i].classList.remove('incomplete-thumbnail');
-	}
-
-	setTimeout(replaceSiokaraThumbnails, 919);
-}
-
-function extractNico2 () {
-	const KEY_NAME = 'data-nico2-key';
-	const files = $qsa(`.inline-video.nico2[${KEY_NAME}]`);
-	if (files.length == 0) return;
-
-	for (let i = 0; i < files.length && i < 10; i++) {
-		const key = files[i].getAttribute(KEY_NAME);
-		const scriptNode = files[i].parentNode.insertBefore(document[CRE]('script'), files[i]);
-		scriptNode.type = 'application/javascript';
-		scriptNode.src = `https://embed.nicovideo.jp/watch/${key}/script?w=640&h=360`;
-		scriptNode.onload = function () {
-			this.parentNode.removeChild(this);
-		};
-		files[i].removeAttribute(KEY_NAME);
-		files[i].parentNode.removeChild(files[i]);
-	}
-
-	setTimeout(extractNico2, 911);
-}
-
-function adjustReplyWidth () {
-	const nodes = $qsa('.reply-wrap .reply-image:not(.width-adjusted)');
-	if (nodes.length == 0) return;
-
-	const maxTextWidth = Math.floor($qs('.text').offsetWidth * 0.9);
-
-	for (let i = 0; i < nodes.length && i < 10; i++) {
-		const replyImage = nodes[i];
-		const replyWrap = replyImage.closest('.reply-wrap');
-		const heading = $qs('.image_true', replyWrap);
-		const comment = $qs('.comment', replyWrap);
-		const replyImageWidth = replyImage.offsetWidth;
-
-		replyImage.classList.add('hide');
-		heading.classList.add('hide');
-		const normalWidth = comment.offsetWidth;
-		replyImage.classList.remove('hide');
-		heading.classList.remove('hide');
-
-		const minWidth = Math.min(normalWidth + replyImageWidth + 8, maxTextWidth);
-		comment.style.minWidth = `${minWidth}px`;
-		replyImage.classList.add('width-adjusted');
-	}
-
-	setTimeout(adjustReplyWidth, 913);
 }
 
 function detectNoticeModification (notice, noticeNew) {
-	const list = $qs('#panel-content-notice ul');
-	if (!list) return;
+	return modules('difflib').then(module => {
+		const {difflib} = module;
+		const list = $qs('#panel-content-notice ul');
+		if (!list) return;
 
-	const opcodes = new difflib.SequenceMatcher(
-		difflib.stringAsLines(notice),
-		difflib.stringAsLines(noticeNew)).get_opcodes();
-	const baseLines = notice
-		.replace(/__akahukuplus_viewers_count__/g, $('viewers').textContent)
-		.split('\n');
-	const newLines = noticeNew
-		.replace(/__akahukuplus_viewers_count__/g, $('viewers').textContent)
-		.split('\n');
-	const add = (rows, index1, index2, lines, className) => {
-		let markup = undefined;
-		if (typeof index1 == 'number' && index1 >= 0 && index1 < lines.length) {
-			markup = lines[index1];
-		}
-		else if (typeof index2 == 'number' && index2 >= 0 && index2 < lines.length) {
-			markup = lines[index2];
-		}
-		if (markup != undefined) {
-			rows.push({
-				className: className,
-				markup: markup
-			});
-		}
-	};
-	const rows = [];
+		const opcodes = new difflib.SequenceMatcher(
+			difflib.stringAsLines(notice),
+			difflib.stringAsLines(noticeNew)).get_opcodes();
+		const baseLines = notice
+			.replace(/__akahukuplus_viewers_count__/g, $('viewers').textContent)
+			.split('\n');
+		const newLines = noticeNew
+			.replace(/__akahukuplus_viewers_count__/g, $('viewers').textContent)
+			.split('\n');
+		const add = (rows, index1, index2, lines, className) => {
+			let markup = undefined;
+			if (typeof index1 == 'number' && index1 >= 0 && index1 < lines.length) {
+				markup = lines[index1];
+			}
+			else if (typeof index2 == 'number' && index2 >= 0 && index2 < lines.length) {
+				markup = lines[index2];
+			}
+			if (markup != undefined) {
+				rows.push({
+					className: className,
+					markup: markup
+				});
+			}
+		};
+		const rows = [];
 
-	for (let idx = 0; idx < opcodes.length; idx++) {
-		let [change, baseStart, baseEnd, newStart, newEnd] = opcodes[idx];
+		for (let idx = 0; idx < opcodes.length; idx++) {
+			let [change, baseStart, baseEnd, newStart, newEnd] = opcodes[idx];
 
-		const rowCount = Math.max(baseEnd - baseStart, newEnd - newStart);
-		const topRows = [];
-		const botRows = [];
+			const rowCount = Math.max(baseEnd - baseStart, newEnd - newStart);
+			const topRows = [];
+			const botRows = [];
 
-		for (let i = 0; i < rowCount; i++) {
-			switch (change) {
-			case 'insert':
-				add(rows, null, newStart++, newLines, change);
-				break;
+			for (let i = 0; i < rowCount; i++) {
+				switch (change) {
+				case 'insert':
+					add(rows, null, newStart++, newLines, change);
+					break;
 
-			case 'replace':
-				if (baseStart < baseEnd) {
-					add(topRows, baseStart++, null, baseLines, 'delete');
+				case 'replace':
+					if (baseStart < baseEnd) {
+						add(topRows, baseStart++, null, baseLines, 'delete');
+					}
+					if (newStart < newEnd) {
+						add(botRows, null, newStart++, newLines, 'insert');
+					}
+					break;
+
+				case 'delete':
+					add(rows, baseStart++, null, baseLines, change);
+					break;
+
+				default:
+					// equal
+					add(rows, baseStart++, newStart++, baseLines, change);
+					break;
 				}
-				if (newStart < newEnd) {
-					add(botRows, null, newStart++, newLines, 'insert');
-				}
-				break;
+			}
 
-			case 'delete':
-				add(rows, baseStart++, null, baseLines, change);
-				break;
-
-			default:
-				// equal
-				add(rows, baseStart++, newStart++, baseLines, change);
-				break;
+			if (change == 'replace') {
+				rows.push.apply(rows, topRows);
+				rows.push.apply(rows, botRows);
 			}
 		}
 
-		if (change == 'replace') {
-			rows.push.apply(rows, topRows);
-			rows.push.apply(rows, botRows);
-		}
-	}
-
-	empty(list);
-	rows.forEach(row => {
-		const li = list.appendChild(document[CRE]('li'));
-		li.className = row.className;
-		li[IHTML] = row.markup;
-		if (row.className != 'equal') {
-			console.log(`${row.className}: "${row.markup}"`);
-		}
+		empty(list);
+		rows.forEach(row => {
+			const li = list.appendChild(document.createElement('li'));
+			li.className = row.className;
+			li.innerHTML = row.markup;
+			if (row.className != 'equal') {
+				console.log(`${row.className}: "${row.markup}"`);
+			}
+		});
 	});
 }
 
@@ -10345,195 +9578,201 @@ function setReloaderStatus (content, persistent) {
 	}
 }
 
-function updateMarkedTopic (xml, container) {
-	let result = false;
-	const marks = $qsa('topic > mark', xml);
-	for (let i = 0, goal = marks.length; i < goal; i++) {
-		const number = $qs('number', marks[i].parentNode).textContent;
+// called from reloadReplies()
+function updateTopic (xml, container) {
 
-		const node = $qs(`.topic-wrap[data-number="${number}"]`, container);
-		if (!node || $qs('.mark', node)) continue;
+	function updateMarkedTopic () {
+		let result = false;
+		const marks = $qsa('topic > mark', xml);
+		for (let i = 0, goal = marks.length; i < goal; i++) {
+			const number = $qs('number', marks[i].parentNode).textContent;
 
-		const comment = $qs('.comment', node);
-		if (!comment) continue;
+			const node = $qs(`.topic-wrap[data-number="${number}"]`, container);
+			if (!node || $qs('.mark', node)) continue;
 
-		const isBracket = marks[i].getAttribute('bracket') == 'true';
-		comment.insertBefore(document[CRE]('br'), comment.firstChild);
-		isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
-		const m = comment.insertBefore(document[CRE]('span'), comment.firstChild);
-		m.className = 'mark';
-		m.textContent = marks[i].textContent;
-		isBracket && comment.insertBefore(document.createTextNode('['), comment.firstChild);
+			const comment = $qs('.comment', node);
+			if (!comment) continue;
 
-		result = true;
+			const isBracket = marks[i].getAttribute('bracket') == 'true';
+			comment.insertBefore(document.createElement('br'), comment.firstChild);
+			isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
+			const m = comment.insertBefore(document.createElement('span'), comment.firstChild);
+			m.className = 'mark';
+			m.textContent = marks[i].textContent;
+			isBracket && comment.insertBefore(document.createTextNode('['), comment.firstChild);
+
+			result = true;
+		}
+		return result;
 	}
-	return result;
+
+	function updateIdentifiedTopic () {
+		let result = false;
+		const ids = $qsa('topic > user_id', xml);
+		for (let i = 0, goal = ids.length; i < goal; i++) {
+			const number = $qs('number', ids[i].parentNode).textContent;
+
+			const node = $qs(`.topic-wrap[data-number="${number}"]`, container);
+			if (!node || $qs('.user-id', node)) continue;
+
+			const postno = $qs('.postno', node);
+			if (!postno) continue;
+
+			const id = postno.parentNode.insertBefore((document.createElement('span')), postno);
+			id.className = 'user-id';
+			id.textContent = `ID:${ids[i].textContent}`;
+			id.setAttribute('data-id', ids[i].textContent);
+			postno.parentNode.insertBefore(document.createElement('span'), postno);
+
+			const sep = postno.parentNode.insertBefore(document.createElement('span'), postno);
+			sep.className = 'sep';
+			sep.textContent = '|';
+
+			result = true;
+		}
+		return result;
+	}
+
+	updateMarkedTopic();
+	updateIdentifiedTopic();
 }
 
-function updateTopicID (xml, container) {
-	let result = false;
-	const ids = $qsa('topic > user_id', xml);
-	for (let i = 0, goal = ids.length; i < goal; i++) {
-		const number = $qs('number', ids[i].parentNode).textContent;
+// called from processRemainingReplies()
+function updateReplies (xml, container) {
 
-		const node = $qs(`.topic-wrap[data-number="${number}"]`, container);
-		if (!node || $qs('.user-id', node)) continue;
+	function updateReplyAssets (selector, handler) {
+		timingLogger.startTag(`updateReplyAssets(${selector})`);
+		const assets = $qsa(selector, xml);
+		const replies = container.children;
+		const hiddenReplies = container.getAttribute('hidden') - 0;
+		let result = 0;
+		for (const asset of assets) {
+			// retrieve offset
+			const offset = $qs('offset', asset.parentNode).textContent - hiddenReplies - 1;
+			if (offset < 0 || offset >= container.childElementCount) {
+				continue;
+			}
 
-		const postno = $qs('.postno', node);
-		if (!postno) continue;
+			// retrieve current reply
+			const number = $qs('number', asset.parentNode).textContent;
+			const node = $qs(`[data-number="${number}"]`, replies[offset]);
+			if (!node) {
+				console.error([
+					`internal number unmatch:`,
+					`number: ${number}`,
+					`actual number: ${$qs('[data-number]').getAttribute('data-number')}`
+				].join('\n'));
+				continue;
+			}
 
-		const id = postno.parentNode.insertBefore((document[CRE]('span')), postno);
-		id.className = 'user-id';
-		id.textContent = `ID:${ids[i].textContent}`;
-		id.setAttribute('data-id', ids[i].textContent);
-		postno.parentNode.insertBefore(document[CRE]('span'), postno);
-
-		const sep = postno.parentNode.insertBefore(document[CRE]('span'), postno);
-		sep.className = 'sep';
-		sep.textContent = '|';
-
-		result = true;
+			const processed = handler(asset, node);
+			processed && result++;
+		}
+		timingLogger.endTag(`/ ${result} items`);
+		return result;
 	}
-	return result;
+
+	function updateMarkedReplies () {
+		return updateReplyAssets('reply > mark', (asset, node) => {
+			// Do nothing if already deleted-mark flagged
+			// TODO: We may have to distinguish remote host display, deletion by commenter,
+			// deletion by poster, and なー.
+			if (node.classList.contains('deleted')) return;
+			node.classList.add('deleted');
+
+			// retrieve current comment
+			const comment = $qs('.comment', node);
+			if (!comment) {
+				console.error([
+					`comment not found:`,
+					`${node.outerHTML}`
+				].join('\n'));
+				return;
+			}
+
+			// insert mark
+			const isBracket = asset.getAttribute('bracket') == 'true';
+			comment.insertBefore(document.createElement('br'), comment.firstChild);
+			isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
+			const m = comment.insertBefore(document.createElement('span'), comment.firstChild);
+			m.className = 'mark';
+			m.textContent = asset.textContent;
+			isBracket && comment.insertBefore(document.createTextNode('['), comment.firstChild);
+
+			return true;
+		});
+	}
+
+	function updateIdentifiedReplies () {
+		// In ID表示 mode, ID is displayed in all comments,
+		// So we must not do anything.
+		if (siteInfo.idDisplay) {
+			return 0;
+		}
+
+		return updateReplyAssets('reply > user_id', (asset, node) => {
+			// Do nothing if already user id exists
+			if ($qs('.user-id', node)) return;
+
+			// insert id
+			const div = node.appendChild(document.createElement('div'));
+			div.appendChild(document.createTextNode('──'));
+			const span = div.appendChild(document.createElement('span'));
+			div.className = span.className = 'user-id';
+			span.textContent = 'ID:' + asset.textContent;
+			span.setAttribute('data-id', asset.textContent);
+			div.appendChild(document.createElement('span'));
+
+			return true;
+		});
+	}
+
+	updateMarkedReplies();
+	updateIdentifiedReplies();
 }
 
-function updateTopicSodane (xml, container) {
-	let result = false;
-	const sodanes = $qsa('topic > sodane.sodane', xml);
-	for (let i = 0, goal = sodanes.length; i < goal; i++) {
-		const number = $qs('number', sodanes[i].parentNode).textContent;
-		const node = $qs(`.topic-wrap[data-number="${number}"]`, container);
-		if (!node) continue;
-
-		const sodane = $qs('.sodane, .sodane-null', node);
-		if (!sodane) continue;
-		if (sodane.textContent == sodanes[i].textContent) continue;
-
-		sodane.classList.remove('sodane-null');
-		sodane.classList.add('sodane');
-		sodane.textContent = sodanes[i].textContent;
-
-		result = true;
-	}
-	return result;
-}
-
-function updateReplyAssets (xml, container, selector, handler) {
-	timingLogger.startTag(`updateReplyAssets(${selector})`);
-	const assets = $qsa(selector, xml);
-	const replies = container.children;
-	const hiddenReplies = container.getAttribute('hidden') - 0;
-	let result = 0;
-	for (const asset of assets) {
-		// retrieve offset
-		const offset = $qs('offset', asset.parentNode).textContent - hiddenReplies - 1;
-		if (offset < 0 || offset >= container.childElementCount) {
+// called from processRemainingReplies(), reloadRepliesViaAPI()
+function updateSodanePosts (stat) {
+	timingLogger.startTag(`updateSodanePosts`);
+	for (const {number, value, oldValue} of stat.delta.sodane) {
+		const sodaneNode = $(`sodane_${number}`) || $qs([
+			`article .topic-wrap[data-number="${number}"] .sodane`,
+			`article .topic-wrap[data-number="${number}"] .sodane-null`,
+			`article .reply-wrap > [data-number="${number}"] .sodane`,
+			`article .reply-wrap > [data-number="${number}"] .sodane-null`
+		].join(','));
+		if (!sodaneNode) {
 			continue;
 		}
 
-		// retrieve current reply
-		const number = $qs('number', asset.parentNode).textContent;
-		const node = $qs(`[data-number="${number}"]`, replies[offset]);
-		if (!node) {
-			console.error([
-				`internal number unmatch:`,
-				`number: ${number}`,
-				`actual number: ${$qs('[data-number]').getAttribute('data-number')}`
-			].join('\n'));
+		if (!sodaneNode.id) {
+			sodaneNode.id = `sodane_${number}`;
+		}
+
+		const re = /^\d+$/.exec(sodaneNode.textContent);
+
+		if (re && re[0] - 0 == value) {
 			continue;
 		}
 
-		const processed = handler(asset, node);
-		processed && result++;
-	}
-	timingLogger.endTag(`/ ${result} items`);
-	return result;
-}
-
-function updateMarkedReplies (xml, container) {
-	return updateReplyAssets(xml, container, 'reply > mark', (asset, node) => {
-		// Do nothing if already deleted-mark flagged
-		// TODO: We may have to distinguish remote host display, deletion by commenter,
-		// deletion by poster, and なー.
-		if (node.classList.contains('deleted')) return;
-		node.classList.add('deleted');
-
-		// retrieve current comment
-		const comment = $qs('.comment', node);
-		if (!comment) {
-			console.error([
-				`comment not found:`,
-				`${node.outerHTML}`
-			].join('\n'));
-			return;
+		if (value) {
+			$t(sodaneNode, value);
+			sodaneNode.classList.remove('sodane-null');
+			sodaneNode.classList.add('sodane');
 		}
-
-		// insert mark
-		const isBracket = asset.getAttribute('bracket') == 'true';
-		comment.insertBefore(document[CRE]('br'), comment.firstChild);
-		isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
-		const m = comment.insertBefore(document[CRE]('span'), comment.firstChild);
-		m.className = 'mark';
-		m.textContent = asset.textContent;
-		isBracket && comment.insertBefore(document.createTextNode('['), comment.firstChild);
-
-		return true;
-	});
-}
-
-function updateReplyIDs (xml, container) {
-	// In ID表示 mode, ID is displayed in all comments,
-	// So we must not do anything.
-	if (siteInfo.idDisplay) {
-		return 0;
-	}
-
-	return updateReplyAssets(xml, container, 'reply > user_id', (asset, node) => {
-		// Do nothing if already user id exists
-		if ($qs('.user-id', node)) return;
-
-		// insert id
-		const div = node.appendChild(document[CRE]('div'));
-		div.appendChild(document.createTextNode('──'));
-		const span = div.appendChild(document[CRE]('span'));
-		div.className = span.className = 'user-id';
-		span.textContent = 'ID:' + asset.textContent;
-		span.setAttribute('data-id', asset.textContent);
-		div.appendChild(document[CRE]('span'));
-
-		return true;
-	});
-}
-
-function updateReplySodanes (xml, container) {
-	return updateReplyAssets(xml, container, 'reply > sodane.sodane', (asset, node) => {
-		// retrieve sodane node
-		const sodane = $qs('.sodane, .sodane-null', node);
-		if (!sodane) {
-			console.error([
-				`sodane not found:`,
-				`${node.outerHTML}`
-			].join('\n'));
-			return;
+		else {
+			$t(sodaneNode, '＋');
+			sodaneNode.classList.add('sodane-null');
+			sodaneNode.classList.remove('sodane');
 		}
-
-		// Do nothing if number of sodanes is the same
-		if (sodane.textContent == asset.textContent) return;
-
-		// insert sodane
-		sodane.classList.remove('sodane-null');
-		sodane.classList.add('sodane');
-		sodane.textContent = asset.textContent;
-
-		return true;
-	});
+	}
+	timingLogger.endTag();
 }
 
+// called from processRemainingReplies(), reloadRepliesViaAPI()
 function updateIdFrequency (stat) {
 	timingLogger.startTag(`updateIdFrequency`);
-	for (let id in stat.idData) {
-		const idData = stat.idData[id];
-
+	for (const [id, idData] of stat.idData) {
 		// Single ID must not be counted
 		if (idData.length == 1) continue;
 
@@ -10554,44 +9793,6 @@ function updateIdFrequency (stat) {
 		}
 	}
 	timingLogger.endTag();
-}
-
-function updateSodanesViaAPI (data) {
-	if (!data) return;
-
-	for (let number in data) {
-		const sodaneNode = $(`sodane_${number}`) || $qs([
-			`article .topic-wrap[data-number="${number}"] .sodane`,
-			`article .topic-wrap[data-number="${number}"] .sodane-null`,
-			`article .reply-wrap > [data-number="${number}"] .sodane`,
-			`article .reply-wrap > [data-number="${number}"] .sodane-null`
-		].join(','));
-		if (!sodaneNode) {
-			continue;
-		}
-
-		if (!sodaneNode.id) {
-			sodaneNode.id = `sodane_${number}`;
-		}
-
-		const sodaneValue = data[number] - 0;
-		const re = /\d+$/.exec(sodaneNode.textContent);
-
-		if (re && re[0] - 0 == sodaneValue) {
-			continue;
-		}
-
-		if (sodaneValue) {
-			$t(sodaneNode, `そうだね × ${sodaneValue}`);
-			sodaneNode.classList.remove('sodane-null');
-			sodaneNode.classList.add('sodane');
-		}
-		else {
-			$t(sodaneNode, '＋');
-			sodaneNode.classList.add('sodane-null');
-			sodaneNode.classList.remove('sodane');
-		}
-	}
 }
 
 function getReplyContainer (index) {
@@ -10625,7 +9826,7 @@ function getLastReplyNumber (index) {
 function createRule (container) {
 	let rule = getRule(container);
 	if (!rule) {
-		rule = container.appendChild(document[CRE]('div'));
+		rule = container.appendChild(document.createElement('div'));
 		rule.className = 'rule';
 	}
 	return rule;
@@ -10678,13 +9879,16 @@ function processRemainingReplies (opts, context, lowBoundNumber, callback) {
 	timingLogger.reset().startTag(`proccessing remaining replies`, `lowBoundNumber:${lowBoundNumber}`);
 	xmlGenerator.remainingReplies(
 		context, maxReplies, lowBoundNumber,
-		function (xml, index, count, count2) {
-			let worked = false;
+		(xml, index, count, count2) => {
+			if (devMode && ($qs('[data-href="#toggle-dump-xml"]') || {}).checked) {
+				console.log(serializeXML(xml));
+			}
+
 			const container = getReplyContainer(index);
-			if (!container) return worked;
+			if (!container) return;
 
 			if (lowBoundNumber < 0) {
-				markStatistics.updatePostformView({
+				postStats.updatePostformView({
 					count: {
 						total: count,
 						mark: 0,
@@ -10695,11 +9899,7 @@ function processRemainingReplies (opts, context, lowBoundNumber, callback) {
 				xsltProcessor.setParameter(null, 'render_mode', 'replies');
 			}
 			else {
-				const markUpdated = updateMarkedReplies(xml, container, count2 + 1, count);
-				const idUpdated = updateReplyIDs(xml, container, count2 + 1, count);
-				const sodaneUpdated = updateReplySodanes(xml, container, count2 + 1, count);
-				worked = markUpdated || idUpdated || sodaneUpdated;
-
+				updateReplies(xml, container);
 				xsltProcessor.setParameter(null, 'low_bound_number', lowBoundNumber);
 				xsltProcessor.setParameter(null, 'render_mode', 'replies_diff');
 			}
@@ -10711,109 +9911,162 @@ function processRemainingReplies (opts, context, lowBoundNumber, callback) {
 						createRule(container);
 					}
 
-					appendFragment(container, f);
+					extractDisableOutputEscapingTags(container, f);
 					stripTextNodes(container);
-
-					if (lowBoundNumber < 0) {
-						worked = true;
-					}
 				}
 			}
 			catch (e) {
 				console.error(`${APP_NAME}: processRemainingReplies: exception(1), ${e.stack}`);
 			}
-
-			return worked;
 		},
-		function () {
-			let newStat;
-
+		() => {
 			timingLogger.startTag('statistics update');
 
 			// reload on reply mode
 			if (pageModes[0].mode == 'reply' && lowBoundNumber >= 0) {
-				newStat = markStatistics.getStatistics();
+				const stats = postStats.done();
 
-				if (newStat.delta.total || newStat.delta.mark || newStat.delta.id) {
+				if (stats.delta.total || stats.delta.mark || stats.delta.id) {
 					if ($qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)')) {
-						markStatistics.updatePanelView(newStat);
+						postStats.updatePanelView();
 					}
 					titleIndicator.startBlink();
-					markStatistics.updatePostformView(newStat);
-
-					callback && callback(newStat);
-
-					scrollToNewReplies(opts.isAutotrack, () => {
-						updateIdFrequency(newStat);
+					postStats.updatePostformView();
+					callback && callback(stats);
+					scrollToNewReplies(opts.scrollBehavior, () => {
+						updateSodanePosts(stats);
+						updateIdFrequency(stats);
 						modifyPage();
 					});
 				}
 				else {
-					callback && callback(newStat);
+					callback && callback(stats);
 				}
 			}
 
 			// first load on summary or reply mode
 			else {
-				newStat = markStatistics.getStatistics(true);
+				const stats = postStats.done(true);
+
 				if ($qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)')) {
-					markStatistics.updatePanelView(newStat);
+					postStats.updatePanelView();
 				}
-				markStatistics.updatePostformView(newStat);
-				callback && callback(newStat);
-				updateIdFrequency(newStat);
+
+				postStats.updatePostformView();
+				callback && callback(stats);
+				updateSodanePosts(stats);
+				updateIdFrequency(stats);
 				modifyPage();
 			}
 
 			timingLogger.endTag();
-
 			timingLogger.forceEndTag();
 		}
 	);
 }
 
-function scrollToNewReplies (isAutotrack, callback) {
-	if (isAutotrack) {
-		callback && callback();
+function scrollToNewReplies (behavior, callback = () => {}) {
+	/*
+	 * possible behavior:
+	 *
+	 * 'none' - no scrolling
+	 * 'auto' - scroll when current scroll position is close to the
+	 *          bottom of view
+	 * 'always' - always scroll
+	 */
+
+	if (behavior === 'none') {
+		callback();
 		return;
 	}
 
 	const rule = getRule();
 	if (!rule) {
-		callback && callback();
+		callback();
 		return;
 	}
 
 	const scrollTop = docScrollTop();
 	const distance = rule.nextSibling.getBoundingClientRect().top - Math.floor(viewportRect.height / 2);
 	if (distance <= 0) {
-		callback && callback();
+		callback();
 		return;
+	}
+
+	const scrollRatio = scrollTop / (document.documentElement.scrollHeight - viewportRect.height);
+	if (behavior === 'auto') {
+		if (scrollRatio < 0.8) {
+			callback();
+			return;
+		}
 	}
 
 	if (document.hidden) {
 		window.scrollTo(0, scrollTop + distance);
-		callback && callback();
+		callback();
+		return;
 	}
-	else {
-		let startTime = null;
-		window.requestAnimationFrame(function handleScroll (time) {
-			if (!startTime) {
-				startTime = time;
-			}
-			const elapsed = time - startTime;
-			if (elapsed < RELOAD_AUTO_SCROLL_CONSUME) {
-				window.scrollTo(
-					0,
-					Math.floor(scrollTop + distance * (elapsed / RELOAD_AUTO_SCROLL_CONSUME)));
-				window.requestAnimationFrame(handleScroll);
-			}
-			else {
-				window.scrollTo(0, scrollTop + distance);
-				callback && callback();
+
+	let startTime = null;
+	window.requestAnimationFrame(function handleScroll (time) {
+		if (!startTime) {
+			startTime = time;
+		}
+		const elapsed = time - startTime;
+		if (elapsed < RELOAD_AUTO_SCROLL_CONSUME) {
+			window.scrollTo(
+				0,
+				Math.floor(scrollTop + distance * (elapsed / RELOAD_AUTO_SCROLL_CONSUME)));
+			window.requestAnimationFrame(handleScroll);
+		}
+		else {
+			window.scrollTo(0, scrollTop + distance);
+			callback();
+		}
+	});
+}
+
+function runMomocan () {
+	if (typeof Akahuku.momocan === 'undefined') {
+		return Promise.resolve();
+	}
+
+	return new Promise(resolve => {
+		let momocan = Akahuku.momocan.create({
+			onmarkup: markup => {
+				const imagePath = chrome.runtime.getURL('/images/momo/');
+				return markup
+					.replace(/\/\/dev\.appsweets\.net\/momo\//g, imagePath)
+					.replace(/\/@version@/g, '');
+			},
+			onok: canvas => {
+				getBlobFrom(canvas).then(blob => {
+					if (pageModes[0].mode == 'summary' || pageModes[0].mode == 'catalog') {
+						overrideUpfile = {
+							name: 'tegaki.png',
+							data: blob
+						};
+					}
+					else {
+						const baseform = document.getElementsByName('baseform')[0];
+						if (baseform) {
+							baseform.value = canvas.toDataURL().replace(/^[^,]+,/, '');
+						}
+					}
+					resetForm('upfile', 'textonly');
+					return setPostThumbnail(canvas, '手書き');
+				});
+			},
+			oncancel: () => {
+			},
+			onclose: () => {
+				momocan = null;
+				resolve();
 			}
 		});
-	}
+
+		momocan.start();
+	});
 }
 
 /*
@@ -10856,10 +10109,7 @@ function getThumbnailSize (width, height, maxWidth, maxHeight) {
 		};
 	}
 	else {
-		return {
-			width: width,
-			height: height
-		};
+		return {width, height};
 	}
 }
 
@@ -10916,7 +10166,7 @@ function doDisplayThumbnail (thumbWrap, thumb, media) { /*returns promise*/
 			naturalWidth, naturalHeight,
 			containerWidth, containerHeight);
 
-		const canvas = document[CRE]('canvas');
+		const canvas = document.createElement('canvas');
 		canvas.width = size.width;
 		canvas.height = size.height;
 
@@ -11039,126 +10289,50 @@ function activatePanelTab (tab) {
  */
 
 function searchBase (opts) {
-	const query = $('search-text').value;
-	if (/^[\s\u3000]*$/.test(query)) {
-		return;
-	}
+	return modules('reply-search-utils').then(module => {
+		const query = $('search-text').value;
+		if (/^[\s\u3000]*$/.test(query)) {
+			return;
+		}
 
-	const tester = createQueryCompiler().compile(query);
-	if (tester.message) {
-		$t('search-result-count', tester.message);
-		return;
-	}
+		const tester = module.createQueryCompiler().compile(query);
+		if (tester.message) {
+			$t('search-result-count', tester.message);
+			return;
+		}
 
-	const result = $('search-result');
-	let matched = 0;
-	$('search-guide').classList.add('hide');
-	empty(result);
+		const result = $('search-result');
+		let matched = 0;
+		$('search-guide').classList.add('hide');
+		empty(result);
 
-	const nodes = Array.from($qsa(opts.targetNodesSelector));
-	if (opts.sort) {
-		nodes.sort(opts.sort);
-	}
+		const nodes = Array.from($qsa(opts.targetNodesSelector));
+		if (opts.sort) {
+			nodes.sort(opts.sort);
+		}
 
-	nodes.forEach(node => {
-		let text = [];
-		$qsa(opts.targetElementSelector, node).forEach(subNode => {
-			let t = opts.getTextContent(subNode);
-			t = t.replace(/^\s+|\s+$/g, '');
-			text.push(t);
+		nodes.forEach(node => {
+			let text = [];
+			$qsa(opts.targetElementSelector, node).forEach(subNode => {
+				let t = opts.getTextContent(subNode);
+				t = t.replace(/^\s+|\s+$/g, '');
+				text.push(t);
+			});
+			text = module.getLegalizedStringForSearch(text.join('\t'));
+
+			if (tester.test(text)) {
+				const anchor = result.appendChild(document.createElement('a'));
+				const postNumber = opts.getPostNumber(node);
+				anchor.href = '#search-item';
+				anchor.setAttribute('data-number', postNumber);
+				opts.fillItem(anchor, node);
+				matched++;
+			}
 		});
-		text = getLegalizedStringForSearch(text.join('\t'));
 
-		if (tester.test(text)) {
-			const anchor = result.appendChild(document[CRE]('a'));
-			const postNumber = opts.getPostNumber(node);
-			anchor.href = '#search-item';
-			anchor.setAttribute('data-number', postNumber);
-			opts.fillItem(anchor, node);
-			matched++;
-		}
+		$t('search-result-count', `${matched} 件を抽出`);
 	});
-
-	$t('search-result-count', `${matched} 件を抽出`);
 }
-
-const getLegalizedStringForSearch = (function () {
-	const map = {
-		// alphabet
-		A:'a', B:'b', C:'c', D:'d', E:'e', F:'f', G:'g', H:'h',
-		I:'i', J:'j', K:'k', L:'l', M:'m', N:'n', O:'o', P:'p',
-		Q:'q', R:'r', S:'s', T:'t', U:'u', V:'v', W:'w', X:'x',
-		Y:'y', Z:'z',
-
-		// full width letter but except: ＼
-		'　':' ',
-		'！':'!', '＂':'"', '＃':'#', '＄':'$', '％':'%', '＆':'&',
-		'＇':"'", '（':'(', '）':')', '＊':'*', '＋':'+', '，':',',
-		'－':'-', '．':'.', '／':'/', '０':'0', '１':'1', '２':'2',
-		'３':'3', '４':'4', '５':'5', '６':'6', '７':'7', '８':'8',
-		'９':'9', '：':':', '；':';', '＜':'<', '＝':'=', '＞':'>',
-		'？':'?', '＠':'@', 'Ａ':'a', 'Ｂ':'b', 'Ｃ':'c', 'Ｄ':'d',
-		'Ｅ':'e', 'Ｆ':'f', 'Ｇ':'g', 'Ｈ':'h', 'Ｉ':'i', 'Ｊ':'j',
-		'Ｋ':'k', 'Ｌ':'l', 'Ｍ':'m', 'Ｎ':'n', 'Ｏ':'o', 'Ｐ':'p',
-		'Ｑ':'q', 'Ｒ':'r', 'Ｓ':'s', 'Ｔ':'t', 'Ｕ':'u', 'Ｖ':'v',
-		'Ｗ':'w', 'Ｘ':'x', 'Ｙ':'u', 'Ｚ':'z', '［':'[', '］':']',
-		'＾':'^', '＿':'_', '｀':'`', 'ａ':'a', 'ｂ':'b', 'ｃ':'c',
-		'ｄ':'d', 'ｅ':'e', 'ｆ':'f', 'ｇ':'g', 'ｈ':'h', 'ｉ':'i',
-		'ｊ':'j', 'ｋ':'k', 'ｌ':'l', 'ｍ':'m', 'ｎ':'n', 'ｏ':'o',
-		'ｐ':'p', 'ｑ':'q', 'ｒ':'r', 'ｓ':'s', 'ｔ':'t', 'ｕ':'u',
-		'ｖ':'v', 'ｗ':'w', 'ｘ':'x', 'ｙ':'y', 'ｚ':'z', '｛':'{',
-		'｜':'|', '｝':'}', '～':'~',
-
-		// half width kana
-		'ｱ':'ア',  'ｲ':'イ',  'ｳ':'ウ',  'ｴ':'エ',  'ｵ':'オ',
-		                      'ｳﾞ':'ヴ',
-		'ｧ':'ァ',  'ｨ':'ィ',  'ｩ':'ゥ',  'ｪ':'ェ',  'ｫ':'ォ',
-		'ｶ':'カ',  'ｷ':'キ',  'ｸ':'ク',  'ｹ':'ケ',  'ｺ':'コ',
-		'ｶﾞ':'ガ', 'ｷﾞ':'ギ', 'ｸﾞ':'グ', 'ｹﾞ':'ゲ', 'ｺﾞ':'ゴ',
-		'ｻ':'サ',  'ｼ':'シ',  'ｽ':'ス',  'ｾ':'セ',  'ｿ':'ソ',
-		'ｻﾞ':'ザ', 'ｼﾞ':'ジ', 'ｽﾞ':'ズ', 'ｾﾞ':'ゼ', 'ｿﾞ':'ゾ',
-		'ﾀ':'タ',  'ﾁ':'チ',  'ﾂ':'ツ',  'ﾃ':'テ',  'ﾄ':'ト',
-		'ﾀﾞ':'ダ', 'ﾁﾞ':'ヂ', 'ﾂﾞ':'ヅ', 'ﾃﾞ':'デ', 'ﾄﾞ':'ド',
-		'ｯ':'ッ',
-		'ﾅ':'ナ',  'ﾆ':'ニ',  'ﾇ':'ヌ',  'ﾈ':'ネ',  'ﾉ':'ノ',
-		'ﾊ':'ハ',  'ﾋ':'ヒ',  'ﾌ':'フ',  'ﾍ':'ヘ',  'ﾎ':'ホ',
-		'ﾊﾞ':'バ', 'ﾋﾞ':'ビ', 'ﾌﾞ':'ブ', 'ﾍﾞ':'ベ', 'ﾎﾞ':'ボ',
-		'ﾊﾟ':'パ', 'ﾋﾟ':'ピ', 'ﾌﾟ':'プ', 'ﾍﾟ':'ペ', 'ﾎﾟ':'ポ',
-		'ﾏ':'マ',  'ﾐ':'ミ',  'ﾑ':'ム',  'ﾒ':'メ',  'ﾓ':'モ',
-		'ﾔ':'ヤ',  'ﾕ':'ユ',  'ﾖ':'ヨ',
-		'ｬ':'ャ',  'ｭ':'ュ',  'ｮ':'ョ',
-		'ﾗ':'ラ',  'ﾘ':'リ',  'ﾙ':'ル',  'ﾚ':'レ',  'ﾛ':'ロ',
-		'ﾜ':'ワ',  'ｦ':'ヲ',  'ﾝ':'ン',
-		'ﾜ':'ヷ',  'ｦ':'ヺ',
-
-		// half width letter
-		'｡':'。',  '､':'、',  '｢':'「',  '｣':'」',  '･':'・', 'ｰ':'ー',
-		'ﾞ':'゛',  'ﾟ':'゜'
-	};
-	const key = new RegExp([
-		'[A-Z]',								// alphabet
-		'[\u3000\uff01-\uff3b\uff3d-\uff5e]',	// full width letter but except: ＼
-		'[\uff66-\uff9d][ﾞﾟ]?',					// half width kana
-		'[｡､｢｣･ｰﾞﾟ]'							// half width letter
-	].join('|'), 'g');
-
-	return s => ('' + s).replace(key, $0 => {
-		// available mapping
-		if ($0 in map) {
-			return map[$0];
-		}
-		// kana + voiced mark
-		if ($0.substr(-1) == 'ﾞ') {
-			return map[$0[0]] + '\\u3099';
-		}
-		// kana + semi voiced mark
-		if ($0.substr(-1) == 'ﾟ') {
-			return map[$0[0]] + '\\u309a';
-		}
-		// MUST NOT REACHED
-		return $0;
-	});
-})();
 
 /*
  * <<<1 application commands
@@ -11170,8 +10344,8 @@ const commands = {
 	 * general functionalities
 	 */
 
-	activatePostForm: function (reason) { /*returns promise*/
-		devMode && console.log(`activatePostForm: reason: ${reason || '(N/A)'}`);
+	activatePostForm: reason => { /*returns promise*/
+		devMode && console.dir(reason);
 		catalogPopup.deleteAll();
 		$('com').focus();
 		const postformWrap = $('postform-wrap');
@@ -11182,7 +10356,7 @@ const commands = {
 			setPostThumbnailVisibility(true)
 		]);
 	},
-	deactivatePostForm: function (callback) { /*returns promise*/
+	deactivatePostForm: () => { /*returns promise*/
 		const postformWrap = $('postform-wrap');
 		postformWrap.classList.remove('hover');
 		document.activeElement.blur();
@@ -11193,76 +10367,79 @@ const commands = {
 			setPostThumbnailVisibility(false)
 		]);
 	},
-	scrollPage: function (e) {
+	scrollPage: e => {
 		const sh = document.documentElement.scrollHeight;
-		if (!e.shift && scrollManager.lastScrollTop >= sh - viewportRect.height) {
-			commands.invokeMousewheelEvent();
+		if (!e.shiftKey && scrollManager.lastScrollTop >= sh - viewportRect.height) {
+			invokeMousewheelEvent();
 		}
 		else if (storage.config.hook_space_key.value) {
 			window.scrollBy(
-				0, Math.floor(viewportRect.height / 2) * (e.shift ? -1 : 1));
+				0, Math.floor(viewportRect.height / 2) * (e.shiftKey ? -1 : 1));
 		}
 		else {
 			return keyManager.PASS_THROUGH;
 		}
 	},
-	invokeMousewheelEvent: function () {
-		const view = window[USW] || window;
-		const ev = new WheelEvent('wheel', {
-			bubbles: true, cancelable: true, view: view,
-			detail: 0, deltaX: 0, deltaY: 0, deltaZ: 0
-		});
-		document.body.dispatchEvent(ev);
-	},
-	clearUpfile: function () { /*returns promise*/
+	clearUpfile: () => { /*returns promise*/
 		resetForm('upfile', 'baseform');
 		overrideUpfile = undefined;
 		return setPostThumbnail();
 	},
-	summaryBack: function () {
+	summaryBack: () => {
 		const current = $qs('.nav .nav-links .current');
 		if (!current || !current.previousSibling) return;
 		if (transport.isRapidAccess('reload-summary')) return;
 		historyStateWrapper.pushState(current.previousSibling.href);
 	},
-	summaryNext: function () {
+	summaryNext: () => {
 		const current = $qs('.nav .nav-links .current');
 		if (!current || !current.nextSibling) return;
 		if (transport.isRapidAccess('reload-summary')) return;
 		historyStateWrapper.pushState(current.nextSibling.href);
 	},
-	clearCredentials: function (e, t) { /*returns promise*/
+	clearCredentials: async (e, t) => { /*returns promise*/
 		const content = t.textContent;
 		t.disabled = true;
-		$t(t, '処理中...');
-		return sendToBackend('clear-credentials', {
-			schemes: ['dropbox', 'googledrive', 'onedrive']
-		})
-			.then(() => delay(1000))
-			.then(() => {
-				$t(t, content);
-				t.disabled = false;
-			});
+		try {
+			$t(t, '処理中...');
+			const fileSystems = await resourceSaver.fileSystemManager.get(
+				ASSET_FILE_SYSTEM_NAME, THREAD_FILE_SYSTEM_NAME);
+			await Promise.all(Object.keys(fileSystems).map(id => fileSystems[id].forgetRootDirectory()));
+			$t(t, '完了');
+			await delay(1000);
+		}
+		finally {
+			$t(t, content);
+			t.disabled = false;
+		}
 	},
 
 	/*
 	 * reload/post
 	 */
 
-	reload: function (...args) { /*returns promise*/
+	reload: (...args) => { /*returns promise*/
 		switch (pageModes[0].mode) {
 		case 'summary':
 			return commands.reloadSummary.apply(commands, args);
 		case 'reply':
 			{
 				const now = Date.now();
+				let reloader;
 				if (now - reloadStatus.lastReloaded < storage.config.full_reload_interval.value * 1000 * 60) {
-					return commands.reloadRepliesViaAPI.apply(commands, args);
+					reloader = commands.reloadRepliesViaAPI;
 				}
 				else {
 					reloadStatus.lastReloaded = now;
-					return commands.reloadReplies.apply(commands, args);
+					reloader = commands.reloadReplies;
 				}
+				return reloader.apply(commands, args).then(() => {
+					if (resourceSaver.threadSaverRunning && reloadStatus.lastStatus == 404) {
+						return resourceSaver
+							.thread()
+							.then(saver => saver.stop());
+					}
+				});
 			}
 		case 'catalog':
 			return commands.reloadCatalog.apply(commands, args);
@@ -11270,23 +10447,7 @@ const commands = {
 			throw new Error(`Unknown page mode: ${pageModes[0].mode}`);
 		}
 	},
-	reloadFull: function () {
-		if (pageModes[0].mode == 'reply') {
-			return commands.reloadReplies();
-		}
-		else {
-			return commands.reload();
-		}
-	},
-	reloadDelta: function () {
-		if (pageModes[0].mode == 'reply') {
-			return commands.reloadRepliesViaAPI();
-		}
-		else {
-			return commands.reload();
-		}
-	},
-	reloadSummary: function () { /*returns promise*/
+	reloadSummary: () => { /*returns promise*/
 		const TRANSPORT_TYPE = 'reload-summary';
 
 		let content = $('content');
@@ -11343,7 +10504,7 @@ const commands = {
 			timingLogger.startTag('generate internal xml');
 			try {
 				timingLogger.startTag('generate');
-				const xml = xmlGenerator.run(doc.documentElement[IHTML]).xml;
+				const xml = xmlGenerator.run(doc.documentElement.innerHTML).xml;
 				timingLogger.endTag();
 
 				timingLogger.startTag('applying data bindings');
@@ -11368,7 +10529,7 @@ const commands = {
 				empty(content);
 				window.scrollTo(0, 0);
 				content.style.height = '';
-				appendFragment(content, fragment);
+				extractDisableOutputEscapingTags(content, fragment);
 				fragment = null;
 				timingLogger.endTag();
 
@@ -11382,7 +10543,7 @@ const commands = {
 				footer.classList.remove('hide');
 				content = indicator = footer = null;
 				modifyPage();
-				sendToBackend(
+				backend.send(
 					'notify-viewers',
 					{
 						data: $('viewers').textContent - 0,
@@ -11402,8 +10563,10 @@ const commands = {
 			transport.release(TRANSPORT_TYPE);
 		});
 	},
-	reloadReplies: function (opts) {
-		const TRANSPORT_TYPE = 'reload-replies';
+	reloadReplies: (opts = {}) => {
+		const TRANSPORT_TYPE = ['reload-replies', opts.isAutotrack ? 'autotrack' : null]
+			.filter(a => typeof a === 'string')
+			.join('-');
 
 		if (transport.isRunning(TRANSPORT_TYPE)) {
 			transport.abort(TRANSPORT_TYPE);
@@ -11419,11 +10582,10 @@ const commands = {
 			return Promise.resolve();
 		}
 
-		opts || (opts = {});
 		timingLogger.reset().startTag('reloading replies');
 		setBottomStatus('読み込み中...', true);
 		removeRule();
-		markStatistics.resetPostformView();
+		postStats.resetPostformView();
 		reloadStatus.lastRepliesCount = getRepliesCount();
 		titleIndicator.stopBlink();
 		dumpDebugText();
@@ -11468,7 +10630,7 @@ const commands = {
 			timingLogger.startTag('generate internal xml for topic block');
 			try {
 				timingLogger.startTag('generate');
-				result = xmlGenerator.run(doc.documentElement[IHTML], 0, !!opts.isAfterPost);
+				result = xmlGenerator.run(doc.documentElement.innerHTML, 0, !!opts.isAfterPost);
 				timingLogger.endTag();
 
 				timingLogger.startTag('applying data bindings');
@@ -11476,9 +10638,7 @@ const commands = {
 				timingLogger.endTag();
 
 				timingLogger.startTag('update topic mark,id,sodane');
-				updateMarkedTopic(result.xml, document);
-				updateTopicID(result.xml, document);
-				updateTopicSodane(result.xml, document);
+				updateTopic(result.xml, document);
 				timingLogger.endTag();
 			}
 			finally {
@@ -11487,7 +10647,7 @@ const commands = {
 
 			// process replies block
 
-			sendToBackend(
+			backend.send(
 				'notify-viewers',
 				{
 					viewers: $qs('meta viewers', result.xml).textContent - 0,
@@ -11531,9 +10691,10 @@ const commands = {
 				}
 				else {
 					if (siteInfo.notice != '') {
-						detectNoticeModification(siteInfo.notice, siteInfo.noticeNew);
-						commands.activateNoticeTab();
-						window.alert('注意書きが更新されたみたいです。');
+						detectNoticeModification(siteInfo.notice, siteInfo.noticeNew).then(() => {
+							commands.activateNoticeTab();
+							alert('注意書きが更新されたみたいです。');
+						});
 					}
 					chrome.storage.sync.get({notices:{}}, result => {
 						if (chrome.runtime.lastError) {
@@ -11541,7 +10702,7 @@ const commands = {
 						}
 						else {
 							result.notices[`${siteInfo.server}/${siteInfo.board}`] = siteInfo.noticeNew;
-							storage.set(result);
+							storage.setSynced(result);
 						}
 
 						siteInfo.notice = siteInfo.noticeNew;
@@ -11551,9 +10712,13 @@ const commands = {
 			}
 		});
 	},
-	reloadRepliesViaAPI: function (opts) {
-		const TRANSPORT_MAIN_TYPE = 'reload-replies';
-		const TRANSPORT_SUB_TYPE = 'reload-replies-api';
+	reloadRepliesViaAPI: (opts = {}) => {
+		const TRANSPORT_MAIN_TYPE = ['reload-replies', opts.isAutotrack ? 'autotrack' : null]
+			.filter(a => typeof a === 'string')
+			.join('-');
+		const TRANSPORT_SUB_TYPE = ['reload-replies-api', opts.isAutotrack ? 'autotrack' : null]
+			.filter(a => typeof a === 'string')
+			.join('-');
 
 		if (transport.isRunning(TRANSPORT_MAIN_TYPE)) {
 			transport.abort(TRANSPORT_MAIN_TYPE);
@@ -11569,11 +10734,10 @@ const commands = {
 			return Promise.resolve();
 		}
 
-		opts || (opts = {});
 		timingLogger.reset().startTag('reloading replies via API');
 		setBottomStatus('読み込み中...', true);
 		removeRule();
-		markStatistics.resetPostformView();
+		postStats.resetPostformView();
 		reloadStatus.lastRepliesCount = getRepliesCount();
 		titleIndicator.stopBlink();
 		dumpDebugText();
@@ -11630,15 +10794,15 @@ const commands = {
 
 				if ($qs('.reply-wrap', fragment)) {
 					createRule(container);
-					appendFragment(container, fragment);
+					extractDisableOutputEscapingTags(container, fragment);
 					stripTextNodes(container);
 
-					const newStat = markStatistics.getStatistics();
+					const newStat = postStats.done();
 					if ($qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)')) {
-						markStatistics.updatePanelView(newStat);
+						postStats.updatePanelView(newStat);
 					}
 					titleIndicator.startBlink();
-					markStatistics.updatePostformView(newStat);
+					postStats.updatePostformView(newStat);
 
 					const message = `新着 ${newStat.delta.total} レス`;
 					setReloaderStatus(message);
@@ -11650,9 +10814,9 @@ const commands = {
 					setBottomStatus(bottomMessage);
 					//console.log(bottomMessage);
 
-					scrollToNewReplies(opts.isAutotrack, () => {
+					scrollToNewReplies(opts.scrollBehavior, () => {
+						updateSodanePosts(newStat);
 						updateIdFrequency(newStat);
-						updateSodanesViaAPI(doc.sd);
 						modifyPage();
 						timingLogger.forceEndTag();
 					});
@@ -11683,7 +10847,7 @@ const commands = {
 			transport.release(TRANSPORT_SUB_TYPE);
 		});
 	},
-	reloadCatalog: function () { /*returns promise*/
+	reloadCatalog: () => { /*returns promise*/
 		const TRANSPORT_MAIN_TYPE = 'reload-catalog-main';
 		const TRANSPORT_SUB_TYPE = 'reload-catalog-sub';
 
@@ -11758,9 +10922,8 @@ const commands = {
 
 			const attributeConverter2 = {
 				'data-src': (img, pad, name, value) => {
-					img.src = restoreDistributedImageURL(
-						storage.config.catalog_thumbnail_scale.value >= 1.5 ?
-							value.replace('/cat/', '/thumb/') : value);
+					img.src = storage.config.catalog_thumbnail_scale.value >= 1.5 ?
+						value.replace('/cat/', '/thumb/') : value;
 				},
 				'width': (img, pad, name, value) => {
 					value = Math.floor((value - 0) * storage.config.catalog_thumbnail_scale.value);
@@ -11864,14 +11027,14 @@ const commands = {
 				}
 
 				// not found. create new one
-				anchor = wrap.insertBefore(document[CRE]('a'), insertee);
+				anchor = wrap.insertBefore(document.createElement('a'), insertee);
 				anchor.id = `c-${sortType.key}-${threadNumber}`;
 				anchor.setAttribute('data-number', `${threadNumber},0`);
 				anchor.style.width = anchorWidth + 'px';
 				anchor.className = newClass;
 
 				// image
-				const imageWrap = anchor.appendChild(document[CRE]('div'));
+				const imageWrap = anchor.appendChild(document.createElement('div'));
 				imageWrap.className = 'image';
 				imageWrap.style.height = cellImageHeight + 'px';
 
@@ -11884,7 +11047,7 @@ const commands = {
 
 				from = $qs('img', node);
 				if (from) {
-					to = imageWrap.appendChild(document[CRE]('img'));
+					to = imageWrap.appendChild(document.createElement('img'));
 
 					// attribute conversion #2
 					for (let atr in attributeConverter2) {
@@ -11900,7 +11063,7 @@ const commands = {
 				// text
 				from = $qs('small', node.parentNode);
 				if (from) {
-					to = anchor.appendChild(document[CRE]('div'));
+					to = anchor.appendChild(document.createElement('div'));
 					to.className = 'text';
 					to.textContent = getTextForCatalog(
 						from.textContent.replace(/\u2501.*\u2501\s*!+/, '\u2501!!'), 4);
@@ -11910,10 +11073,10 @@ const commands = {
 					}
 				}
 
-				to = anchor.appendChild(document[CRE]('div'));
+				to = anchor.appendChild(document.createElement('div'));
 				to.className = 'info';
-				to.appendChild(document[CRE]('span')).textContent = repliesCount;
-				to.appendChild(document[CRE]('span')).textContent = newIndicator;
+				to.appendChild(document.createElement('span')).textContent = repliesCount;
+				to.appendChild(document.createElement('span')).textContent = newIndicator;
 			});
 
 			// find latest post number
@@ -12051,7 +11214,7 @@ const commands = {
 			transport.release(TRANSPORT_SUB_TYPE);
 		});
 	},
-	post: function () { /*returns promise*/
+	post: () => { /*returns promise*/
 		const TRANSPORT_TYPE = 'post';
 
 		if (transport.isRunning(TRANSPORT_TYPE)) {
@@ -12104,9 +11267,9 @@ const commands = {
 					case 'summary':
 					case 'catalog':
 						if (result.redirect != '') {
-							sendToBackend('open', {
+							backend.send('open', {
 								url: result.redirect,
-								selfUrl: window.location.href
+								selfUrl: location.href
 							});
 						}
 						if ($('post-switch-reply')) {
@@ -12132,14 +11295,14 @@ const commands = {
 		.catch(err => {
 			setBottomStatus('投稿が失敗しました');
 			console.error(`${APP_NAME}: post failed: ${err.stack}`);
-			window.alert(err.message);
+			alert(err.message);
 		})
 		.finally(() => {
 			registerReleaseFormLock();
 			transport.release(TRANSPORT_TYPE);
 		});
 	},
-	sodane: function (e, t) {
+	sodane: async (e, t) => { /*returns promise*/
 		if (!t) return;
 		if (t.getAttribute('data-busy')) return;
 
@@ -12148,15 +11311,26 @@ const commands = {
 
 		t.setAttribute('data-busy', '1');
 		t.setAttribute('data-text', t.textContent);
-		t.textContent = '...';
+		$t(t, '...');
+		postStats.start();
 
 		const url = `${location.protocol}//${location.host}/sd.php?${siteInfo.board}.${postNumber}`
-		let xhr = transport.create();
-		xhr.open('GET', url);
-		xhr.onload = () => {
-			const newSodaneValue = parseInt(xhr.responseText, 10) || 0;
+		const options = {
+			headers: {
+				'X-Requested-With': `${APP_NAME}/${version}`
+			}
+		};
+		const result = await load(url, options, 'text');
+		try {
+			if (result.error) {
+				$t(t, t.getAttribute('data-text'));
+				return;
+			}
+
+			const newSodaneValue = parseInt(result.content, 10) || 0;
+			postStats.notifySodane(postNumber, newSodaneValue);
 			if (newSodaneValue) {
-				$t(t, `そうだね × ${newSodaneValue}`);
+				$t(t, newSodaneValue);
 				t.classList.remove('sodane-null');
 				t.classList.add('sodane');
 			}
@@ -12165,51 +11339,24 @@ const commands = {
 				t.classList.add('sodane-null');
 				t.classList.remove('sodane');
 			}
-		};
-		xhr.onerror = () => {
-			$t(t, t.getAttribute('data-text'));
-		};
-		xhr.onloadend = () => {
+
+			postStats.done();
+			modifyPage();
+		}
+		finally {
 			t.removeAttribute('data-busy');
 			t.removeAttribute('data-text');
-			xhr = t = null;
-		};
-		xhr.setRequestHeader('X-Requested-With', `${APP_NAME}/${version}`);
-		xhr.send();
-	},
-	saveImage: function (e, t) { /*returns promise*/
-		if (t.getAttribute('data-original-text')) return;
-
-		const href = t.getAttribute('data-href') || t.href;
-		const f = getImageName(href, t);
-		if (f == undefined || f == '') return;
-
-		let id = t.id;
-		if (!id) {
-			do {
-				id = 'save-image-anchor-' +
-					(Math.floor(Math.random() * 0x10000)).toString(16);
-			} while ($(id));
-
-			t.setAttribute('id', id);
 		}
-
-		t.setAttribute('data-original-text', t.textContent);
-		$t(t, '保存中...');
-
-		return sendToBackend('save-image', {
-			url: href,
-			path: storage.config.storage.value + ':' + f,
-			mimeType: getImageMimeType(href),
-			anchorId: id
-		});
 	},
 	quickModerate: (e, anchor) => {
 		if (!anchor) return;
-		if (anchor.getAttribute('data-busy')) return;
+		if (anchor.classList.contains('posted')) return;
 
-		anchor.setAttribute('data-busy', '1');
-		registerModeration(anchor, QUICK_MODERATE_REASON_CODE, 1000 * 5);
+		const postNumber = getPostNumber(anchor);
+		if (!postNumber) return;
+
+		anchor.classList.add('posted');
+		moderator.register(postNumber, QUICK_MODERATE_REASON_CODE, 1000 * 5);
 	},
 
 	/*
@@ -12222,11 +11369,11 @@ const commands = {
 			buttons: 'ok, cancel',
 			oninit: dialog => {
 				const xml = document.implementation.createDocument(null, 'dialog', null);
-				const checksNode = xml.documentElement.appendChild(xml[CRE]('checks'));
+				const checksNode = xml.documentElement.appendChild(xml.createElement('checks'));
 				$qsa('article input[type="checkbox"]:checked').forEach(node => {
-					checksNode.appendChild(xml[CRE]('check')).textContent = getPostNumber(node);
+					checksNode.appendChild(xml.createElement('check')).textContent = getPostNumber(node);
 				});
-				xml.documentElement.appendChild(xml[CRE]('delete-key')).textContent =
+				xml.documentElement.appendChild(xml.createElement('delete-key')).textContent =
 					getCookie('pwdc')
 				dialog.initFromXML(xml, 'delete-dialog');
 			},
@@ -12300,12 +11447,12 @@ const commands = {
 			buttons: 'ok, cancel',
 			oninit: dialog => {
 				const xml = document.implementation.createDocument(null, 'dialog', null);
-				const itemsNode = xml.documentElement.appendChild(xml[CRE]('items'));
+				const itemsNode = xml.documentElement.appendChild(xml.createElement('items'));
 				itemsNode.setAttribute('prefix', 'config-item.');
 
 				const config = storage.config;
 				for (let i in config) {
-					const item = itemsNode.appendChild(xml[CRE]('item'));
+					const item = itemsNode.appendChild(xml.createElement('item'));
 					item.setAttribute('internal', i);
 					item.setAttribute('name', config[i].name);
 					item.setAttribute('value', config[i].value);
@@ -12316,7 +11463,7 @@ const commands = {
 
 					if ('list' in config[i]) {
 						for (let j in config[i].list) {
-							const li = item.appendChild(xml[CRE]('li'));
+							const li = item.appendChild(xml.createElement('li'));
 							li.textContent = config[i].list[j];
 							li.setAttribute('value', j);
 							j == config[i].value && li.setAttribute('selected', 'true');
@@ -12330,7 +11477,7 @@ const commands = {
 					const wheelUnit = $qs('input[name="config-item.wheel_reload_unit_size"]');
 					if (wheelUnit) {
 						const span = wheelUnit.parentNode.insertBefore(
-							document[CRE]('span'), wheelUnit.nextSibling);
+							document.createElement('span'), wheelUnit.nextSibling);
 						span.id = 'wheel-indicator';
 						wheelUnit.addEventListener('wheel', e => {
 							$('wheel-indicator').textContent = `移動量: ${e.deltaY}`;
@@ -12357,7 +11504,7 @@ const commands = {
 				}, true);
 				storage.assignConfig(storageData);
 				storage.saveConfig();
-				applyDataBindings(xmlGenerator.run('').xml);
+				applyDataBindings(xmlGenerator.run().xml);
 			}
 		});
 	},
@@ -12434,7 +11581,7 @@ const commands = {
 					// make reason-text clickable
 					$qsa('input[type="radio"][name="reason"]', form).forEach(node => {
 						const r = node.ownerDocument.createRange();
-						const label = node.ownerDocument[CRE]('label');
+						const label = node.ownerDocument.createElement('label');
 						r.setStartBefore(node);
 						r.setEndAfter(node.nextSibling);
 						r.surroundContents(label);
@@ -12461,7 +11608,7 @@ const commands = {
 					storage.saveRuntime();
 				});
 
-				registerModeration(anchor, $qs('input[name="reason"]', form).value);
+				moderator.register(anchor, $qs('input[name="reason"]', form).value);
 			}
 
 			dialog.close();
@@ -12484,56 +11631,22 @@ const commands = {
 		});
 	},
 	openDrawDialog: (e, anchor) => {
-		function runMomocan () {
-			let momocan = Akahuku.momocan.create({
-				onmarkup: markup => {
-					const imagePath = chrome.runtime.getURL('/images/momo/');
-					return markup
-						.replace(/\/\/dev\.appsweets\.net\/momo\//g, imagePath)
-						.replace(/\/@version@/g, '');
-				},
-				onok: canvas => {
-					getBlobFrom(canvas).then(blob => {
-						if (pageModes[0].mode == 'summary' || pageModes[0].mode == 'catalog') {
-							overrideUpfile = {
-								name: 'tegaki.png',
-								data: blob
-							};
-						}
-						else {
-							const baseform = document.getElementsByName('baseform')[0];
-							if (baseform) {
-								baseform.value = canvas.toDataURL().replace(/^[^,]+,/, '');
-							}
-						}
-						resetForm('upfile', 'textonly');
-						return setPostThumbnail(canvas, '手書き');
-					});
-				},
-				oncancel: () => {
-				},
-				onclose: () => {
-					momocan = null;
-				}
-			});
-
-			momocan.start();
-		}
-
-		if ($('momocan-container')) {
-			runMomocan();
-		}
-		else {
-			const style = chrome.runtime.getURL('/styles/momocan.css');
-			Akahuku.momocan.loadStyle(style).then(runMomocan);
-		}
+		modules('momocan').then(module => {
+			if ($('momocan-container')) {
+				return runMomocan();
+			}
+			else {
+				const style = chrome.runtime.getURL('/styles/momocan.css');
+				return Akahuku.momocan.loadStyle(style).then(runMomocan);
+			}
+		});
 	},
 
 	/*
 	 * form functionalities
 	 */
 
-	toggleSage: function () {
+	toggleSage: () => {
 		const email = $('email');
 		if (!email) return;
 		email.value = /\bsage\b/.test(email.value) ?
@@ -12541,148 +11654,34 @@ const commands = {
 			`sage ${email.value}`;
 		email.setSelectionRange(email.value.length, email.value.length);
 	},
-	cursorPreviousLine: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		const alter = e.shift ? 'extend' : 'move';
-		document.getSelection().modify(alter, 'backward', 'line');
+	voice: () => {
+		const s = window.getSelection().toString();
+		if (s == '') return;
+		document.execCommand('insertText', false, voice(s));
 	},
-	cursorNextLine: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		const alter = e.shift ? 'extend' : 'move';
-		document.getSelection().modify(alter, 'forward', 'line');
+	semiVoice: () => {
+		const s = window.getSelection().toString();
+		if (s == '') return;
+		document.execCommand('insertText', false, voice(s, true));
 	},
-	cursorBackwardWord: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		const alter = e.shift ? 'extend' : 'move';
-		document.getSelection().modify(alter, 'backward', 'word');
-	},
-	cursorForwardWord: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		const alter = e.shift ? 'extend' : 'move';
-		document.getSelection().modify(alter, 'forward', 'word');
-	},
-	cursorBackwardChar: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
-			let st = t.selectionStart;
-			if (st >= 1 && !isLowSurrogate(t.value.charAt(st - 1))) st--;
-			else if (st >= 2 && isHighSurrogate(t.value.charAt(st - 2)) && isLowSurrogate(t.value.charAt(st - 1))) st -= 2;
-			t.selectionStart = st;
-			if (!e.shift) t.selectionEnd = st;
-		}
-		else {
-			const alter = e.shift ? 'extend' : 'move';
-			document.getSelection().modify(alter, 'backward', 'character');
-		}
-	},
-	cursorForwardChar: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
-			let ed = t.selectionEnd;
-			if (ed <= t.value.length - 1 && !isHighSurrogate(t.value.charAt(ed + 1))) ed++;
-			else if (ed <= t.value.length - 2 && isHighSurrogate(t.value.charAt(ed + 1)) && isLowSurrogate(t.value.charAt(ed + 2))) ed += 2;
-			t.selectionEnd = ed;
-			if (!e.shift) t.selectionStart = ed;
-		}
-		else {
-			const alter = e.shift ? 'extend' : 'move';
-			document.getSelection().modify(alter, 'forward', 'character');
-		}
-	},
-	cursorDeleteBackwardChar: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
-			commands.cursorBackwardChar({shift: true}, t);
-			const st = t.selectionStart;
-			const ed = t.selectionEnd;
-			const v = t.value;
-			t.value = v.substring(0, st) + v.substring(ed);
-			t.selectionStart = t.selectionEnd = st;
-		}
-		else {
-			const selection = document.getSelection();
-			const range = selection.getRangeAt(0);
-			if (range.collapsed) {
-				selection.modify('extend', 'backward', 'character');
-			}
-			document.execCommand('delete', false, null);
-		}
-	},
-	cursorDeleteBackwardWord: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
-			// TBD
-		}
-		else {
-			const selection = document.getSelection();
-			const range = selection.getRangeAt(0);
-			if (range.collapsed) {
-				selection.modify('extend', 'backward', 'word');
-			}
-			document.execCommand('delete', false, null);
-		}
-	},
-	cursorDeleteBackwardBlock: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
-			const st = t.selectionEnd;
-			const v = t.value;
-			t.value = v.substring(st);
-			t.selectionStart = t.selectionEnd = 0;
-		}
-		else {
-			const selection = document.getSelection();
-			const range = selection.getRangeAt(0);
-			if (range.collapsed) {
-				selection.modify('extend', 'backward', 'lineboundary');
-			}
-			document.execCommand('delete', false, null);
-		}
-	},
-	cursorBeginningOfLine: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
-			if (t.selectionStart == 0 && t.selectionEnd == t.value.length) {
-				t.selectionStart = t.selectionEnd = 0;
-			}
-			else {
-				t.selectionStart = 0;
-				t.selectionEnd = t.value.length;
-			}
-		}
-		else {
-			let n = qeema.editable.selectionStart(t);
-			const selection = document.getSelection();
-			const range = selection.getRangeAt(0);
-			if (range.toString() == t.textContent) {
-				n = t.getAttribute('data-last-pos') - 0;
-				t.removeAttribute('data-last-pos');
-				qeema.editable.setSelectionRange(t, n, n);
-				const alter = e.shift ? 'extend' : 'move';
-				selection.modify(alter, 'backward', 'lineboundary');
-			}
-			else {
-				t.setAttribute('data-last-pos', n);
-				selection.selectAllChildren(t);
-			}
-		}
-	},
-	cursorEndOfLine: function (e, t) {
-		if (!storage.config.hook_edit_shortcuts.value) return keyManager.PASS_THROUGH;
-		if (t.nodeName == 'INPUT' && WasaviExtensionWrapper.IS_GECKO) {
-			t.selectionStart = t.selectionEnd = t.value.length;
-		}
-		else {
-			const alter = e.shift ? 'extend' : 'move';
-			document.getSelection().modify(alter, 'forward', 'lineboundary');
-		}
-	},
+	cursorPreviousLine: e => execEditorCommand('cursorPreviousLine', e),
+	cursorNextLine: e => execEditorCommand('cursorNextLine', e),
+	cursorBackwardWord: e => execEditorCommand('cursorBackwardWord', e),
+	cursorForwardWord: e => execEditorCommand('cursorForwardWord', e),
+	cursorBackwardChar: e => execEditorCommand('cursorBackwardChar', e),
+	cursorForwardChar: e => execEditorCommand('cursorForwardChar', e),
+	cursorDeleteBackwardChar: e => execEditorCommand('cursorDeleteBackwardChar', e),
+	cursorDeleteBackwardWord: e => execEditorCommand('cursorDeleteBackwardWord', e),
+	cursorDeleteBackwardBlock: e => execEditorCommand('cursorDeleteBackwardBlock', e),
+	cursorBeginningOfLine: e => execEditorCommand('cursorBeginningOfLine', e),
+	cursorEndOfLine: e => execEditorCommand('cursorEndOfLine', e),
+	selectAll: e => execEditorCommand('selectAll', e),
 
 	/*
 	 * catalog
 	 */
 
-	toggleCatalogVisibility: function (e, t) {
+	toggleCatalogVisibility: () => {
 		const threads = $('content');
 		const catalog = $('catalog');
 		const ad = $('ad-aside-wrap');
@@ -12727,7 +11726,7 @@ const commands = {
 			window.scrollTo(0, scrollTop);
 		}, 0);
 	},
-	updateCatalogSettings: function (settings) {
+	updateCatalogSettings: settings => {
 		const cs = getCatalogSettings();
 		if ('x' in settings) {
 			const tmp = parseInt(settings.x, 10);
@@ -12751,10 +11750,13 @@ const commands = {
 	},
 
 	/*
-	 * thread tracking
+	 * thread auto tracking
 	 */
 
-	registerTrack: function () {
+	registerAutotrack: () => {
+		if (reloadStatus.lastStatus == 404) {
+			return;
+		}
 		if (activeTracker.running) {
 			activeTracker.stop();
 		}
@@ -12764,10 +11766,144 @@ const commands = {
 	},
 
 	/*
+	 * thread auto saving
+	 */
+
+	registerAutosave: () => { /*returns promise*/
+		return resourceSaver.thread().then(saver => {
+			if (saver.running) {
+				return saver.stop();
+			}
+			else {
+				return saver.start();
+			}
+		});
+	},
+
+	/*
+	 * asset saving
+	 */
+
+	saveAsset: async anchor => { /*returns promise*/
+		async function createContextMenuItems () {
+			const items = [];
+
+			// LRU items
+			if (storage.runtime.kokoni.lru.length) {
+				storage.runtime.kokoni.lru.forEach((lruItem, index) => {
+					items.push({
+						key: `lru-${index}`,
+						label: lruItem.label,
+						path: lruItem.path
+					});
+				});
+				items.push({key: '-'});
+			}
+
+			// directory tree
+			items.push(
+				{
+					key: 'kokoni',
+					label: 'ここに保存',
+					items: await assetSaver.getDirectoryTree()
+				}
+			);
+
+			// misc items
+			items.push(
+				{key: '-'},
+				{key: 'save-asset', label: '既定の場所に保存'},
+				{key: 'refresh', label: 'フォルダツリーを更新'},
+				{key: 'reset-hist', label: '履歴をクリア'}
+			);
+
+			return items;
+		}
+
+		const assetSaver = await resourceSaver.asset();
+		if (assetSaver.busy) return;
+
+		const contextMenu = await modules('menu').then(menu => menu.createContextMenu());
+		const permission = await assetSaver.fileSystemAccess.queryRootDirectoryPermission(true)
+
+		if (permission !== 'granted') {
+			// display context menu
+			const CONTEXT_MENU_KEY = 'grant-context';
+			let item;
+
+			anchor.classList.add('active');
+			try {
+				item = await contextMenu.assign({
+					key: CONTEXT_MENU_KEY,
+					items: [{key: 'request-grant', label: 'ファイルアクセスを許可する'}]
+				})
+				.open(anchor, CONTEXT_MENU_KEY);
+			}
+			finally {
+				anchor.classList.remove('active');
+			}
+			if (!item) return;
+
+			// execute the job for menu item
+			await assetSaver.updateDirectoryTree();
+		}
+		else {
+			// display context menu
+			const CONTEXT_MENU_KEY = 'save-asset-context';
+			let item;
+
+			anchor.classList.add('active');
+			try {
+				item = await contextMenu.assign({
+					key: CONTEXT_MENU_KEY,
+					items: await createContextMenuItems()
+				})
+				.open(anchor, CONTEXT_MENU_KEY);
+			}
+			finally {
+				anchor.classList.remove('active');
+			}
+			if (!item) return;
+
+			// execute the job for each item
+			const key = item.fullKey.substring(CONTEXT_MENU_KEY.length + 1);
+			switch (key) {
+			case 'save-asset':
+				// save to the location specified by template
+				await assetSaver.save(anchor, {
+					template: storage.config.save_image_name_template.value
+				});
+				break;
+
+			case 'refresh':
+				// refresh directory tree
+				await assetSaver.updateDirectoryTree();
+				break;
+
+			case 'reset-hist':
+				// clear LRU items
+				assetSaver.clearLRUList();
+				break;
+
+			case /^lru-/.test(key) && key:
+			case /^kokoni,/.test(key) && key:
+				// save to the location used in the past
+				// save to the arbitrary location
+				await assetSaver.save(anchor, {
+					template: storage.config.save_image_kokoni_name_template.value,
+					pathOverride: item.path
+				});
+				assetSaver.updateLRUList(item);
+				break;
+			}
+		}
+	},
+
+	/*
 	 * panel commons
 	 */
 
-	togglePanelVisibility: function () {
+	togglePanelVisibility: () => {
 		if ($('panel-aside-wrap').classList.contains('run')) {
 			commands.hidePanel();
 		}
@@ -12775,20 +11911,20 @@ const commands = {
 			commands.showPanel();
 		}
 	},
-	hidePanel: function () {
+	hidePanel: () => {
 		hidePanel();
 	},
-	showPanel: function () {
+	showPanel: () => {
 		showPanel();
 	},
-	activateStatisticsTab: function () {
-		if (!$qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)') && markStatistics.lastStatistics) {
-			markStatistics.updatePanelView(markStatistics.lastStatistics);
+	activateStatisticsTab: () => {
+		if (!$qs('#panel-aside-wrap.run #panel-content-mark:not(.hide)') && postStats.lastStats) {
+			postStats.updatePanelView(postStats.lastStats);
 		}
 		activatePanelTab($qs('.panel-tab[href="#mark"]'));
 		showPanel();
 	},
-	activateSearchTab: function () {
+	activateSearchTab: () => {
 		const searchTab = $qs('.panel-tab[href="#search"]');
 		activatePanelTab(searchTab);
 		$t($qs('span.long', searchTab),
@@ -12797,7 +11933,7 @@ const commands = {
 			$('search-text').focus();
 		});
 	},
-	activateNoticeTab: function () {
+	activateNoticeTab: () => {
 		activatePanelTab($qs('.panel-tab[href="#notice"]'));
 		showPanel();
 	},
@@ -12806,7 +11942,7 @@ const commands = {
 	 * panel (search)
 	 */
 
-	search: function () {
+	search: () => {
 		if (pageModes[0].mode == 'catalog') {
 			commands.searchCatalog();
 		}
@@ -12814,46 +11950,29 @@ const commands = {
 			commands.searchComment();
 		}
 	},
-	searchComment: function () {
+	searchComment: () => {
 		searchBase({
 			targetNodesSelector: 'article .topic-wrap, article .reply-wrap',
 			targetElementSelector: '.sub, .name, .postdate, span.user-id, .email, .comment',
 			getTextContent: node => {
+				// to optimize performance
 				if (node.childElementCount == 0) {
 					return node.textContent;
 				}
-
-				const iterator = document.createNodeIterator(
-					node,
-					window.NodeFilter.SHOW_ELEMENT
-					| window.NodeFilter.SHOW_TEXT);
-				const result = [];
-				let currentNode;
-				while ((currentNode = iterator.nextNode())) {
-					switch (currentNode.nodeType) {
-					case 1:
-						if (currentNode.nodeName == 'IMG') {
-							result.push(currentNode.getAttribute('alt') || '');
-						}
-						break;
-
-					case 3:
-						result.push(currentNode.nodeValue);
-						break;
-					}
+				else {
+					return commentToString(node);
 				}
-				return result.join('');
 			},
 			getPostNumber: node => {
 				return node.getAttribute('data-number')
 					|| $qs('[data-number]', node).getAttribute('data-number');
 			},
 			fillItem: (anchor, target) => {
-				anchor.textContent = $qs('.comment', target).textContent;
+				anchor.textContent = commentToString($qs('.comment', target));
 			}
 		});
 	},
-	searchCatalog: function () {
+	searchCatalog: () => {
 		let currentMode = $qs('#catalog .catalog-options a.active');
 		if (!currentMode) return;
 
@@ -12897,7 +12016,7 @@ const commands = {
 					anchor.appendChild(document.createTextNode(text.getAttribute('data-text')));
 				}
 
-				const sentinel = anchor.appendChild(document[CRE]('div'));
+				const sentinel = anchor.appendChild(document.createElement('div'));
 				sentinel.className = 'sentinel';
 
 				const info = $qsa('.info span', target);
@@ -12923,7 +12042,7 @@ const commands = {
 	reloadExtension: () => {
 		if (!devMode) return;
 		resources.clearCache();
-		sendToBackend('reload');
+		backend.send('reload');
 	},
 	toggleLogging: (e, t) => {
 		if (!devMode) return;
@@ -12931,7 +12050,7 @@ const commands = {
 	},
 	dumpStats: (e, t) => {
 		if (!devMode) return;
-		dumpDebugText(JSON.stringify(markStatistics.lastStatistics, null, '    '));
+		dumpDebugText(postStats.dump());
 	},
 	dumpReloadData: (e, t) => {
 		if (!devMode) return;
@@ -12960,6 +12079,15 @@ const commands = {
 
 		siteInfo.notice = lines.join('\n');
 		setBottomStatus('notice modified for debug');
+	},
+	traverseTest: (e, t) => {
+		resourceSaver.asset()
+		.then(saver => {
+			return saver.updateDirectoryTree();
+		})
+		.then(tree => {
+			console.dir(tree);
+		});
 	}
 };
 
@@ -12967,130 +12095,160 @@ const commands = {
  * <<<1 bootstrap
  */
 
-timingLogger = createTimingLogger();
 timingLogger.startTag(`booting ${APP_NAME}`);
 
-storage = createPersistentStorage();
-storage.onChanged = (changes, areaName) => {
-	if ('notices' in changes) {
-		siteInfo.notice = changes.notices.newValue[`${siteInfo.server}/${siteInfo.board}`] || '';
+timingLogger.startTag('waiting import of utility functions');
+modules('utils').then(utils => {
+	timingLogger.endTag();
+
+	({$, $t, $qs, $qsa, empty, fixFragment, serializeXML, getCookie, setCookie,
+	getDOMFromString, getImageMimeType, docScrollTop, docScrollLeft,
+	transitionend, delay, transitionendp, dumpNode, getBlobFrom, getImageFrom,
+	getReadableSize, regalizeEditable, getContentsFromEditable,
+	setContentsToEditable, isHighSurrogate, isLowSurrogate, isSurrogate,
+	resolveCharacterReference, 新字体の漢字を舊字體に変換, osaka, mergeDeep,
+	getErrorDescription, load, substringWithStrictUnicode, invokeMousewheelEvent,
+	voice} = utils);
+
+	storage.assignChangedHandler((changes, areaName) => {
+		switch (areaName) {
+		case 'sync':
+			if ('notices' in changes) {
+				siteInfo.notice = changes.notices.newValue[`${siteInfo.server}/${siteInfo.board}`] || '';
+			}
+			if ('config' in changes) {
+				const data = Object.assign(
+					storage.getAllConfigDefault(),
+					changes.config.newValue);
+				storage.assignConfig(data);
+				applyDataBindings(xmlGenerator.run().xml);
+			}
+			break;
+
+		case 'local':
+			if ('runtime' in changes) {
+				storage.assignRuntime(changes.runtime.newValue);
+			}
+			break;
+		}
+	});
+	Object.defineProperty(window.Akahuku, 'storage', {get: () => storage});
+
+	if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/res\/(\d+)\.htm/)) {
+		siteInfo.server = RegExp.$1;
+		siteInfo.board = RegExp.$2;
+		siteInfo.resno = RegExp.$3 - 0;
+		pageModes.unshift({mode: 'reply', scrollTop: 0});
 	}
-	if ('config' in changes) {
-		const data = Object.assign(
-			storage.getAllConfigDefault(),
-			changes.config.newValue);
-		storage.assignConfig(data);
-		applyDataBindings(xmlGenerator.run('').xml);
+	else if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/(?:([^.]+)\.htm)?/)) {
+		siteInfo.server = RegExp.$1;
+		siteInfo.board = RegExp.$2;
+		siteInfo.summaryIndex = RegExp.$3 - 0 || 0;
+		pageModes.unshift({mode: 'summary', scrollTop: 0});
 	}
-	if ('runtime' in changes) {
-		storage.assignRuntime(changes.runtime.newValue);
-	}
-};
-Object.defineProperty(window.Akahuku, 'storage', {get: function () {return storage}});
 
-transport = createTransport();
-resources = createResourceManager();
+	timingLogger.startTag('waiting multiple promise completion');
+	return Promise.all([
+		// settings loader promise
+		new Promise(resolve => {
+			const defaultStorage = {
+				version: '0.0.1',
+				migrated: false,
+				notices: {},
+				config: storage.getAllConfigDefault()
+			};
+			chrome.storage.sync.get(defaultStorage, result => {
+				if (chrome.runtime.lastError) {
+					throw new Error(chrome.runtime.lastError.message);
+				}
 
-if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/res\/(\d+)\.htm/)) {
-	siteInfo.server = RegExp.$1;
-	siteInfo.board = RegExp.$2;
-	siteInfo.resno = RegExp.$3 - 0;
-	pageModes.unshift({mode: 'reply', scrollTop: 0});
-}
-else if (location.href.match(/^[^:]+:\/\/([^.]+)\.2chan\.net(?::\d+)?\/([^\/]+)\/(?:([^.]+)\.htm)?/)) {
-	siteInfo.server = RegExp.$1;
-	siteInfo.board = RegExp.$2;
-	siteInfo.summaryIndex = RegExp.$3 - 0 || 0;
-	pageModes.unshift({mode: 'summary', scrollTop: 0});
-}
+				/*
+				 * if a default key-value set is specified, the result must be merged.
+				 * but firefox does not do. (2020-01)
+				 */
+				if (IS_GECKO) {
+					result = mergeDeep(defaultStorage, result);
+				}
 
-initialStyle(true);
+				resolve(result);
+			});
+		}),
 
-timingLogger.startTag('waiting multiple promise completion');
-Promise.all([
-	// settings loader promise
-	new Promise(resolve => {
-		const defaultStorage = {
-			version: '0.0.1',
-			migrated: false,
-			notices: {},
-			config: storage.getAllConfigDefault(),
-			runtime: storage.runtime
-		};
-		chrome.storage.sync.get(defaultStorage, result => {
-			if (chrome.runtime.lastError) {
-				throw new Error(chrome.runtime.lastError.message);
+		// runtime loader promise
+		new Promise(resolve => {
+			const defaultStorage = {
+				runtime: storage.runtime
+			};
+			chrome.storage.local.get(defaultStorage, result => {
+				if (chrome.runtime.lastError) {
+					throw new Error(chrome.runtime.lastError.message);
+				}
+
+				if (IS_GECKO) {
+					result = mergeDeep(defaultStorage, result);
+				}
+
+				resolve(result);
+			});
+		}),
+
+		// backend connector promise
+		backend.connect(),
+
+		// DOM construction watcher promise
+		new Promise(resolve => {
+			function next () {
+				scriptWatcher.disconnect();
+				scriptWatcher = undefined;
+
+				styleInitializer.done();
+				styleInitializer = undefined;
+
+				if (NOTFOUND_TITLE.test(document.title)
+				||  UNAVAILABLE_TITLE.test(document.title)
+				||  $('cf-wrapper')) {
+					resolve(false);
+				}
+				else {
+					let html = [];
+					if (document.doctype instanceof Node) {
+						html.push(new XMLSerializer().serializeToString(document.doctype));
+					}
+					html.push(document.documentElement.outerHTML);
+					html = html.join('\n');
+					document.body.innerHTML = `${APP_NAME}: ページを再構成しています。ちょっと待ってね。`;
+					setTimeout(html => {
+						bootVars.bodyHTML = html
+							.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+							.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+							.replace(/>([^<]+)</g, ($0, content) => {
+								content = resolveCharacterReference(content)
+									.replace(/</g, '&lt;')
+									.replace(/>/g, '&gt;');
+								return `>${content}<`;
+							});
+
+						resolve(true);
+					}, 0, html);
+				}
 			}
 
-			/*
-			 * if a default key-value set is specified, the result must be merged.
-			 * but firefox does not do. (2020-01)
-			 */
-			if (WasaviExtensionWrapper.IS_GECKO) {
-				result = mergeDeep(defaultStorage, result);
-			}
-
-			resolve(result);
-		});
-	}),
-
-	// backend connector promise
-	new Promise(resolve => {
-		connectToBackend(connectStatus => {
-			resolve(connectStatus);
-		});
-	}),
-
-	// DOM construction watcher promise
-	new Promise(resolve => {
-		function next () {
-			scriptWatcher.disconnect();
-			scriptWatcher = undefined;
-			initialStyle(false);
-			if (NOTFOUND_TITLE.test(document.title)
-			||  UNAVAILABLE_TITLE.test(document.title)
-			||  $('cf-wrapper')) {
-				resolve(false);
+			if (document.readyState == 'complete'
+			|| document.readyState == 'interactive') {
+				next();
 			}
 			else {
-				const html = document.documentElement[IHTML];
-				document.body[IHTML] = `${APP_NAME}: ページを再構成しています。ちょっと待ってね。`;
-				setTimeout(html => {
-					bootVars.bodyHTML = html
-						.replace(/<script[^>]*>.*?<\/script>/gi, '')
-						.replace(/>([^<]+)</g, ($0, content) => {
-							content = resolveCharacterReference(content)
-								.replace(/</g, '&lt;')
-								.replace(/>/g, '&gt;');
-							return `>${content}<`;
-						});
-
-					resolve(true);
-				}, 0, html);
+				document.addEventListener('DOMContentLoaded', next, {once: true});
 			}
-		}
+		}),
 
-		if (document.readyState == 'complete'
-		|| document.readyState == 'interactive') {
-			next();
-		}
-		else {
-			document.addEventListener(
-				'DOMContentLoaded',
-				function handler (e) {
-					document.removeEventListener(e.type, handler);
-					next();
-				}
-			);
-		}
-	}),
-
-	// fundamental xsl file loader promise
-	resources.get(
-		'/xsl/fundamental.xsl',
-		{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 10})
-]).then(data => {
-	const [storageData, backendConnected, runnable, xsl] = data;
+		// fundamental xsl file loader promise
+		resources.get(
+			'/xsl/fundamental.xsl',
+			{expires:DEBUG_ALWAYS_LOAD_XSL ? 1 : 1000 * 60 * 10}),
+	]);
+}).then(data => {
+	const [syncedStorageData, localStorageData, backendConnection, runnable, xsl] = data;
 	timingLogger.endTag();
 
 	if (!runnable) {
@@ -13098,7 +12256,11 @@ Promise.all([
 		return;
 	}
 
-	if (!backendConnected) {
+	if (backendConnection) {
+		version = backendConnection.version;
+		devMode = backendConnection.devMode;
+	}
+	else {
 		throw new Error(
 			`${APP_NAME}: ` +
 			`バックエンドに接続できません。中止します。`);
@@ -13110,10 +12272,10 @@ Promise.all([
 			`内部用の XSL ファイルの取得に失敗しました。中止します。`);
 	}
 
-	if (version != storageData.version) {
+	if (version != syncedStorageData.version) {
 		// TODO: storage format upgrade goes here
 
-		storage.set({version: version});
+		storage.setSynced({version: version});
 	}
 
 	if (version != window.localStorage.getItem(`${APP_NAME}_version`)) {
@@ -13121,20 +12283,29 @@ Promise.all([
 		window.localStorage.setItem(`${APP_NAME}_version`, version);
 	}
 
-	siteInfo.notice = storageData.notices[`${siteInfo.server}/${siteInfo.board}`] || '';
+	siteInfo.notice = syncedStorageData.notices[`${siteInfo.server}/${siteInfo.board}`] || '';
 
-	storage.assignConfig(storageData.config);
-	storage.assignRuntime(storageData.runtime);
+	storage.assignConfig(syncedStorageData.config);
+	storage.assignRuntime(localStorageData.runtime);
 
-	return sendToBackend('initialized')
-		.then(() => transformWholeDocument(xsl));
+	return backend.send('initialized').then(() => transformWholeDocument(xsl));
 })
 .catch(err => {
 	timingLogger.forceEndTag();
-	console.error(err.stack);
-	initialStyle(false);
-	document.body[IHTML] = `${APP_NAME}: ${err.message}`;
-	$t(document.body.appendChild(document[CRE]('pre')), err.stack);
+	console.dir(err);
+
+	if (scriptWatcher) {
+		scriptWatcher.disconnect();
+		scriptWatcher = undefined;
+	}
+
+	if (styleInitializer) {
+		styleInitializer.done();
+		styleInitializer = undefined;
+	}
+
+	document.body.innerHTML = `${APP_NAME}: ${err.message}`;
+	$t(document.body.appendChild(document.createElement('pre')), err.stack);
 });
 
 }

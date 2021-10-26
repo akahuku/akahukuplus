@@ -20,7 +20,7 @@
 
 import {SimpleCache} from './SimpleCache.js';
 
-const FETCH_URL = 'https://api.twitter.com/1/statuses/oembed.json?id=';
+const FETCH_URL = 'https://publish.twitter.com/oembed?';
 const TWEET_TTL_MSECS = 1000 * 60 * 60;
 
 const tweetCache = SimpleCache(TWEET_TTL_MSECS);
@@ -31,7 +31,7 @@ function FetchTweets () {
 	}
 }
 
-FetchTweets.prototype.run = function run (id, callback) {
+FetchTweets.prototype.run = function run (url, id, callback) {
 	tweetCache.purge();
 
 	if (!/^\d+$/.test(id)) {
@@ -45,7 +45,7 @@ FetchTweets.prototype.run = function run (id, callback) {
 	}
 
 	let xhr = new XMLHttpRequest();
-	xhr.open('GET', FETCH_URL + id);
+	xhr.open('GET', FETCH_URL + (new URLSearchParams({url: url, lang: 'ja'})).toString());
 	xhr.onload = function () {
 		tweetCache.set(id, TWEET_TTL_MSECS, JSON.parse(xhr.responseText));
 		callback(tweetCache.get(id));
