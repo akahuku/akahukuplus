@@ -7201,6 +7201,11 @@ function setupPostFormItemEvent (items) {
 
 		// pseudo reply image
 		if (!canUpload && canTegaki) {
+			if (!devMode) {
+				alert('ん？');
+				return;
+			}
+
 			// only image can post as reply
 			if (!file.type.startsWith('image/')) {
 				setBottomStatus('画像以外のファイルは添付できません');

@@ -226,6 +226,30 @@ const fn = {
 			}
 			document.execCommand('delete', false, null);
 		},
+		cursorDeleteForwardChar: e => {
+			const selection = document.getSelection();
+			const range = selection.getRangeAt(0);
+			if (range.collapsed) {
+				selection.modify('extend', 'forward', 'character');
+			}
+			document.execCommand('delete', false, null);
+		},
+		cursorDeleteForwardWord: e => {
+			const selection = document.getSelection();
+			const range = selection.getRangeAt(0);
+			if (range.collapsed) {
+				selection.modify('extend', 'forward', 'word');
+			}
+			document.execCommand('delete', false, null);
+		},
+		cursorDeleteForwardBlock: e => {
+			const selection = document.getSelection();
+			const range = selection.getRangeAt(0);
+			if (range.collapsed) {
+				selection.modify('extend', 'forward', 'lineboundary');
+			}
+			document.execCommand('delete', false, null);
+		},
 		cursorBeginningOfLine: e => {
 			document.getSelection().modify(getAlter(e), 'backward', 'lineboundary');
 		},
@@ -272,6 +296,15 @@ const fn = {
 			},
 			cursorDeleteBackwardBlock: e => {
 				doWithInput(e.target, fn.common.cursorDeleteBackwardBlock);
+			},
+			cursorDeleteForwardChar: e => {
+				doWithInput(e.target, fn.common.cursorDeleteForwardChar);
+			},
+			cursorDeleteForwardWord: e => {
+				doWithInput(e.target, fn.common.cursorDeleteForwardWord);
+			},
+			cursorDeleteForwardBlock: e => {
+				doWithInput(e.target, fn.common.cursorDeleteForwardBlock);
 			},
 			cursorBeginningOfLine: e => {
 				doWithInput(e.target, fn.common.cursorBeginningOfLine);
@@ -376,6 +409,9 @@ export function createEditorHelper () {
 		cursorDeleteBackwardChar: e => exec('cursorDeleteBackwardChar', e),
 		cursorDeleteBackwardWord: e => exec('cursorDeleteBackwardWord', e),
 		cursorDeleteBackwardBlock: e => exec('cursorDeleteBackwardBlock', e),
+		cursorDeleteForwardChar: e => exec('cursorDeleteForwardChar', e),
+		cursorDeleteForwardWord: e => exec('cursorDeleteForwardWord', e),
+		cursorDeleteForwardBlock: e => exec('cursorDeleteForwardBlock', e),
 		selectAll: e => exec('selectAll', e)
 	};
 }
