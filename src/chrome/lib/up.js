@@ -1,7 +1,21 @@
 /*
  * up/up2 extender for akahukuplus
+ */
+
+/**
+ * Copyright 2022-2024 akahuku, akahuku@gmail.com
  *
- * @author akahuku@gmail.com
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 import {$, $qs, $qsa, empty, delay, load} from './utils.js';
@@ -10,7 +24,7 @@ import {$, $qs, $qsa, empty, delay, load} from './utils.js';
  * constants
  */
 
-const THUMB_MAX_WIDTH = 125;
+//const THUMB_MAX_WIDTH = 125;
 const ENABLE_BURST_LOAD = false;
 const LAST_UPLOADED_ID_KEY = 'lastUpLoadedId';
 const LAST_UPLOADED_FILES_KEY = 'lastUpLoadedFiles';
@@ -44,8 +58,8 @@ function getUUIDv4 () {
 	return typeof crypto != 'undefined' && 'randomUUID' in crypto ?
 		crypto.randomUUID() :
 		'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
-			.replace(/x/g, x => Math.floor(Math.random() * 16).toString(16))
-			.replace(/y/g, y => (Math.floor(Math.random() * 4) + 8).toString(16))
+			.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16))
+			.replace(/y/g, () => (Math.floor(Math.random() * 4) + 8).toString(16))
 }
 
 function displayHUD (message) {
@@ -70,6 +84,7 @@ function writeTextToClipboard (text) {
 		navigator.clipboard.writeText(text);
 	}
 	catch (err) {
+		//
 	}
 }
 
@@ -116,7 +131,7 @@ function fillItem (container, isDetail, data) {
 				data.size = original.size;
 			}
 			if (original.createdAtString && !data.createdAt) {
-				data.createdAtString = data.createdAtString;
+				data.createdAt = data.createdAtString;
 			}
 		}
 
@@ -223,7 +238,7 @@ function loadThumbnail (base) {
 		].join(', '));
 		*/
 		floatContent.style.width = `${mainContent.getBoundingClientRect().width}px`;
-		fillItem(floatContent, true, data.content);;
+		fillItem(floatContent, true, data.content);
 	})
 	.catch(err => {
 		const messages = [];

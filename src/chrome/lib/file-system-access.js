@@ -3,12 +3,25 @@
  *
  * @see https://web.dev/file-system-access/
  * @see https://wicg.github.io/file-system-access/
- * @author akahuku@gmail.com
+ */
+
+/**
+ * Copyright 2022-2024 akahuku, akahuku@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 import * as idbkeyval from './idb-keyval.js';
-
-const isdev = !('key' in chrome.runtime.getManifest());
 
 export function regalizePath (path) {
 	return path
@@ -84,8 +97,9 @@ export function readTextAs (blob, encoding) {
 	});
 }
 
-export function createFileSystemAccess (id = 'default', startIn) {
+export function createFileSystemAccess (id = 'default', globalOptions = {}) {
 	let rootDirectoryHandle;
+	let log = globalOptions.logger || function () {};
 
 	async function parsePath (path, create = false) {
 		try {
@@ -134,29 +148,42 @@ export function createFileSystemAccess (id = 'default', startIn) {
 	 */
 
 	async function verifyPermission (fileHandle, readWrite = false) {
+		log(`enter verifyPermission, readWrite: ${readWrite}`);
+
 		const options = {};
 		if (readWrite) {
 			options.mode = 'readwrite';
 		}
 
 		// Check if permission was already granted. If so, return true.
-		const queriedPermission = await fileHandle.queryPermission(options);
-		isdev && console.log([
-			`queryPermission result: ${queriedPermission}`,
-			`mode: ${options.mode}`
-		].join(', '));
-		if (queriedPermission === 'granted') {
-			return true;
+		try {
+			const queriedPermission = await fileHandle.queryPermission(options);
+			log(`verifyPermission: result of queryPermission(): ${queriedPermission}`);
+
+			if (queriedPermission === 'granted') {
+				return true;
+			}
+		}
+		catch (e) {
+			log(`queryPermission: exception ${Object.prototype.toString.call(e)} occured while calling queryPermission(): ${e.stack}`);
+			return false;
 		}
 
 		// Request permission. If the user grants permission, return true.
-		const requestedPermission = await fileHandle.requestPermission(options);
-		isdev && console.log([
-			`requestPermission result: ${requestedPermission}`,
-			`mode: ${options.mode}`
-		].join(', '));
-		if (requestedPermission === 'granted') {
-			return true;
+		//
+		// According to the spec, requestPermission() may return an exception.
+		// @see: https://wicg.github.io/file-system-access/#api-filesystemhandle-requestpermission
+		try {
+			const requestedPermission = await fileHandle.requestPermission(options);
+			log(`verifyPermission: result of requestPermission(): ${requestedPermission}`);
+
+			if (requestedPermission === 'granted') {
+				return true;
+			}
+		}
+		catch (e) {
+			log(`requestPermission: exception ${Object.prototype.toString.call(e)} occured while calling requestPermission: ${e.stack}`);
+			return false;
 		}
 
 		// The user didn't grant permission, so return false.
@@ -222,6 +249,9 @@ export function createFileSystemAccess (id = 'default', startIn) {
 		}
 
 		try {
+			/*
+			 * '1260060987-職場ではえ〜⁠❤️パソコンとかわかんな〜い⁠❤️を貫き通すに限る.html'
+			 */
 			const fileHandle = await pathInfo.parentDirectoryHandle.getFileHandle(pathInfo.baseName, {create: true});
 			const oldSize = (await fileHandle.getFile()).size;
 
@@ -340,6 +370,7 @@ export function createFileSystemAccess (id = 'default', startIn) {
 					}
 				}
 				catch (e) {
+					//
 				}
 			}
 
@@ -417,90 +448,166 @@ export function createFileSystemAccess (id = 'default', startIn) {
 		rootDirectoryHandle = undefined;
 	}
 
-	async function queryRootDirectoryPermission (readwrite = false) {
-		if (typeof showDirectoryPicker != 'function') {
-			return 'unavailable';
-		}
-
-		let handle = rootDirectoryHandle;
-		if (!handle) {
-			handle = await idbkeyval.get(`root-${id}`);
-		}
-
-		if (!handle) {
-			return 'uninitialized';
-		}
-
-		const options = {};
-		if (readwrite) {
-			options.mode = 'readwrite';
-		}
-		const result = await handle.queryPermission(options);
-
-		if (result !== 'granted') {
-			invalidateRootDirectory();
-		}
-
-		return result;
+	function forgetRootDirectory () {
+		rootDirectoryHandle = undefined;
+		return idbkeyval.del(`root-${id}`).then(() => {
+			return {success: true};
+		});
 	}
 
-	async function getRootDirectory (readwrite = false) {
+	async function queryRootDirectoryPermission (readWrite = false) {
 		try {
+			log([
+				`*** enter queryRootDirectoryPermission  ***`,
+				`  readWrite: ${readWrite}`,
+				`  current root: ${Object.prototype.toString.call(rootDirectoryHandle)}`
+			].join('\n'));
+
 			if (typeof showDirectoryPicker != 'function') {
+				log('queryRootDirectoryPermission: returning "unavailable"');
+				return {permission: 'unavailable'};
+			}
+
+			let handle = rootDirectoryHandle;
+
+			if (!handle) {
+				handle = await idbkeyval.get(`root-${id}`);
+				log('queryRootDirectoryPermission: root directory handle restored from database.');
+			}
+
+			if (!handle) {
+				log('queryRootDirectoryPermission: returning "uninitialized"');
+				return {permission: 'uninitialized'};
+			}
+
+			const options = {};
+			if (readWrite) {
+				options.mode = 'readwrite';
+			}
+			const result = await handle.queryPermission(options);
+			log(`queryRootDirectoryPermission: queryPermission result: ${result}`);
+
+			if (result === 'granted') {
+				rootDirectoryHandle = handle;
+			}
+			else {
+				invalidateRootDirectory();
+				log(`queryRootDirectoryPermission: root directory handle invalidated`);
+			}
+
+			return {permission: result};
+		}
+		catch (e) {
+			return {error: e.message, permission: 'error'};
+		}
+	}
+
+	async function getRootDirectory (readWrite = false) {
+		try {
+			log([
+				`*** enter getRootDirectory ***`,
+				`  readWrite: ${readWrite}`,
+				`  current root: ${Object.prototype.toString.call(rootDirectoryHandle)}`
+			].join('\n'));
+
+			if (typeof showDirectoryPicker != 'function') {
+				log(`getRootDirectory: file system access API is unavailable`);
 				throw new Error('File System Access API is unavailable on this platform.');
 			}
 
-			if (rootDirectoryHandle) {
-				return {
-					handle: rootDirectoryHandle,
-					from: 'Memory'
-				};
+			let from = 'memory';
+
+			if (!rootDirectoryHandle) {
+				from = 'database';
+				rootDirectoryHandle = await idbkeyval.get(`root-${id}`);
+				log(`getRootDirectory: root directory handle restored from database: ${Object.prototype.toString.call(rootDirectoryHandle)}`);
 			}
 
-			rootDirectoryHandle = await idbkeyval.get(`root-${id}`);
-			if (rootDirectoryHandle) {
-				if ((await verifyPermission(rootDirectoryHandle, readwrite)) === false) {
-					throw new Error('getRootDirectory: Permission denied');
+			if (!rootDirectoryHandle) {
+				from = 'user action';
+
+				try {
+					const options = {id};
+					if (globalOptions.startIn) {
+						options.startIn = globalOptions.startIn;
+					}
+					rootDirectoryHandle = await window.showDirectoryPicker(options);
+					idbkeyval.set(`root-${id}`, rootDirectoryHandle);
 				}
-
-				return {
-					handle: rootDirectoryHandle,
-					from: 'Database'
-				};
+				catch (e) {
+					// if user aborted a request, exception occurs.
+					log(`getRootDirectory: user aborted the request.`);
+					await forgetRootDirectory();
+					return {error: 'user aborted the request', handle: null, from};
+				}
+				log(`getRootDirectory: root directory handle initialized by user action: ${Object.prototype.toString.call(rootDirectoryHandle)}`);
 			}
 
-			const options = {id};
-			if (startIn) {
-				options.startIn = startIn;
+			if (!rootDirectoryHandle) {
+				throw new Error('Failed to get root directory handle');
 			}
-			rootDirectoryHandle = await showDirectoryPicker(options);
-			idbkeyval.set(`root-${id}`, rootDirectoryHandle);
 
-			return {
-				handle: rootDirectoryHandle,
-				from: 'User action'
-			};
+			const verified = await verifyPermission(rootDirectoryHandle, readWrite);
+			if (!verified) {
+				log(`getRootDirectory: user refused the authorization.`);
+				await forgetRootDirectory();
+				return {error: 'user refused the authorization', handle: null, from};
+			}
+
+			log(`getRootDirectory: root directory handle is available. source is ${from}`);
+
+			return {handle: rootDirectoryHandle, from};
 		}
 		catch (e) {
-			//await forgetRootDirectory();
+			log(`getRootDirectory: exception ${Object.prototype.toString.call(e)} occured: ${e.stack}`);
+			await forgetRootDirectory();
 			return {error: e.message};
 		}
 	}
 
-	async function forgetRootDirectory () {
-		rootDirectoryHandle = undefined;
-		await idbkeyval.del(`root-${id}`);
-		return {success: true};
+	async function getStatus () {
+		const apiAvailable = typeof showDirectoryPicker == 'function';
+		const handles = {
+			memory: rootDirectoryHandle || null,
+			database: await idbkeyval.get(`root-${id}`) || null
+		};
+		const permissions = {
+			memory: null,
+			database: null
+		};
+
+		if (handles.memory) {
+			permissions.memory = await handles.memory.queryPermission({mode: 'readwrite'});
+			handles.memory = Object.prototype.toString.call(handles.memory);
+		}
+
+		if (handles.database) {
+			permissions.database = await handles.database.queryPermission({mode: 'readwrite'});
+			handles.database = Object.prototype.toString.call(handles.database);
+		}
+
+		return {id, apiAvailable, handles, permissions};
 	}
 
 	return {
 		readFrom, writeTo, getFileHandle, appendTo, listFiles,
-		invalidateRootDirectory, queryRootDirectoryPermission, getRootDirectory, forgetRootDirectory,
-		get isRootDirectoryAvailable () {
-			return !!rootDirectoryHandle;
+		invalidateRootDirectory, forgetRootDirectory,
+		queryRootDirectoryPermission, getRootDirectory,
+		getStatus,
+		get id () {
+			return id;
 		},
 		get enabled () {
-			return location.protocol === 'https:' && typeof showDirectoryPicker === 'function';
+			return location.protocol === 'https:'
+				&& typeof showDirectoryPicker === 'function';
+		},
+		get logger () {
+			return log;
+		},
+		set logger (fn) {
+			if (typeof fn == 'function') {
+				log = fn;
+			}
 		}
 	};
 }

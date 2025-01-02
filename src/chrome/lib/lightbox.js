@@ -1,10 +1,25 @@
 /*
  * lightbox module for akahukuplus
- *
- * @author akahuku@gmail.com
  */
 
-import {$, $qs, $qsa, $t, getImageFrom, delay, transitionendp, empty} from './utils.js';
+/**
+ * Copyright 2022-2024 akahuku, akahuku@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import {$, $qs, $qsa, delay, empty} from './utils.js';
+import {$t, getImageFrom, transitionendp} from './utils-apext.js';
 
 export function lightbox (args) {
 	const {clickDispatcher, keyManager, storage} = args;
@@ -46,9 +61,11 @@ export function lightbox (args) {
 			return image && imageWrap.offsetHeight > args.viewportRect.height;
 		}
 
+		/*
 		function isScrollable () {
 			return isScrollableHorizontally() || isScrollableVertically();
 		}
+		*/
 
 		function isRotated () {
 			return rotation == 'left' || rotation == 'right';
@@ -67,7 +84,7 @@ export function lightbox (args) {
 
 		function getRegionId (e) {
 			const imageRect = dragState.imageRect;
-			const imageWrapRect = image.getBoundingClientRect();
+			//const imageWrapRect = image.getBoundingClientRect();
 
 			let result;
 
@@ -467,7 +484,7 @@ export function lightbox (args) {
 						sign = e.shiftKey ? 1 : -1;
 					}
 					top = imageRect.top +
-						  Math.floor(args.viewportRect.height * WHEEL_SCROLL_UNIT_FACTOR) * sign;
+						Math.floor(args.viewportRect.height * WHEEL_SCROLL_UNIT_FACTOR) * sign;
 				}
 				break;
 			}
@@ -523,13 +540,13 @@ export function lightbox (args) {
 			setZoomMode('whole');
 		}
 
-		function handleSearch (e) {
+		function handleSearch () {
 			if (isInTransition) return;
 			if (!image) return;
 			args.onsearch(image.src);
 		}
 
-		function handleCopyClick (e) {
+		function handleCopyClick () {
 			if (isInTransition) return;
 			if (!image) return;
 			if (location.protocol != 'https:') return;
@@ -580,7 +597,7 @@ export function lightbox (args) {
 			// info
 			$t('lightbox-ratio', '読み込み中...');
 			const link = $('lightbox-link');
-			$t(link, anchor.href.match(/\/([^\/]+)$/)[1]);
+			$t(link, anchor.href.match(/\/([^/]+)$/)[1]);
 			link.href = anchor.href;
 
 			// start
@@ -659,6 +676,7 @@ export function lightbox (args) {
 						receiver.addEventListener('wheel', handlePointerWheel);
 
 						// debug handler
+						/*
 						if (false) {
 							const handler = e => {
 								e.preventDefault();
@@ -677,6 +695,7 @@ export function lightbox (args) {
 								node.addEventListener('click', handler);
 							});
 						}
+						*/
 
 						document.body.setAttribute(RUNNING_EXCLUSION_KEY, 'running');
 					}),

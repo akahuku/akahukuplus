@@ -30,8 +30,8 @@ DAMAGE.
 /* Author: Chas Emerick <cemerick@snowtide.com> */
 var __whitespace = {" ":true, "\t":true, "\n":true, "\f":true, "\r":true};
 
-// export keyword is added by akahuku@gmail.com
-export var difflib = {
+//var difflib = {
+export const difflib = {
 	defaultJunkFunction: function (c) {
 		return __whitespace.hasOwnProperty(c);
 	},

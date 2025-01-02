@@ -3,7 +3,7 @@
  */
 
 /**
- * Copyright 2012-2020 akahuku, akahuku@gmail.com
+ * Copyright 2012-2024 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,52 @@
  * limitations under the License.
  */
 
-function SimpleCache (ttl) {
+import * as idbkeyval from '../../lib/idb-keyval.js';
+
+export function TimeLimitedCache (name, ttl) {
+	const dbKey = `cache-${name}`;
+	let cache;
+
+	async function ensureCache () {
+		if (!cache) {
+			cache = await idbkeyval.get(dbKey) ?? new Map;
+		}
+		return cache;
+	}
+
+	function exists (key) {
+		return ensureCache().then(cache => cache.has(key));
+	}
+
+	function get (key, defaultValue) {
+		return ensureCache().then(cache => cache.get(key)?.data ?? defaultValue);
+	}
+
+	function set (key, value) {
+		return ensureCache().then(cache => {
+			cache.set(key, {
+				expires: Date.now() + ttl,
+				data: value
+			});
+			return idbkeyval.set(dbKey, cache);
+		});
+	}
+
+	function purge () {
+		return ensureCache().then(cache => {
+			for (const [key, value] of cache) {
+				if (Date.now() >= value.expires) {
+					cache.delete(key);
+				}
+			}
+			return idbkeyval.set(dbKey, cache);
+		});
+	}
+
+	return {exists, get, set, purge};
+}
+
+export function SimpleCache (ttl) {
 	if (!(this instanceof SimpleCache)) {
 		return new SimpleCache(ttl);
 	}
@@ -49,7 +94,5 @@ SimpleCache.prototype.purge = function () {
 		}
 	});
 };
-
-export {SimpleCache};
 
 // vim:set ts=4 sw=4 fenc=UTF-8 ff=unix ft=javascript fdm=marker :

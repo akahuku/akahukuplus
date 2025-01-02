@@ -100,6 +100,18 @@ function del(key, customStore = defaultGetStore()) {
     });
 }
 /**
+ * Delete multiple keys at once.
+ *
+ * @param keys List of keys to delete.
+ * @param customStore Method to get a custom store. Use with caution (see the docs).
+ */
+function delMany(keys, customStore = defaultGetStore()) {
+    return customStore('readwrite', (store) => {
+        keys.forEach((key) => store.delete(key));
+        return promisifyRequest(store.transaction);
+    });
+}
+/**
  * Clear all values in the store.
  *
  * @param customStore Method to get a custom store. Use with caution (see the docs).
@@ -110,18 +122,14 @@ function clear(customStore = defaultGetStore()) {
         return promisifyRequest(store.transaction);
     });
 }
-function eachCursor(customStore, callback) {
-    return customStore('readonly', (store) => {
-        // This would be store.getAllKeys(), but it isn't supported by Edge or Safari.
-        // And openKeyCursor isn't supported by Safari.
-        store.openCursor().onsuccess = function () {
-            if (!this.result)
-                return;
-            callback(this.result);
-            this.result.continue();
-        };
-        return promisifyRequest(store.transaction);
-    });
+function eachCursor(store, callback) {
+    store.openCursor().onsuccess = function () {
+        if (!this.result)
+            return;
+        callback(this.result);
+        this.result.continue();
+    };
+    return promisifyRequest(store.transaction);
 }
 /**
  * Get all keys in the store.
@@ -129,8 +137,14 @@ function eachCursor(customStore, callback) {
  * @param customStore Method to get a custom store. Use with caution (see the docs).
  */
 function keys(customStore = defaultGetStore()) {
-    const items = [];
-    return eachCursor(customStore, (cursor) => items.push(cursor.key)).then(() => items);
+    return customStore('readonly', (store) => {
+        // Fast path for modern browsers
+        if (store.getAllKeys) {
+            return promisifyRequest(store.getAllKeys());
+        }
+        const items = [];
+        return eachCursor(store, (cursor) => items.push(cursor.key)).then(() => items);
+    });
 }
 /**
  * Get all values in the store.
@@ -138,8 +152,14 @@ function keys(customStore = defaultGetStore()) {
  * @param customStore Method to get a custom store. Use with caution (see the docs).
  */
 function values(customStore = defaultGetStore()) {
-    const items = [];
-    return eachCursor(customStore, (cursor) => items.push(cursor.value)).then(() => items);
+    return customStore('readonly', (store) => {
+        // Fast path for modern browsers
+        if (store.getAll) {
+            return promisifyRequest(store.getAll());
+        }
+        const items = [];
+        return eachCursor(store, (cursor) => items.push(cursor.value)).then(() => items);
+    });
 }
 /**
  * Get all entries in the store. Each entry is an array of `[key, value]`.
@@ -147,8 +167,18 @@ function values(customStore = defaultGetStore()) {
  * @param customStore Method to get a custom store. Use with caution (see the docs).
  */
 function entries(customStore = defaultGetStore()) {
-    const items = [];
-    return eachCursor(customStore, (cursor) => items.push([cursor.key, cursor.value])).then(() => items);
+    return customStore('readonly', (store) => {
+        // Fast path for modern browsers
+        // (although, hopefully we'll get a simpler path some day)
+        if (store.getAll && store.getAllKeys) {
+            return Promise.all([
+                promisifyRequest(store.getAllKeys()),
+                promisifyRequest(store.getAll()),
+            ]).then(([keys, values]) => keys.map((key, i) => [key, values[i]]));
+        }
+        const items = [];
+        return customStore('readonly', (store) => eachCursor(store, (cursor) => items.push([cursor.key, cursor.value])).then(() => items));
+    });
 }
 
-export { clear, createStore, del, entries, get, getMany, keys, promisifyRequest, set, setMany, update, values };
+export { clear, createStore, del, delMany, entries, get, getMany, keys, promisifyRequest, set, setMany, update, values };

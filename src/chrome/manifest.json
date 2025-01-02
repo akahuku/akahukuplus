@@ -1,32 +1,28 @@
 {
-	"manifest_version": 2,
-	"name": "__MSG_akahukuplus_name__",
-	"short_name": "__MSG_akahukuplus_shortname__",
+	"manifest_version": 3,
+	"name": "__MSG_extension_name__",
+	"short_name": "__MSG_extension_shortname__",
 	"version": "0.0.1",
-	"description": "__MSG_akahukuplus_desc__",
+	"version_name": "0.0.1",
+	"description": "__MSG_extension_desc__",
 	"default_locale": "ja",
-	"applications": {
-		"gecko": {
-			"id": "jid1-ytdk6oePtVeu1A@jetpack",
-			"strict_min_version": "42.0",
-			"update_url": "https://github.com/akahuku/akahukuplus/raw/master/dist/firefox.json"
-		}
-	},
 	"icons": {
 		"48": "images/icon048.png",
 		"128": "images/icon128.png"
 	},
 	"permissions": [
-		"tabs",
-		"clipboardRead", "clipboardWrite",
-		"webRequest", "webRequestBlocking",
-		"storage",
+		"tabs", "storage", "alarms", "notifications", "identity", "identity.email",
+		"clipboardRead", "clipboardWrite", "offscreen", "commands",
+		"declarativeNetRequest", "declarativeNetRequestFeedback"
+	],
+	"host_permissions": [
 		"*://*.2chan.net/*",
 		"*://appsweets.net/*",
 		"https://*.twitter.com/*"
 	],
 	"background": {
-		"page": "backend/main.html"
+		"service_worker": "main.js",
+		"type": "module"
 	},
 	"content_scripts": [
 		{
@@ -43,7 +39,6 @@
 			],
 			"js": [
 				"frontend/global.js",
-				"frontend/twitter_emoji_regexp.js",
 				"frontend/akahukuplus.js"
 			],
 			"run_at": "document_start",
@@ -73,13 +68,30 @@
 		}
 	],
 	"web_accessible_resources": [
-		"images/*",
-		"sounds/*",
-		"styles/*",
-		"fonts/*",
-		"xsl/*",
-		"lib/*"
+		{
+			"resources": [
+				"_locales/*",
+				"images/*",
+				"audio/*",
+				"styles/*",
+				"fonts/*",
+				"lib/*",
+				"sglkc-kuromoji-dict/*"
+			],
+			"matches": [
+				"http://*.2chan.net/*",
+				"https://*.2chan.net/*"
+			]
+		}
 	],
+	"commands": {
+		"enable_debug": {
+			"suggested_key": {
+				"default": "Ctrl+Shift+Period"
+			},
+			"description": "Enable debug feature"
+		}
+	},
 	"homepage_url": "https://appsweets.net/akahukuplus/",
 	"update_url":"https://github.com/akahuku/akahukuplus/raw/master/dist/chrome.xml"
 }

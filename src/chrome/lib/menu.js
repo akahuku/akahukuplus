@@ -1,6 +1,25 @@
-import {
-	$qs, $qsa, getBoundingClientRect, empty, docScrollLeft, docScrollTop
-} from './utils.js';
+/*
+ * pop up menu for akahukuplus
+ */
+
+/**
+ * Copyright 2022-2024 akahuku, akahuku@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import {$qs, $qsa} from './utils.js';
+import {getBoundingClientRect} from './utils-apext.js';
 
 const SUB_MENU_OPEN_WAIT_MSECS = 200;
 const SUB_MENU_LEFTTOP_MARGIN = 4;
@@ -28,11 +47,13 @@ export function createContextMenu (options = {}) {
 	 * event handlers
 	 */
 
+	/*
 	function handleContainerClick (e) {
 		if (panels.length) return;
 		e.preventDefault();
 		registerSubMenuOpen(null, e.target);
 	}
+	*/
 
 	function handleBodyClick (e) {
 		if (e.target == popupTarget) {
@@ -42,7 +63,7 @@ export function createContextMenu (options = {}) {
 			return;
 		}
 
-		const {panel, anchor, key} = getAnchorFrom(e.target);
+		const {panel, anchor} = getAnchorFrom(e.target);
 		if (!panel) {
 			close();
 			return;
@@ -177,7 +198,7 @@ export function createContextMenu (options = {}) {
 		}, AUTO_SCROLL_WAIT_MSECS, scrollPanel, delta);
 	}
 
-	function handleMouseleave (e) {
+	function handleMouseleave () {
 		if (autoScrollTimer) {
 			clearInterval(autoScrollTimer);
 			autoScrollTimer = null;
@@ -188,10 +209,12 @@ export function createContextMenu (options = {}) {
 	 * internal functions
 	 */
 
+	/*
 	function style (elm, s) {
 		for (let i in s) if (i in elm.style) elm.style[i] = '' + s[i];
 		return elm;
 	}
+	*/
 
 	function cre (elm, name) {
 		return elm.appendChild(document.createElement(name));
@@ -277,6 +300,12 @@ export function createContextMenu (options = {}) {
 				else if ('shortcut' in item) {
 					extra.textContent = item.shortcut;
 				}
+				else if ('cost' in item && typeof item.cost === 'number') {
+					const img = cre(extra, 'img');
+					img.className = 'raw';
+					img.src = chrome.runtime.getURL('images/coin.png');
+					extra.appendChild(document.createTextNode(item.cost));
+				}
 
 				if ('disabled' in item && item.disabled) {
 					a.classList.add('disabled');
@@ -316,7 +345,7 @@ export function createContextMenu (options = {}) {
 				break;
 			}
 
-			const {key, element} = panels.pop();
+			const {element} = panels.pop();
 
 			$qsa('.menu-head, .menu-tail', element).forEach(node => {
 				node.removeEventListener('mouseenter', handleMouseenter);
@@ -376,10 +405,13 @@ export function createContextMenu (options = {}) {
 				menu.style.left = `${anchorRect.left}px`;
 				menu.style.top = `${anchorRect.bottom}px`;
 
-				// adjust vertical position
+				// adjust position
 				const menuRect = getBoundingClientRect(menu);
 				if (menuRect.bottom >= screenBottom) {
 					menu.style.top = `${anchorRect.top - menuRect.height}px`;
+				}
+				if (menuRect.right >= screenRight) {
+					menu.style.left = `${screenRight - menuRect.width}px`;
 				}
 			}
 

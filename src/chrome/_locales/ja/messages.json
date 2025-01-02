@@ -1,21 +1,542 @@
 {
-  "akahukuplus_locale": {
-    "message": "日本語"
-  },
-  "akahukuplus_locale_code": {
-    "message": "ja"
-  },
-  "akahukuplus_name": {
-    "message": "赤福プラス"
-  },
-  "akahukuplus_shortname": {
-    "message": "akahukuplus"
-  },
-  "akahukuplus_desc": {
-    "message": "ふたばライフを豊かにする."
-  },
-  "cannot_connect_to_backend": {
-    "message": "バックエンドに接続できません。ページをリロードしてください。",
-    "description": "Cannot connect to backend. Please reload this page."
-  }
+	"locale": {
+		"message": "日本語"
+	},
+	"locale_code": {
+		"message": "ja"
+	},
+	"extension_name": {
+		"message": "赤福プラス"
+	},
+	"extension_shortname": {
+		"message": "akahukuplus"
+	},
+	"extension_desc": {
+		"message": "ふたばライフを豊かにする."
+	},
+	"cannot_connect_to_backend_reload": {
+		"message": "バックエンドに接続できません。ページをリロードしてください。"
+	},
+	"cannot_connect_to_backend_stop": {
+		"message": "$1: バックエンドに接続できません。中止します。"
+	},
+	"failed_to_retrieve_xsl_file": {
+		"message": "$1: 内部用の XSL ファイルの取得に失敗しました。中止します。"
+	},
+	"failed_to_parse_xsl_file": {
+		"message": "XSL ファイルの DOM ツリー構築に失敗しました。中止します。"
+	},
+	"failed_to_import_xsl_file": {
+		"message": "XSL ファイルのインポートに失敗しました。中止します。"
+	},
+	"failed_to_transform_xml_document": {
+		"message": "XML 文書を変換できませんでした。中止します。"
+	},
+	"rebuilding_page": {
+		"message": "$1: ページを再構成しています。ちょっと待ってね。"
+	},
+	"canceled": {
+		"message": "キャンセルされました。"
+	},
+	"page": {
+		"message": "ページ"
+	},
+	"thread": {
+		"message": "スレッド"
+	},
+	"thread_short": {
+		"message": "スレ"
+	},
+	"summary": {
+		"message": "サマリー"
+	},
+	"reply": {
+		"message": "レス"
+	},
+	"reply_short": {
+		"message": "レス"
+	},
+	"catalog": {
+		"message": "カタログ"
+	},
+	"hour_short": {
+		"message": "$1時間"
+	},
+	"min_short": {
+		"message": "$1分"
+	},
+	"sec_short": {
+		"message": "$1秒"
+	},
+	"day": {
+		"message": "$1日"
+	},
+	"hour": {
+		"message": "$1時間"
+	},
+	"min": {
+		"message": "$1分"
+	},
+	"sec": {
+		"message": "$1秒"
+	},
+	"expire": {
+		"message": "あと$1くらい"
+	},
+	"expire_joiner": {
+		"message": ""
+	},
+	"expire_soon": {
+		"message": "まもなく"
+	},
+	"snip": {
+		"message": "...(省略)"
+	},
+	"invalid_selection": {
+		"message": "選択範囲が変です。"
+	},
+	"moderated_result": {
+		"message": "$1 件の記事に del を送信しました。"
+	},
+	"deleted_result": {
+		"message": "$1 件の記事に削除を申請しました。"
+	},
+	"liked_result": {
+		"message": "$1 件の記事にそうだねしました。"
+	},
+	"evaluation_title": {
+		"message": "記事の評価"
+	},
+	"error_insufficient_coins": {
+		"message": "コインが足りません！！"
+	},
+	"error_coin_charge_multiple_evaluation": {
+		"message": "複数の投稿を評価するには、コインが自動チャージされている必要があります。"
+	},
+	"error_valid_id_multiple_evaluation": {
+		"message": "複数の投稿を評価するには、このブラウザにGoogleアカウントでログインしている必要があります。"
+	},
+	"failed_to_evaluate_posts": {
+		"message": "書き込みの評価に失敗しました。"
+	},
+	"not_https": {
+		"message": "お前が今開いているページは https じゃないので保存できない。"
+	},
+	"not_have_fsa": {
+		"message": "お前が今使っているブラウザにはファイルアクセス API がないので保存できない。"
+	},
+	"no_longer_supported": {
+		"message": "$1 ストレージはサポート外になりました。"
+	},
+	"force_local_storage": {
+		"message": "設定で local (FileSystemAccess) ストレージを選択してください。"
+	},
+	"trying_to_get_fs": {
+		"message": "ファイルアクセスのための承認を得ています…"
+	},
+	"saving_image": {
+		"message": "画像の保存"
+	},
+	"loading_folder_tree": {
+		"message": "フォルダツリーの読み込み"
+	},
+	"invalid_file_name": {
+		"message": "ファイル名が不正です。設定でファイル名のテンプレートを修正してください。"
+	},
+	"now_saving_image": {
+		"message": "画像を保存中..."
+	},
+	"saving_completed": {
+		"message": "保存完了"
+	},
+	"saving_failed": {
+		"message": "保存失敗"
+	},
+	"saving_failed_by": {
+		"message": "画像を保存できませんでした。"
+	},
+	"saved": {
+		"message": "保存済み"
+	},
+	"saved_to": {
+		"message": "$1 へ保存済み"
+	},
+	"updated_folder_tree": {
+		"message": "フォルダツリーを更新しました。"
+	},
+	"update_folder_tree_failed": {
+		"message": "フォルダツリーを更新できませんでした。"
+	},
+	"save_hist_cleared": {
+		"message": "保存履歴をクリアしました。"
+	},
+	"saving_thread": {
+		"message": "スレッドの保存"
+	},
+	"now_saving_thread": {
+		"message": "スレッド保存中..."
+	},
+	"now_adding_new_posts": {
+		"message": "スレッド追記中..."
+	},
+	"add_new_posts_failed": {
+		"message": "追記に失敗しました。"
+	},
+	"autosaving_enabled": {
+		"message": "自動保存が有効"
+	},
+	"autosaving_stat": {
+		"message": "保存先: $1\n$2 レス目まで保存済み"
+	},
+	"will_reload_soon": {
+		"message": "まもなく更新します..."
+	},
+	"will_reload_in": {
+		"message": "あと $1 くらいで更新します..."
+	},
+	"autotrack": {
+		"message": "自動追尾"
+	},
+	"autotrack_enabled": {
+		"message": "自動追尾中"
+	},
+	"thread_updated": {
+		"message": "!更新!"
+	},
+	"video_freed": {
+		"message": "解放"
+	},
+	"video_loading": {
+		"message": "読込中"
+	},
+	"jpeg_encode_too_large": {
+		"message": "JPEG エンコードしてもファイルが大きすぎます。"
+	},
+	"pasting_image": {
+		"message": "画像を貼り付けています..."
+	},
+	"generating_thumbnail": {
+		"message": "サムネイルを生成しています..."
+	},
+	"non_image_cannot_be_attached": {
+		"message": "画像以外のファイルは添付できません。"
+	},
+	"error_coin_charge_paste_image": {
+		"message": "疑似レス画像を貼るには、コインが自動チャージされている必要があります。"
+	},
+	"cannot_load_image": {
+		"message": "画像を読み込めません。"
+	},
+	"hand_drawing": {
+		"message": "手書き"
+	},
+	"pseudo_reply_image": {
+		"message": "疑似画像レス"
+	},
+	"file_too_large": {
+		"message": "ファイルが大きすぎます。"
+	},
+	"re_encoded_jpeg": {
+		"message": "再エンコードJPEG($1)"
+	},
+	"reload_power": {
+		"message": "リロードぢから：$1%"
+	},
+	"error_coin_charge_image_randomize": {
+		"message": "画像ハッシュのランダム化は、コインが自動チャージされている必要があります。"
+	},
+	"error_valid_id_image_randomize": {
+		"message": "画像ハッシュのランダム化は、このブラウザにGoogleアカウントでログインしている必要があります。"
+	},
+	"failed_to_tweak_image": {
+		"message": "添付画像の操作に失敗しました。"
+	},
+	"error_coin_charge_pseudo_reply_image": {
+		"message": "疑似レス画像を貼るには、コインが自動チャージされている必要があります。"
+	},
+	"error_valid_id_pseudo_reply_image": {
+		"message": "疑似レス画像を貼るには、このブラウザにGoogleアカウントでログインしている必要があります。"
+	},
+	"invalid_moderation_response": {
+		"message": "サーバからの del の応答が変です。"
+	},
+	"invalid_post_response": {
+		"message": "サーバからの投稿の応答が変です ($1)"
+	},
+	"network_error": {
+		"message": "ネットワークエラーにより内容を取得できません。"
+	},
+	"failed_to_build_dom": {
+		"message": "読み込んだ html からの DOM ツリー構築に失敗しました。"
+	},
+	"failed_to_parse_json": {
+		"message": "読み込んだ JSON の解析に失敗しました。"
+	},
+	"invalid_thumbnail_data": {
+		"message": "サムネイルサーバから正しいデータが返されませんでした。"
+	},
+	"invalid_completion_data": {
+		"message": "補完結果が不正です: $1"
+	},
+	"completion_failed": {
+		"message": "(補完失敗)"
+	},
+	"search_result_count": {
+		"message": "$1 件を抽出"
+	},
+	"loading_hold_on": {
+		"message": "読み込み中です。ちょっとまってね。"
+	},
+	"strange_content": {
+		"message": "内容が変だよ ($1)"
+	},
+	"aborted": {
+		"message": "中断しました。"
+	},
+	"loading": {
+		"message": "読み込み中..."
+	},
+	"posting": {
+		"message": "投稿中..."
+	},
+	"failed_to_load_summary_page": {
+		"message": "サマリーの読み込みに失敗しました。"
+	},
+	"no_further_posts": {
+		"message": "更新なし"
+	},
+	"server_error": {
+		"message": "サーバエラー"
+	},
+	"load_complete_404_anchor": {
+		"message": "Not Found. ファイルがないよ。"
+	},
+	"full_reload_complete_404": {
+		"message": "完了: フルリロード, 404 Not Found"
+	},
+	"full_reload_complete_304": {
+		"message": "完了: フルリロード, 304 Not Modified"
+	},
+	"full_reload_complete_5xx": {
+		"message": "完了: フルリロード, サーバエラー ($1)"
+	},
+	"full_reload_complete": {
+		"message": "完了: フルリロード"
+	},
+	"diff_reload_complete_404": {
+		"message": "完了: 差分リロード, 404 Not Found"
+	},
+	"diff_reload_complete_304": {
+		"message": "完了: 差分リロード, 304 Not Modified"
+	},
+	"diff_reload_complete_5xx": {
+		"message": "完了: 差分リロード, サーバエラー ($1)"
+	},
+	"diff_reload_complete": {
+		"message": "完了: 差分リロード"
+	},
+	"processing": {
+		"message": "処理中..."
+	},
+	"new_posts": {
+		"message": "新着 $1 レス"
+	},
+	"no_new_posts": {
+		"message": "新着レスなし"
+	},
+	"failed_to_load_further_posts": {
+		"message": "続きの読み込みに失敗しました。"
+	},
+	"notice_updated": {
+		"message": "注意書きが更新されたみたいです。"
+	},
+	"failed_to_load_catalog": {
+		"message": "カタログの読み込みに失敗しました。"
+	},
+	"catalog_load_complete": {
+		"message": "カタログの読み込みが完了しました。"
+	},
+	"posting_completed": {
+		"message": "投稿完了"
+	},
+	"failed_to_post": {
+		"message": "投稿が失敗しました。"
+	},
+	"dialog_evaluation": {
+		"message": "記事の削除とdel"
+	},
+	"dialog_config": {
+		"message": "設定"
+	},
+	"dialog_move_delta": {
+		"message": "Delta: $1"
+	},
+	"dialog_keyboard_shortcuts": {
+		"message": "キーボード ショートカット"
+	},
+	"dialog_coin_autocharge": {
+		"message": "コインの自動チャージ"
+	},
+	"coin_registered": {
+		"message": "自動チャージのためのIDが登録されました。\nGoogleアカウントのプライマリメールアドレスに承認を求めるメールを送信しましたのでご確認ください。"
+	},
+	"coin_await_approval": {
+		"message": "このアカウントは承認待ちです。\nGoogleアカウントのプライマリメールアドレスに届いたメールをご確認ください。"
+	},
+	"coin_valid_id": {
+		"message": "自動チャージを有効にしました。やったね。"
+	},
+	"coin_invalid_status": {
+		"message": "なにかが変...?"
+	},
+	"coin_invalid_response": {
+		"message": "なにかが変...!"
+	},
+	"coin_autocharge_disabled": {
+		"message": "自動チャージを解除しました。"
+	},
+	"menu_quote": {
+		"message": "引用"
+	},
+	"menu_copy_to_comment": {
+		"message": "コメントへ"
+	},
+	"menu_daikuuji": {
+		"message": "大！空！寺！"
+	},
+	"menu_copy": {
+		"message": "コピー"
+	},
+	"menu_copy_with_quote": {
+		"message": "引用符付きコピー"
+	},
+	"menu_sodane": {
+		"message": "そうだね"
+	},
+	"menu_delete": {
+		"message": "削除を申請..."
+	},
+	"menu_moderate": {
+		"message": "del を送信..."
+	},
+	"menu_select_between": {
+		"message": "2つの記事の間を選択"
+	},
+	"menu_clear_selection": {
+		"message": "選択を解除"
+	},
+	"menu_select_between_desc": {
+		"message": "最初に適当な2つの記事を選択してください。\nその後でこのメニューを実行すると挟まれた記事をすべて選択できます。"
+	},
+	"menu_save_to": {
+		"message": "ここに保存"
+	},
+	"menu_save_to_default_path": {
+		"message": "既定の場所に保存"
+	},
+	"menu_update_folder_tree": {
+		"message": "フォルダツリーを更新"
+	},
+	"menu_clear_histories": {
+		"message": "履歴をクリア"
+	},
+	"menu_request_grant": {
+		"message": "ファイルアクセスを許可..."
+	},
+	"active_search_tab_title": {
+		"message": "$1検索"
+	},
+	"catsearch_item": {
+		"message": "$1 $2 レス"
+	},
+	"catsearch_item_new": {
+		"message": "$1 レス (new)"
+	},
+	"menu_autocharge_state": {
+		"message": "自動チャージの設定..."
+	},
+	"menu_purchase_coins": {
+		"message": "コインを購入..."
+	},
+	"stat_count": {
+		"message": "$1 回"
+	},
+	"suspicious_url": {
+		"message": "(怪しい URL)"
+	},
+	"failed_to_refresh_coin_status": {
+		"message": "コインの状態の同期に失敗しました。"
+	},
+	"invalid_account_info": {
+		"message": "アカウント情報が不正です。"
+	},
+	"failed_to_commit_coin_transaction": {
+		"message": "コイン操作を完了できませんでした。"
+	},
+	"failed_to_get_google_account": {
+		"message": "Googleアカウントを取得できません。"
+	},
+	"in_coin_transaction": {
+		"message": "いま急がしいのでちょっと待ってね。"
+	},
+	"this_commnad_is_unavailable": {
+		"message": "無効なコマンドです。"
+	},
+	"not_in_auto_charge_mode_of_coins": {
+		"message": "コインが自動チャージされていません。"
+	},
+	"unknown_coin_command": {
+		"message": "未知のコインコマンド “$1”"
+	},
+	"replace_leader_asis": {
+		"message": "そのまま"
+	},
+	"replace_leader_excite": {
+		"message": "「！」で置き換え"
+	},
+	"replace_leader_love": {
+		"message": "「♥」で置き換え"
+	},
+	"replace_leader_fate": {
+		"message": "「─」で置き換え"
+	},
+	"replace_leader_3dots": {
+		"message": "「…」で統一"
+	},
+	"replace_leader_custom": {
+		"message": "カスタム設定値で置き換え"
+	},
+	"there_is_no_word_after_pipe": {
+		"message": "| が途中で終わった"
+	},
+	"too_many_pipe": {
+		"message": "| 使いすぎ！"
+	},
+	"too_many_words": {
+		"message": "単語おすぎ！"
+	},
+	"enter_least_one_word": {
+		"message": "-で始まらない単語を少なくともひとつ入力してください"
+	},
+	"enter_word_before_pipe": {
+		"message": "| がいきなり出てきた"
+	},
+	"enter_word_before_paren": {
+		"message": ") がいきなり出てきた"
+	},
+	"parentheses_are_unbalanced": {
+		"message": "括弧がつり合っていません"
+	},
+	"invalid_regular_expression": {
+		"message": "正規表現に誤りがあります"
+	},
+	"type_something": {
+		"message": "何か入力してください"
+	},
+	"save_to_arg": {
+		"message": "$1 に保存"
+	},
+	"save_to_here": {
+		"message": "ここに保存"
+	}
 }

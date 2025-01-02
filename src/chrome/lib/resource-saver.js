@@ -1,12 +1,27 @@
 /*
  * image saving module for akahukuplus
- *
- * @author akahuku@gmail.com
  */
 
-import {$qs, $qsa, empty, load} from './utils.js';
+/**
+ * Copyright 2022-2024 akahuku, akahuku@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import {_, $qs, $qsa, empty, load} from './utils.js';
 
 let assetURLTranslator;
+let locale;
 
 function loadAsset (url, options = {}, type) {
 	const u = new URL(url);
@@ -29,7 +44,11 @@ export function setAssetURLTranslator (value) {
 	assetURLTranslator = value;
 }
 
-export function createAssetSaver (fileSystemAccess) {
+export function setLocale (l) {
+	locale = l;
+}
+
+export function createAssetSaver (fileSystem) {
 	async function save (url, localPath) {
 		try {
 			/*
@@ -41,20 +60,23 @@ export function createAssetSaver (fileSystemAccess) {
 			console.log(buffer.join('\n'));
 			*/
 
-			const lsResult = await fileSystemAccess.listFiles(localPath, {forReadWrite: true});
+			const lsResult = await fileSystem.listFiles(localPath, {forReadWrite: true});
+			/*if (lsResult.error) {
+				return lsResult;
+			}*/
 			if (!lsResult.error && lsResult.files && lsResult.files.length) {
 				return {localPath, created: false};
 			}
 
 			const image = await loadAsset(url, {}, 'blob');
 			if (image.error) {
-				return {error: image.error};
+				return image;
 			}
 
 			const writeOptions = {create: true};
-			const writeResult = await fileSystemAccess.writeTo(localPath, image.content, writeOptions);
+			const writeResult = await fileSystem.writeTo(localPath, image.content, writeOptions);
 			if (writeResult.error) {
-				return {error: writeResult.error};
+				return writeResult;
 			}
 
 			return {localPath, created: true};
@@ -66,7 +88,7 @@ export function createAssetSaver (fileSystemAccess) {
 
 	async function getDirectoryTree (path = '') {
 		try {
-			const ls = await fileSystemAccess.listFiles(path, {
+			const ls = await fileSystem.listFiles(path, {
 				skipFile: true,
 				directoryGenerator: (dir, path) => {
 					const key = dir.name.replace(/,/g, '-');
@@ -80,7 +102,7 @@ export function createAssetSaver (fileSystemAccess) {
 			});
 
 			if (ls.error) {
-				throw new Error(ls.error);
+				return ls;
 			}
 
 			const tree = [];
@@ -88,7 +110,7 @@ export function createAssetSaver (fileSystemAccess) {
 			if (ls.files) {
 				tree.push({
 					key: 'save-to',
-					label: `${ls.baseName || 'ここ'} に保存`,
+					label: ls.baseName ? _('save_to_arg', ls.baseName) : _('save_to_here'),
 					name: ls.baseName || '',
 					path: ls.path.replace(/^\//, '')
 				});
@@ -119,12 +141,12 @@ export function createAssetSaver (fileSystemAccess) {
 
 	return {
 		save, getDirectoryTree,
-		get fileSystemAccess () {return fileSystemAccess}
+		get fileSystem () {return fileSystem}
 	};
 }
 
-export function createThreadSaver (fileSystemAccess) {
-	const COMMENT_TRANSFORMER = 'saver-comments.xsl';
+export function createThreadSaver (fileSystem) {
+	const COMMENT_TRANSFORMER = `_locales/${locale}/saver-comments.xsl`;
 	const DELIMITER = 'replies goes here';
 	const ASSET_FOLD_MAX = 120;
 	const LENGTH_BLOCK_WIDTH = 8;
@@ -173,7 +195,7 @@ export function createThreadSaver (fileSystemAccess) {
 
 	function getAssetInitializer () {
 		function f () {
-			document.addEventListener('DOMContentLoaded',e=>{
+			document.addEventListener('DOMContentLoaded',()=>{
 				'use strict';
 				const $=s=>document.getElementById(s),
 					$qs=(s,d)=>(d||document).querySelector(s),
@@ -225,8 +247,11 @@ export function createThreadSaver (fileSystemAccess) {
 					for(const n in posts) {
 						const reply=$(n.replace(/No\./,'delcheck'));
 						if(!reply)continue;
-						reply.parentNode.insertBefore(document.importNode(posts[n],true),reply.nextSibling);
-						reply.parentNode.removeChild(reply);
+						const table = reply.closest('table');
+						if(!table)continue;
+						r.selectNodeContents(table);
+						r.deleteContents();
+						r.insertNode(document.importNode(posts[n],true));
 					}
 				}
 				{
@@ -270,6 +295,7 @@ export function createThreadSaver (fileSystemAccess) {
 
 		return f.toString()
 			.replace(/\n\s*/g, '')
+			.replace(/;\}/g, '}')
 			.replace(/^[^{]+\{/, '')
 			.replace(/\}\s*$/, '');
 	}
@@ -279,10 +305,9 @@ export function createThreadSaver (fileSystemAccess) {
 			return Promise.resolve(xsltProcessor);
 		}
 
-		return fetch(chrome.runtime.getURL(`xsl/${COMMENT_TRANSFORMER}`))
-			.then(response => response.text())
-			.then(text => {
-				const xsl = (new DOMParser).parseFromString(text, 'text/xml');
+		return load(chrome.runtime.getURL(COMMENT_TRANSFORMER), {}, 'text')
+			.then(result => {
+				const xsl = (new DOMParser).parseFromString(result.content, 'text/xml');
 				xsltProcessor = new XSLTProcessor;
 				xsltProcessor.importStylesheet(xsl);
 				return xsltProcessor;
@@ -380,7 +405,7 @@ export function createThreadSaver (fileSystemAccess) {
 				node.removeAttribute('src');
 			}
 			else {
-				const basename = /[^\/]*$/.exec((new URL(url)).pathname)[0];
+				const basename = /[^/]*$/.exec((new URL(url)).pathname)[0];
 				node.setAttribute('href', `#${basename}`);
 			}
 
@@ -526,7 +551,7 @@ export function createThreadSaver (fileSystemAccess) {
 	 */
 
 	async function readHTMLData () {
-		const fileHandleResult = await fileSystemAccess.getFileHandle(localPath, true);
+		const fileHandleResult = await fileSystem.getFileHandle(localPath, true);
 		if (fileHandleResult.error) {
 			throw new Error(`readHTMLData: ${fileHandleResult.error}`);
 		}
@@ -603,7 +628,7 @@ export function createThreadSaver (fileSystemAccess) {
 			}
 			if (updatedPosts.size) {
 				let transformed = createIntermediateDocument();
-				for (const [number, type] of updatedPosts) {
+				for (const [number] of updatedPosts) {
 					let node;
 					if ((node = $qs(`article .topic-wrap[data-number="${number}"]`))) {
 						transformed.body.appendChild(
@@ -727,13 +752,17 @@ export function createThreadSaver (fileSystemAccess) {
 
 	async function start (content, aLocalPath) {
 		try {
-			await Promise.all([
+			const [root] = await Promise.all([
 				// Show permission dialog for file access early on if necessary
 				// for a responsive UI.
-				fileSystemAccess.getRootDirectory(true),
+				fileSystem.getRootDirectory(true),
 
 				ensureXSLTProcessor()
 			]);
+
+			if (root.error) {
+				return root;
+			}
 
 			/*
 			 * html1:
@@ -754,9 +783,10 @@ export function createThreadSaver (fileSystemAccess) {
 				{type: 'text/html'});
 			const html2Size = createLengthBlockCommentString(html2Blob);
 
-			const result = await fileSystemAccess.writeTo(
+			const result = await fileSystem.writeTo(
 				aLocalPath,
-				new Blob([html1, html2Blob, html2Size], {type: 'text/html'}));
+				new Blob([html1, html2Blob, html2Size], {type: 'text/html'}),
+				{create: true});
 			if (result.error) {
 				throw new Error(result.error);
 			}
@@ -832,6 +862,6 @@ export function createThreadSaver (fileSystemAccess) {
 	return {
 		push, start, stop,
 		get running () {return running},
-		get fileSystemAccess () {return fileSystemAccess}
+		get fileSystem () {return fileSystem}
 	};
 }

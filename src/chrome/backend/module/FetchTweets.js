@@ -3,7 +3,7 @@
  */
 
 /**
- * Copyright 2012-2020 akahuku, akahuku@gmail.com
+ * Copyright 2012-2024 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,47 +18,46 @@
  * limitations under the License.
  */
 
-import {SimpleCache} from './SimpleCache.js';
+import {TimeLimitedCache} from './SimpleCache.js';
+import {log, load} from '../../lib/utils.js';
 
 const FETCH_URL = 'https://publish.twitter.com/oembed?';
 const TWEET_TTL_MSECS = 1000 * 60 * 60;
 
-const tweetCache = SimpleCache(TWEET_TTL_MSECS);
-
 function FetchTweets () {
-	if (!(this instanceof FetchTweets)) {
-		return new FetchTweets;
+	const tweetCache = new TimeLimitedCache('tweet', TWEET_TTL_MSECS);
+
+	async function run (url, id) {
+		tweetCache.purge();
+
+		if (!/^\d+$/.test(id)) {
+			log(`FetchTweets: invalid id, "${id}"`);
+			return null;
+		}
+
+		if (await tweetCache.exists(id)) {
+			const content = await tweetCache.get(id);
+			log(`FetchTweets: found ${id} from cache: ${content?.html}`);
+			return content;
+		}
+
+		const result = await load(
+			`${FETCH_URL}${new URLSearchParams({url, lang: 'ja'})}`);
+		const content = result.error ? null : result.content;
+
+		if (result.error) {
+			log(`FetchTweets: failed to load for id ${id}, error: ${result.error}`);
+		}
+		else {
+			log(`FetchTweets: loaded the content for id ${id} from X: ${content?.html}`);
+		}
+
+		await tweetCache.set(id, content);
+
+		return content;
 	}
-}
 
-FetchTweets.prototype.run = function run (url, id, callback) {
-	tweetCache.purge();
-
-	if (!/^\d+$/.test(id)) {
-		callback(null);
-		return;
-	}
-
-	if (tweetCache.exists(id)) {
-		callback(tweetCache.get(id));
-		return;
-	}
-
-	let xhr = new XMLHttpRequest();
-	xhr.open('GET', FETCH_URL + (new URLSearchParams({url: url, lang: 'ja'})).toString());
-	xhr.onload = function () {
-		tweetCache.set(id, TWEET_TTL_MSECS, JSON.parse(xhr.responseText));
-		callback(tweetCache.get(id));
-		xhr = xhr.onload = xhr.onerror = null;
-	};
-	xhr.onerror = function () {
-		tweetCache.set(id, TWEET_TTL_MSECS, null);
-		callback(tweetCache.get(id));
-		xhr = xhr.onload = xhr.onerror = null;
-	};
-	xhr.send();
-
-	return true;
+	return {run};
 }
 
 export {FetchTweets};

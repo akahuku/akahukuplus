@@ -1,43 +1,37 @@
 # application macros
 # ========================================
 
-VERSION := $(shell echo -n `git describe --tags --abbrev=0|sed -e 's/[^0-9.]//g'`.`git rev-list --count HEAD`)
-
 SHELL := /bin/sh
 
 CHROME := google-chrome
-OPERA := opera
 FIREFOX := firefox
-CYGPATH := echo
 
+AWK := gawk
+SED := sed
 ZIP := zip -qr9
-UNZIP := unzip
-
 RSYNC := rsync
+RSYNC_OPT := -rptLv --delete --exclude-from=embryo-excludes.txt
+
+
 
 # basic macros
 # ========================================
+
+VERSION := $(shell echo -n `git describe --tags --abbrev=0|sed -e 's/[^0-9.]//g'`.`git rev-list --count HEAD`)
 
 PRODUCT = akahukuplus
 DIST_DIR = dist
 SRC_DIR = src
 EMBRYO_DIR = .embryo
 
-RSYNC_OPT = -rptLv --delete \
-	--exclude '*.sw?' --exclude '*.bak' --exclude '*~' --exclude '*.sh' \
-	--exclude '.*' \
+CHROMEZIP_SUFFIX = zip
+CHROMEZIP_SRC_DIR = chromezip
 
 CHROME_SUFFIX = crx
 CHROME_SRC_DIR = chrome
 CHROME_EXT_ID = ebdgiiahmbloeogknjeekjpkkfnamlkb
 CHROME_EXT_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/$(PRODUCT).crx
 CHROME_UPDATE_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/chrome.xml
-
-BLINKOPERA_SUFFIX = nex
-BLINKOPERA_SRC_DIR = opera-blink
-BLINKOPERA_EXT_ID = ebdgiiahmbloeogknjeekjpkkfnamlkb
-BLINKOPERA_EXT_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/$(PRODUCT).nex
-BLINKOPERA_UPDATE_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/blink-opera.xml
 
 FIREFOX_SUFFIX = xpi
 FIREFOX_SRC_DIR = firefox
@@ -48,56 +42,103 @@ FIREFOX_UPDATE_LOCATION = https://github.com/akahuku/$(PRODUCT)/raw/master/dist/
 # derived macros
 # ========================================
 
+CHROMEZIP_TARGET_PATH = $(DIST_DIR)/$(PRODUCT)_chrome_web_store.$(CHROMEZIP_SUFFIX)
+CHROMEZIP_EMBRYO_SRC_PATH = $(EMBRYO_DIR)/$(CHROMEZIP_SRC_DIR)
+
 CHROME_TARGET_PATH = $(DIST_DIR)/$(PRODUCT).$(CHROME_SUFFIX)
-CHROME_MTIME_PATH = $(EMBRYO_DIR)/.$(CHROME_SUFFIX)
 CHROME_SRC_PATH = $(SRC_DIR)/$(CHROME_SRC_DIR)
 CHROME_EMBRYO_SRC_PATH = $(EMBRYO_DIR)/$(CHROME_SRC_DIR)
-CHROME_TEST_PROFILE_PATH := $(shell $(CYGPATH) profile/chrome)
-
-BLINKOPERA_TARGET_PATH = $(DIST_DIR)/$(PRODUCT).$(BLINKOPERA_SUFFIX)
-BLINKOPERA_MTIME_PATH = $(EMBRYO_DIR)/.$(BLINKOPERA_SUFFIX)
-BLINKOPERA_SRC_PATH = $(SRC_DIR)/$(BLINKOPERA_SRC_DIR)
-BLINKOPERA_EMBRYO_SRC_PATH = $(EMBRYO_DIR)/$(BLINKOPERA_SRC_DIR)
+CHROME_LATEST_SRC_PATH := $(shell \
+	find -L $(CHROME_SRC_PATH) -type f,l \
+	-printf '%TY-%Tm-%Td %.8TT %p\n' | sort -nr | head -1 | cut -f3 -d" ")
 
 FIREFOX_TARGET_PATH = $(DIST_DIR)/$(PRODUCT).$(FIREFOX_SUFFIX)
-FIREFOX_MTIME_PATH = $(EMBRYO_DIR)/.$(FIREFOX_SUFFIX)
 FIREFOX_SRC_PATH = $(SRC_DIR)/$(FIREFOX_SRC_DIR)
 FIREFOX_EMBRYO_SRC_PATH = $(EMBRYO_DIR)/$(FIREFOX_SRC_DIR)
-FIREFOX_TEST_PROFILE_PATH := $(shell $(CYGPATH) profile/firefox)
-
-SED_SCRIPT_DEBUG_OFF = -e 's/\(const\s\+DEBUG_ALWAYS_LOAD_XSL\s*=\s*\)true/\1false/' \
-	-e 's/\(const\s\+DEBUG_DUMP_INTERNAL_XML\s*=\s*\)true/\1false/' \
-	-e 's/\(const\s\+DEBUG_HIDE_BANNERS\s*=\s*\)true/\1false/' \
-	-e 's/\(const\s\+DEBUG_IGNORE_LAST_MODIFIED\s*=\s*\)true/\1false/' \
-	-e '/const\s\+IDEOGRAPH_CONVERSION/s/true/false/'
-
-# local override of macros
-# ========================================
-
--include app.mk
+FIREFOX_DEBUG_SRC_PATH = $(EMBRYO_DIR)/$(FIREFOX_SRC_DIR)_debug
+FIREFOX_TEST_PROFILE_PATH := browser/profile/firefox
+FIREFOX_LATEST_SRC_PATH := $(shell \
+	find -L $(FIREFOX_SRC_PATH) -type f,l \
+	-printf '%TY-%Tm-%Td %.8TT %p\n' | sort -nr | head -1 | cut -f3 -d" ")
 
 
 
 # basic rules
 # ========================================
 
-all: crx nex xpi
+.PHONY: all zip crx xpi \
+	asset sjistable momocan \
+	debug-firefox \
+	clean version \
+
+all: zip crx xpi
+
+zip: $(CHROMEZIP_TARGET_PATH)
 
 crx: $(CHROME_TARGET_PATH)
-
-nex: $(BLINKOPERA_TARGET_PATH)
 
 xpi: $(FIREFOX_TARGET_PATH)
 
 clean:
 	rm -rf ./$(EMBRYO_DIR)
 
-FORCE:
 
-.PHONY: all crx nex xpi \
-	clean message \
-	debug-firefox momocan version \
-	FORCE
+
+#
+# rules to make akahukuplus_chrome_web_store.zip
+# ==============================================
+#
+
+# akahukuplus_chrome_web_store.zip
+$(CHROMEZIP_TARGET_PATH): $(CHROME_LATEST_SRC_PATH)
+#
+#	source sync'ing
+#
+
+#	copy all of sources to embryo dir
+	@echo synchoronizing source...
+	@mkdir -p $(CHROMEZIP_EMBRYO_SRC_PATH)
+	@$(RSYNC) $(RSYNC_OPT) \
+		$(CHROME_SRC_PATH)/ $(CHROMEZIP_EMBRYO_SRC_PATH)
+
+#	update utils.js
+	@echo updating utils.js...
+	@bin/disable-debug-block.awk \
+		$(CHROME_SRC_PATH)/lib/utils.js \
+		> $(CHROMEZIP_EMBRYO_SRC_PATH)/lib/utils.js
+
+#	update akahukuplus.js
+	@echo updating akahukuplus.js...
+	@bin/disable-debug-const.sed \
+		$(CHROME_SRC_PATH)/frontend/akahukuplus.js \
+		> $(CHROMEZIP_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
+
+#
+#	build zip archive for google web store
+#
+
+#	update manifest
+	@echo updating manifest.json for zip...
+	@bin/update-chrome-manifest.js \
+		--indir $(CHROME_SRC_PATH) \
+		--outdir $(CHROMEZIP_EMBRYO_SRC_PATH) \
+		--ver $(VERSION) \
+		--strip-update-url \
+		--strip-applications \
+		--update-version-name
+
+#	build zip archive
+	@echo building zip...
+	@rm -f $@
+	@cd $(CHROMEZIP_EMBRYO_SRC_PATH) \
+		&& find . -type f -print0 | sort -z | xargs -0 $(ZIP) \
+		$(abspath $@)
+
+	@echo ///
+	@echo /// created: $@, version $(VERSION)
+	@echo ///
+
+
 
 #
 # rules to make akahukuplus.crx
@@ -105,116 +146,68 @@ FORCE:
 #
 
 # akahukuplus.crx
-$(CHROME_TARGET_PATH): $(CHROME_MTIME_PATH)
+$(CHROME_TARGET_PATH): $(CHROME_LATEST_SRC_PATH)
+#
+#	source sync'ing
+#
+
 #	copy all of sources to embryo dir
 	@echo synchoronizing source...
+	@mkdir -p $(CHROME_EMBRYO_SRC_PATH)
 	@$(RSYNC) $(RSYNC_OPT) \
 		$(CHROME_SRC_PATH)/ $(CHROME_EMBRYO_SRC_PATH)
 
+#	update utils.js
+	@echo updating utils.js...
+	@bin/disable-debug-block.awk \
+		$(CHROME_SRC_PATH)/lib/utils.js \
+		> $(CHROME_EMBRYO_SRC_PATH)/lib/utils.js
+
 #	update akahukuplus.js
 	@echo updating akahukuplus.js...
-	@sed $(SED_SCRIPT_DEBUG_OFF) \
+	@bin/disable-debug-const.sed \
 		$(CHROME_SRC_PATH)/frontend/akahukuplus.js \
 		> $(CHROME_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
 
+#
+#	build crx for github
+#
+
 #	update manifest
-	@echo updating manifest file...
-	@tool/update-chrome-manifest.js \
+	@echo updating manifest.json for github...
+	@bin/update-chrome-manifest.js \
 		--indir $(CHROME_SRC_PATH) \
 		--outdir $(CHROME_EMBRYO_SRC_PATH) \
 		--ver $(VERSION) \
-		--strip-applications
+		--strip-applications \
+		--update-version-name
 
-#	build general crx
+#	tweak coin.js
+	@echo updating coin.js for github...
+	@bin/strip-exports.js $(CHROME_SRC_PATH)/lib/coin.js \
+		> $(CHROME_EMBRYO_SRC_PATH)/lib/coin.js
+
+#	build crx
 	@echo building crx...
-	@$(CHROME) \
-		--disable-gpu \
-		--disable-software-rasterizer \
-		--lang=en \
-		--pack-extension=$(CHROME_EMBRYO_SRC_PATH) \
-		--pack-extension-key=$(PRODUCT).pem
-	@mv $(EMBRYO_DIR)/$(CHROME_SRC_DIR).$(CHROME_SUFFIX) $@
+	@npx crx pack \
+		$(CHROME_EMBRYO_SRC_PATH) \
+		--crx-version 3 \
+		-o $@ \
+		-p $(PRODUCT).pem
 
-#	update manifest for google web store
-	@tool/update-chrome-manifest.js \
-		--indir $(CHROME_SRC_PATH) \
-		--outdir $(CHROME_EMBRYO_SRC_PATH) \
-		--ver $(VERSION) \
-		--strip-update-url \
-		--strip-applications
-
-#	build zip archive for google web store
-	@echo building zip...
-	@rm -f $(DIST_DIR)/$(PRODUCT)_chrome_web_store.zip
-	@cd $(CHROME_EMBRYO_SRC_PATH) \
-		&& find . -type f -print0 | sort -z | xargs -0 $(ZIP) \
-		../../$(DIST_DIR)/$(PRODUCT)_chrome_web_store.zip
-
+#
 #	create update description file
-	@sed -e 's/@appid@/$(CHROME_EXT_ID)/g' \
+#
+
+	@echo generating update xml...
+	@$(SED) -e 's/@appid@/$(CHROME_EXT_ID)/g' \
 		-e 's!@location@!$(CHROME_EXT_LOCATION)!g' \
 		-e 's/@version@/$(VERSION)/g' \
-		$(SRC_DIR)/chrome.xml > $(DIST_DIR)/$(notdir $(CHROME_UPDATE_LOCATION))
+		$(SRC_DIR)/update-manifest-chrome.xml > $(DIST_DIR)/$(notdir $(CHROME_UPDATE_LOCATION))
 
 	@echo ///
 	@echo /// created: $@, version $(VERSION)
 	@echo ///
-
-# last mtime holder
-$(CHROME_MTIME_PATH): FORCE
-	@mkdir -p $(CHROME_EMBRYO_SRC_PATH) $(DIST_DIR)
-	@tool/mtime.js --dir $(CHROME_SRC_PATH) --base $(CHROME_TARGET_PATH) --out $@
-
-
-
-#
-# rules to make akahukuplus.nex
-# ========================================
-#
-
-# akahukuplus.nex
-$(BLINKOPERA_TARGET_PATH): $(BLINKOPERA_MTIME_PATH)
-#	copy all of sources to embryo dir
-	$(RSYNC) $(RSYNC_OPT) \
-		$(BLINKOPERA_SRC_PATH)/ $(BLINKOPERA_EMBRYO_SRC_PATH)
-
-#	update akahukuplus.js
-	sed $(SED_SCRIPT_DEBUG_OFF) \
-		$(BLINKOPERA_SRC_PATH)/frontend/akahukuplus.js \
-		> $(BLINKOPERA_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
-
-#	update manifest
-	tool/update-chrome-manifest.js \
-		--indir $(BLINKOPERA_SRC_PATH) \
-		--outdir $(BLINKOPERA_EMBRYO_SRC_PATH) \
-		--ver $(VERSION) \
-		--update-url $(BLINKOPERA_UPDATE_LOCATION) \
-		--strip-applications
-
-#	build nex
-	$(CHROME) \
-		--disable-gpu \
-		--disable-software-rasterizer \
-		--lang=en \
-		--pack-extension=$(BLINKOPERA_EMBRYO_SRC_PATH) \
-		--pack-extension-key=$(PRODUCT).pem
-
-	mv $(EMBRYO_DIR)/$(BLINKOPERA_SRC_DIR).$(CHROME_SUFFIX) $@
-
-#	create update description file
-	sed -e 's/@appid@/$(BLINKOPERA_EXT_ID)/g' \
-		-e 's!@location@!$(BLINKOPERA_EXT_LOCATION)!g' \
-		-e 's/@version@/$(VERSION)/g' \
-		$(SRC_DIR)/opera-blink.xml > $(DIST_DIR)/$(notdir $(BLINKOPERA_UPDATE_LOCATION))
-
-	@echo ///
-	@echo /// created: $@, version $(VERSION)
-	@echo ///
-
-# last mtime holder
-$(BLINKOPERA_MTIME_PATH): FORCE
-	@mkdir -p $(BLINKOPERA_EMBRYO_SRC_PATH) $(DIST_DIR)
-	tool/mtime.js --dir $(BLINKOPERA_SRC_PATH) --base $(BLINKOPERA_TARGET_PATH) --out $@
 
 
 
@@ -224,88 +217,126 @@ $(BLINKOPERA_MTIME_PATH): FORCE
 #
 
 # akahukuplus.xpi
-$(FIREFOX_TARGET_PATH): $(FIREFOX_MTIME_PATH)
+$(FIREFOX_TARGET_PATH): $(FIREFOX_LATEST_SRC_PATH)
+#
+#	source sync'ing
+#
+
 #	copy all of sources to embryo dir
-	$(RSYNC) $(RSYNC_OPT) \
+	@mkdir -p $(FIREFOX_EMBRYO_SRC_PATH)
+	@$(RSYNC) $(RSYNC_OPT) \
 		$(FIREFOX_SRC_PATH)/ $(FIREFOX_EMBRYO_SRC_PATH)
 
+#	update utils.js
+	@echo updating utils.js...
+	@bin/disable-debug-block.awk \
+		$(FIREFOX_SRC_PATH)/lib/utils.js \
+		> $(FIREFOX_EMBRYO_SRC_PATH)/lib/utils.js
+
 #	update akahukuplus.js
-	sed $(SED_SCRIPT_DEBUG_OFF) \
+	@echo updating akahukuplus.js...
+	@bin/disable-debug-const.sed \
 		$(FIREFOX_SRC_PATH)/frontend/akahukuplus.js \
 		> $(FIREFOX_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
 
-#	update manifest
-	tool/update-chrome-manifest.js \
-		--indir $(FIREFOX_SRC_PATH) \
+#	update configNames.json
+	@echo updating configNames.json...
+	@bin/deex-json.js \
+		$(FIREFOX_SRC_PATH)/_locales/en/configNames.json \
+		> $(FIREFOX_EMBRYO_SRC_PATH)/_locales/en/configNames.json
+	@bin/deex-json.js \
+		$(FIREFOX_SRC_PATH)/_locales/ja/configNames.json \
+		> $(FIREFOX_EMBRYO_SRC_PATH)/_locales/ja/configNames.json
+
+#
+#	build xpi for github
+#
+
+#	update manifest.json
+	@echo updating manifest.json...
+	@bin/deex-json.js \
+		$(FIREFOX_SRC_PATH)/manifest.json \
+	| bin/update-chrome-manifest.js \
+		--indir - \
 		--outdir $(FIREFOX_EMBRYO_SRC_PATH) \
 		--ver $(VERSION) \
-		--strip-update-url
+		--strip-update-url \
+		--update-version-name
+
+#	tweak coin.js
+	@echo updating coin.js for github...
+	@bin/strip-exports.js $(FIREFOX_SRC_PATH)/lib/coin.js \
+		> $(FIREFOX_EMBRYO_SRC_PATH)/lib/coin.js
 
 #	build and sign xpi
-	./signxpi \
+	@echo calling xpi signer script...
+	@bin/signxpi \
 		-s $(FIREFOX_EMBRYO_SRC_PATH) \
 		-d $(DIST_DIR)
 
+#
 #	create update description file
-	sed -e 's/@appid@/$(FIREFOX_EXT_ID)/g' \
+#
+
+	@$(SED) -e 's/@appid@/$(FIREFOX_EXT_ID)/g' \
 		-e 's!@location@!$(FIREFOX_EXT_LOCATION)!g' \
 		-e 's/@version@/$(VERSION)/g' \
-		$(SRC_DIR)/firefox.json > $(DIST_DIR)/$(notdir $(FIREFOX_UPDATE_LOCATION))
+		$(SRC_DIR)/update-manifest-firefox.json > $(DIST_DIR)/$(notdir $(FIREFOX_UPDATE_LOCATION))
 
 	@echo ///
 	@echo /// created: $@, version $(VERSION)
 	@echo ///
 
-# last mtime holder
-$(FIREFOX_MTIME_PATH): FORCE
-	@mkdir -p $(FIREFOX_EMBRYO_SRC_PATH) $(DIST_DIR)
-	tool/mtime.js --dir $(FIREFOX_SRC_PATH) --base $(FIREFOX_TARGET_PATH) --out $@
-
 
 
 #
-# rules to make messages
+# rules to make assets
 # ========================================
 #
 
-message: FORCE
-#	update locales.json
-	tool/update-locales.js \
-		--indir $(CHROME_SRC_PATH)/_locales
+asset: sjistable momocan
 
-#	get diff of messages other than en-US
-	tool/make-messages.js \
-		--indir=$(CHROME_SRC_PATH) \
-		$(CHROME_SRC_PATH)/frontend/*.js \
-		$(CHROME_SRC_PATH)/backend/*.js \
-		$(CHROME_SRC_PATH)/backend/lib/kosian/*.js
+sjistable: $(CHROME_SRC_PATH)/lib/sjis.js
 
+$(CHROME_SRC_PATH)/lib/sjis.js: bin/make-sjis-table.js
+	bin/make-sjis-table.js > $(CHROME_SRC_PATH)/lib/sjis.js
 
-
-#
-# rules to test
-# ========================================
-#
-
-debug-firefox: FORCE
-	cd $(FIREFOX_SRC_PATH) && npx web-ext run \
-		--firefox-profile $(abspath $(FIREFOX_TEST_PROFILE_PATH)) \
-		--keep-profile-changes \
-		--browser-console \
-		--start-url https://img.2chan.net/b/futaba.htm
-
-version: FORCE
-	@echo $(VERSION)
-
-
-
-#
-# rules to make momo source
-# ========================================
-#
-
-momocan: FORCE
+momocan:
 	wget http://dev.appsweets.net/momo/can.php?extension=js -O src/chrome/frontend/momocan.js
 	wget http://dev.appsweets.net/momo/can.php?extension=css -O src/chrome/styles/momocan.css
+
+
+
+#
+# rules to run on firefox
+# ========================================
+#
+
+debug-firefox:
+	@mkdir -p $(FIREFOX_DEBUG_SRC_PATH)
+	@$(RSYNC) -a --delete --copy-links \
+		$(FIREFOX_SRC_PATH)/ $(FIREFOX_DEBUG_SRC_PATH)
+	@npx web-ext run \
+		--firefox $(FIREFOX) \
+		--firefox-profile $(FIREFOX_TEST_PROFILE_PATH) \
+		--source-dir $(FIREFOX_DEBUG_SRC_PATH) \
+		--keep-profile-changes \
+		--verbose \
+		--start-url https://img.2chan.net/b/futaba.htm \
+		2>/dev/null
+
+
+
+#
+# echo latest version
+# ========================================
+#
+version:
+	@echo "version:" $(VERSION)
+	@echo "latest source pathes:"
+	@echo "   chrome:" $(CHROME_LATEST_SRC_PATH)
+	@echo "  firefox:" $(FIREFOX_LATEST_SRC_PATH)
+
+
 
 # end

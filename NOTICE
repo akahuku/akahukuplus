@@ -1,23 +1,19 @@
 akahukuplus
 ===========
 
-copyright 2018 akahuku, akahuku@gmail.com
+copyright 2012-2024 akahuku, akahuku@gmail.com
 
 
 
 This product includes the following libraries and materials:
 
-* blowfish - Javascript Blowfish Library
+* idb-keyval
 
-  <https://github.com/takezoh/blowfish.js>
+  <https://github.com/jakearchibald/idb-keyval>
 
-* sha1.js
+* emoji-regex-xs
 
-  <http://labs.cybozu.co.jp/blog/mitsunari/sha1/>
-
-* twemoji
-
-  <https://github.com/twitter/twemoji>
+  <https://github.com/slevithan/emoji-regex-xs>
 
 * が！お！る！
 
@@ -38,3 +34,11 @@ This product includes the following libraries and materials:
 * SSD icon
 
   <https://www.tonymacx86.com/threads/custom-ssd-icons.93415/>
+
+* @sglkc/kuromoji.js
+
+  <https://github.com/sglkc/kuromoji.js>
+
+* png image from pngtree.com
+
+  <https://pngtree.com/freepng/money-icon-gold-coin-icon-coin-icon-business-finance-icon_3836180.html>
