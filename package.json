@@ -1,0 +1,27 @@
+{
+  "name": "akahukuplus",
+  "version": "1.0.0",
+  "description": "赤福プラス",
+  "scripts": {
+    "test": "mocha src/unit-test"
+  },
+  "author": "akahuku@gmail.com",
+  "license": "Apache-2.0",
+  "type": "module",
+  "devDependencies": {
+    "@babel/generator": "^7.26.3",
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.30.1",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@sglkc/kuromoji": "^1.1.0",
+    "crx": "^5.0.1",
+    "encoding-japanese": "^2.2.0",
+    "eslint": "^9.30.1",
+    "globals": "^16.3.0",
+    "jsdom": "^26.1.0",
+    "jsdom-global": "^3.0.2",
+    "mocha": "^11.0.1",
+    "rollup": "^4.44.2",
+    "web-ext": "^8.2.0"
+  }
+}

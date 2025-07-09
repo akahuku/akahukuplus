@@ -1,9 +1,8 @@
-/*
- * pop up menu for akahukuplus
- */
-
 /**
- * Copyright 2022-2024 akahuku, akahuku@gmail.com
+ * pop up menu for akahukuplus
+ *
+ *
+ * Copyright 2022-2025 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,7 +55,7 @@ export function createContextMenu (options = {}) {
 	*/
 
 	function handleBodyClick (e) {
-		if (e.target == popupTarget) {
+		if (e.target === popupTarget) {
 			e.preventDefault();
 			e.stopPropagation();
 			close();
@@ -78,10 +77,10 @@ export function createContextMenu (options = {}) {
 		const item = getItem(anchor);
 
 		// single anchor clicked
-		if (item && !item.disabled && (!item.items || item.items.length == 0)) {
+		if (item && !item.disabled && (!item.items || item.items.length === 0)) {
 			let handled = false;
 
-			if (typeof item.onclick == 'function') {
+			if (typeof item.onclick === 'function') {
 				handled = true;
 				try {
 					item.onclick(item);
@@ -96,7 +95,7 @@ export function createContextMenu (options = {}) {
 				}
 			}
 
-			if (typeof options.onclick == 'function') {
+			if (typeof options.onclick === 'function') {
 				try {
 					options.onclick(item, handled);
 				}
@@ -118,13 +117,13 @@ export function createContextMenu (options = {}) {
 		let {panel, anchor, key} = getAnchorFrom(e.target);
 
 		if (lastParentItem && lastParentItem.childRect) {
-			if (lastParentItem.minAngle == null) {
+			if (lastParentItem.minAngle === null) {
 				lastParentItem.minAngle = Math.atan2(
 					lastParentItem.childRect.top - lastParentItem.originY,
 					lastParentItem.childRect.left - lastParentItem.originX) * (180 / Math.PI);
 			}
 
-			if (lastParentItem.maxAngle == null) {
+			if (lastParentItem.maxAngle === null) {
 				lastParentItem.maxAngle = Math.atan2(
 					lastParentItem.childRect.bottom - lastParentItem.originY,
 					lastParentItem.childRect.left - lastParentItem.originX) * (180 / Math.PI);
@@ -135,13 +134,13 @@ export function createContextMenu (options = {}) {
 				e.clientX - lastParentItem.originX) * (180 / Math.PI);
 
 			if (panel
-			&&  panel.dataset.menuKey == lastParentItem.panelKey
+			&&  panel.dataset.menuKey === lastParentItem.panelKey
 			&&  lastParentItem.minAngle <= angle && angle < lastParentItem.maxAngle) {
 				key = previousItemKey;
 			}
 		}
 
-		if (previousItemKey == key) return;
+		if (previousItemKey === key) return;
 
 		/*
 		 *
@@ -221,9 +220,9 @@ export function createContextMenu (options = {}) {
 	}
 
 	function getActulalPosition (elm) {
-		for (let e = elm; e != document.documentElement; e = e.parentNode) {
+		for (let e = elm; e !== document.documentElement; e = e.parentNode) {
 			const p = getComputedStyle(e).position;
-			if (p != 'static') {
+			if (p !== 'static') {
 				return p;
 			}
 		}
@@ -273,12 +272,12 @@ export function createContextMenu (options = {}) {
 		let maxWidthExtra = 0;
 		let nodes = [];
 
-		if (argItems.length == 0) {
+		if (argItems.length === 0) {
 			argItems = [{key: 'na', label: '(N/A)', disabled: true}];
 		}
 
 		argItems.forEach(item => {
-			if (item.key == '-') {
+			if (item.key === '-') {
 				const div = cre(body, 'div');
 				div.className = 'ruler';
 			}
@@ -317,7 +316,7 @@ export function createContextMenu (options = {}) {
 
 				a.href = `#menu:${item.key}`;
 				a.dataset.menuFullKey = `${item.fullKey}`;
-				label.textContent = 'label' in item && item.label != '' ?
+				label.textContent = 'label' in item && item.label !== '' ?
 					item.label :
 					`(${item.key})`;
 				maxWidthLabel = Math.max(maxWidthLabel, label.offsetWidth);
@@ -341,7 +340,7 @@ export function createContextMenu (options = {}) {
 
 	function removeMenus (sentinel) {
 		while (panels.length) {
-			if (sentinel && panels[panels.length - 1].element == sentinel) {
+			if (sentinel && panels[panels.length - 1].element === sentinel) {
 				break;
 			}
 
@@ -362,7 +361,7 @@ export function createContextMenu (options = {}) {
 			});
 		}
 
-		if (panels.length == 0) {
+		if (panels.length === 0) {
 			document.body.removeEventListener('pointermove', handlePointermove);
 			document.body.removeEventListener('click', handleBodyClick, true);
 		}
@@ -395,12 +394,12 @@ export function createContextMenu (options = {}) {
 
 			// override position style according to the anchor's position
 			const position = getActulalPosition(anchor);
-			if (position == 'fixed' || position == 'sticky') {
+			if (position === 'fixed' || position === 'sticky') {
 				menu.style.position = 'fixed';
 			}
 
 			// root menu
-			if (panels.length == 1) {
+			if (panels.length === 1) {
 				menu.classList.add('top-menu');
 				menu.style.left = `${anchorRect.left}px`;
 				menu.style.top = `${anchorRect.bottom}px`;
@@ -465,7 +464,7 @@ export function createContextMenu (options = {}) {
 
 		clearSubMenuTimer();
 
-		if (panels.length == 0) {
+		if (panels.length === 0) {
 			if (doOpen(null, anchor, key)) {
 				document.body.addEventListener('pointermove', handlePointermove);
 				document.body.addEventListener('click', handleBodyClick, true);
@@ -481,7 +480,7 @@ export function createContextMenu (options = {}) {
 
 	function registerSubMenuClose (panel) {
 		clearSubMenuTimer();
-		if (panels.length == 0) return;
+		if (panels.length === 0) return;
 
 		if (panel) {
 			$qsa('.emphasis', panel).forEach(node => {
@@ -564,7 +563,7 @@ export function createContextMenu (options = {}) {
 			}
 			for (const item of argItems) {
 				const currentKey = key ? `${key},${item.key}` : item.key;
-				if (key != '-') {
+				if (key !== '-') {
 					item.fullKey = currentKey;
 					itemHash[currentKey] = item;
 				}

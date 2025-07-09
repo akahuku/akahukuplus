@@ -1,9 +1,8 @@
-/*
- * lightbox module for akahukuplus
- */
-
 /**
- * Copyright 2022-2024 akahuku, akahuku@gmail.com
+ * lightbox module for akahukuplus
+ *
+ *
+ * Copyright 2022-2025 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,14 +67,14 @@ export function lightbox (args) {
 		*/
 
 		function isRotated () {
-			return rotation == 'left' || rotation == 'right';
+			return rotation === 'left' || rotation === 'right';
 		}
 
 		function appendPxSuffix (obj, suffix) {
 			const result = {};
 			suffix || (suffix = 'px');
 			for (let i in obj) {
-				if (typeof obj[i] == 'number') {
+				if (typeof obj[i] === 'number') {
 					result[i] = obj[i] + 'px';
 				}
 			}
@@ -114,7 +113,7 @@ export function lightbox (args) {
 			let width = 0, height = 0;
 			let zm = zoomMode;
 
-			if (arguments.length >= 1 && typeof arguments[0] == 'object') {
+			if (arguments.length >= 1 && typeof arguments[0] === 'object') {
 				vleft = arguments[0].left;
 				vtop = arguments[0].top;
 				vwidth = arguments[0].width;
@@ -194,10 +193,10 @@ export function lightbox (args) {
 
 			// positioning
 			const currentRect = imageWrap.getBoundingClientRect();
-			if (rect.left != currentRect.left
-			||  rect.top != currentRect.top
-			||  rect.width != currentRect.width
-			||  rect.height != currentRect.height) {
+			if (rect.left !== currentRect.left
+			||  rect.top !== currentRect.top
+			||  rect.width !== currentRect.width
+			||  rect.height !== currentRect.height) {
 				// styling image wrapper
 				Object.assign(imageWrap.style, appendPxSuffix(rect));
 
@@ -223,10 +222,10 @@ export function lightbox (args) {
 			const currentTransform = /rotate\(([-0-9]+)deg\)/.exec(image.style.transform) || ['', 0];
 			const currentDegree = parseInt(currentTransform[1], 10);
 			let newDegree = degrees[rotation];
-			if (newDegree == 180) {
+			if (newDegree === 180) {
 				newDegree *= currentDegree >= 0 ? 1 : -1;
 			}
-			if (newDegree != currentDegree) {
+			if (newDegree !== currentDegree) {
 				image.style.transform = `rotate(${newDegree}deg)`;
 				updated = true;
 			}
@@ -258,18 +257,18 @@ export function lightbox (args) {
 		function setZoomMode (zm, opts) {
 			opts || (opts = {});
 			if (!image) return;
-			if (zm != 'whole'
-			&& zm != 'actual-size'
-			&& zm != 'fit-to-width'
-			&& zm != 'fit-to-height') return;
+			if (zm !== 'whole'
+			&& zm !== 'actual-size'
+			&& zm !== 'fit-to-width'
+			&& zm !== 'fit-to-height') return;
 
 			zoomMode = zm;
 			storage.runtime.lightbox.zoomMode = zm;
 			storage.saveRuntime();
 
 			let rect;
-			if (zoomMode == 'actual-size'
-			&& opts.event && getRegionId(opts.event) == 0
+			if (zoomMode === 'actual-size'
+			&& opts.event && getRegionId(opts.event) === 0
 			&& (image.naturalWidth > args.viewportRect.width - MARGIN * 2 || image.naturalHeight > args.viewportRect.height - MARGIN * 2)) {
 				const ratio = image.offsetWidth / image.naturalWidth;
 				const imageRect = image.getBoundingClientRect();
@@ -294,7 +293,7 @@ export function lightbox (args) {
 
 		function updateModeLinks () {
 			$qsa('#lightbox-zoom-modes a').forEach(node => {
-				if (node.getAttribute('href') == '#lightbox-' + zoomMode) {
+				if (node.getAttribute('href') === '#lightbox-' + zoomMode) {
 					node.classList.add('selected');
 				}
 				else {
@@ -303,7 +302,7 @@ export function lightbox (args) {
 			});
 
 			$qsa('#lightbox-rotate-modes a').forEach(node => {
-				if (node.getAttribute('href') == '#lightbox-' + rotation) {
+				if (node.getAttribute('href') === '#lightbox-' + rotation) {
 					node.classList.add('selected');
 				}
 				else {
@@ -317,7 +316,7 @@ export function lightbox (args) {
 			if (!image.naturalWidth || !image.naturalHeight) return;
 
 			const size = `${image.naturalWidth}x${image.naturalHeight}`;
-			const zoomRatio = `   ${(parseInt(image.style.width, 10) / image.naturalWidth * 100).toFixed(2)}%`.substr(-7); // max: '100.00%'.length == 7
+			const zoomRatio = `   ${(parseInt(image.style.width, 10) / image.naturalWidth * 100).toFixed(2)}%`.substr(-7); // max: '100.00%'.length === 7
 
 			$t('lightbox-ratio', `${size}, ${zoomRatio}`);
 		}
@@ -328,13 +327,13 @@ export function lightbox (args) {
 
 		function handlePointerDown (e) {
 			if (isInTransition) return;
-			if (e.target != receiver) return;
+			if (e.target !== receiver) return;
 
 			receiver.setPointerCapture(e.pointerId);
 
 			e.preventDefault();
 
-			if (e.target != e.currentTarget || e.buttons != 1) {
+			if (e.target !== e.currentTarget || e.buttons !== 1) {
 				dragState.region = -9;
 				return;
 			}
@@ -364,7 +363,7 @@ export function lightbox (args) {
 
 		function handlePointerMove (e) {
 			if (isInTransition) return;
-			if (dragState.region != 0) return;
+			if (dragState.region !== 0) return;
 
 			let left, top;
 			switch (zoomMode) {
@@ -390,11 +389,11 @@ export function lightbox (args) {
 				break;
 			}
 
-			if (left != undefined) {
+			if (left !== undefined) {
 				imageWrap.style.left = left + 'px';
 			}
 
-			if (top != undefined) {
+			if (top !== undefined) {
 				imageWrap.style.top = top + 'px';
 			}
 		}
@@ -412,7 +411,7 @@ export function lightbox (args) {
 				switch (dragState.region) {
 				case 0: // inside image
 					setZoomMode(
-						zoomMode == 'whole' ? 'actual-size' : 'whole',
+						zoomMode === 'whole' ? 'actual-size' : 'whole',
 						{event: e});
 					break;
 				default: // outside image
@@ -451,7 +450,7 @@ export function lightbox (args) {
 					top = args.viewportRect.height / 2 - imageWrap.offsetHeight / 2;
 				}
 
-				if (left != rect.left || top != rect.top) {
+				if (left !== rect.left || top !== rect.top) {
 					isInTransition = true;
 					imageWrap.style.left = left + 'px';
 					imageWrap.style.top = top + 'px';
@@ -489,7 +488,7 @@ export function lightbox (args) {
 				break;
 			}
 
-			if (top != undefined) {
+			if (top !== undefined) {
 				if (top > MARGIN) {
 					top = MARGIN;
 				}
@@ -549,7 +548,7 @@ export function lightbox (args) {
 		function handleCopyClick () {
 			if (isInTransition) return;
 			if (!image) return;
-			if (location.protocol != 'https:') return;
+			if (location.protocol !== 'https:') return;
 			const canvas = document.createElement('canvas');
 			canvas.width = image.naturalWidth;
 			canvas.height = image.naturalHeight;
@@ -575,7 +574,7 @@ export function lightbox (args) {
 		 */
 
 		function init () {
-			if (document.body.getAttribute(RUNNING_EXCLUSION_KEY) != null) return;
+			if (document.body.getAttribute(RUNNING_EXCLUSION_KEY) !== null) return;
 
 			// block recursive execution
 			document.body.setAttribute(RUNNING_EXCLUSION_KEY, 'loading');
@@ -590,7 +589,7 @@ export function lightbox (args) {
 
 			// initialize zoom mode
 			zoomMode = storage.config.lightbox_zoom_mode.value;
-			if (zoomMode == 'last') {
+			if (zoomMode === 'last') {
 				zoomMode = storage.runtime.lightbox.zoomMode;
 			}
 

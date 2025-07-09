@@ -1,9 +1,8 @@
-/*
- * image saving module for akahukuplus
- */
-
 /**
- * Copyright 2022-2024 akahuku, akahuku@gmail.com
+ * image saving module for akahukuplus
+ *
+ *
+ * Copyright 2022-2025 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,10 +25,10 @@ let locale;
 function loadAsset (url, options = {}, type) {
 	const u = new URL(url);
 
-	if (u.protocol == location.protocol && u.host == location.host) {
+	if (u.protocol === location.protocol && u.host === location.host) {
 		return load(url, options, type);
 	}
-	else if (typeof assetURLTranslator == 'function') {
+	else if (typeof assetURLTranslator === 'function') {
 		return assetURLTranslator(url).then(objectURL => load(objectURL, options, type));
 	}
 

@@ -1,0 +1,136 @@
+/*
+ * Definitions of name and description for each config item
+ *
+ * @note: - the "desc" property will be treated as HTML fragment.
+ *        - this json is written in extend format. see lib/utils-apext.js#parseExtendJson()
+ */
+{
+	"wheel_reload_unit_size": {
+		"name": "ホイールの1目盛りの単位移動量",
+		"desc": "通常は120だった気がするけど, 環境によってはもっと小さい値かもしれません。
+右のテキストボックス上でホイールを回すと移動量が表示されるので, それらのうち最小の正の値を入力してください。"
+	},
+	"wheel_reload_threshold_override": {
+		"name": "ホイールリロード発動量",
+		"desc": "ページ末尾で何回ホイールを回したときリロードを行うかを指定する"
+	},
+	"catalog_popup_enabled": {
+		"name": "カタログでサムネをポップアップ"
+	},
+	"catalog_text_max_length": {
+		"name": "カタログで取得する本文の長さ"
+	},
+	"catalog_thumbnail_scale": {
+		"name": "カタログのサムネイルの表示倍率"
+	},
+	"storage": {
+		"name": "使用するストレージ",
+		"desc": "local ストレージをまだサポートしてないブラウザもあります。",
+		"list": {
+			"fsa": "local (FileSystemAccess)",
+			"dropbox": "dropbox - サポート終了",
+			"googledrive": "Google Drive - サポート終了",
+			"onedrive": "Microsoft OneDrive - サポート終了",
+			"local": "local (ChromeApps) - サポート終了"
+		}
+	},
+	"save_thread_name_template": {
+		"name": "保存するスレッドのパス名のテンプレート",
+		"desc": "以下のマクロを使用できます:
+<ul>
+	<li>$SERVER (サーバ名)</li>
+	<li>$BOARD (板名)</li>
+	<li>$THREAD (スレッド番号)</li>
+	<li>$YEAR (スレッドの投稿年)</li>
+	<li>$MONTH (スレッドの投稿月)</li>
+	<li>$DAY (スレッドの投稿日)</li>
+	<li>$TEXT (スレッド本文)</li>
+	<li>$TEXT2 (レス、またはスレッド本文)</li>
+	<li>$EXT (拡張子)</li>
+</ul>"
+	},
+	"save_image_kokoni_name_template": {
+		"name": "画像、動画などを「ここに保存」する際のファイル名のテンプレート",
+		"desc": "以下のマクロを使用できます:
+<ul>
+	<li>$SERVER (サーバ名)</li>
+	<li>$BOARD (板名)</li>
+	<li>$THREAD (スレッド番号)</li>
+	<li>$YEAR (画像の投稿年)</li>
+	<li>$MONTH (画像の投稿月)</li>
+	<li>$DAY (画像の投稿日)</li>
+	<li>$SERIAL (画像番号)</li>
+	<li>$TEXT (スレッド本文)</li>
+	<li>$TEXT2 (レス、またはスレッド本文)</li>
+	<li>$EXT (拡張子)</li>
+</ul>
+このテンプレートにはパスを含めることはできません。"
+	},
+	"save_image_name_template": {
+		"name": "画像、動画などを保存する際のパス名のテンプレート",
+		"desc": "「ここに保存」用のテンプレートと同様のマクロを使用できます。
+		このテンプレートにはパスを含めることができます。"
+	},
+	"save_image_text_max_length": {
+		"name": "ファイル名中のスレッド本文の最大長"
+	},
+	"auto_save_image": {
+		"name": "画像を開いた際に自動的に保存"
+	},
+	"save_image_bell_volume": {
+		"name": "画像保存が成功した際のベルの音量"
+	},
+	"lightbox_enabled": {
+		"name": "画像を lightbox で表示"
+	},
+	"lightbox_zoom_mode": {
+		"name": "lightbox で表示する際の初期倍率",
+		"list": {
+			"whole": "全体",
+			"actual-size": "実寸",
+			"fit-to-width": "幅に合わせる",
+			"fit-to-height": "高さに合わせる",
+			"last": "最後に使用した倍率を使用する"
+		}
+	},
+	"banner_enabled": {
+		"name": "バナーを表示"
+	},
+	"hook_space_key": {
+		"name": "スペースキーによるスクロールを制御"
+	},
+	"hook_edit_shortcuts": {
+		"name": "テキスト入力時に Emacs ぽいショートカットを使用"
+	},
+	"full_reload_interval": {
+		"name": "フルリロードする間隔(分)"
+	},
+	"full_reload_after_post": {
+		"name": "レス送信後にフルリロード"
+	},
+	"tegaki_max_width": {
+		"name": "手書きキャンバスの最大の幅"
+	},
+	"tegaki_max_height": {
+		"name": "手書きキャンバスの最大の高さ"
+	},
+	"autotrack_expect_replies": {
+		"name": "自動追尾時に待機するレス数",
+		"desc": "このレス数がつくと思われる時間だけ自動追尾を待機します"
+	},
+	"autotrack_sampling_replies": {
+		"name": "自動追尾時のサンプルレス数",
+		"desc": "待機時間を算出するために参照する既存レス群のサンプル数"
+	},
+	"osaka_conversion": {
+		"name": "なりきり関西人"
+	},
+	"strip_exif": {
+		"name": "EXIF データの除去",
+		"desc": "JPEG/PNG アップロード時に EXIF を除去する"
+	},
+	"custom_subst_leader": {
+		"name": "Custom subst string for leader",
+		"desc": "「…」のような約物を置換する文字列を指定します"
+	}
+}

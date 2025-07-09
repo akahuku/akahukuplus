@@ -1,0 +1,11 @@
+*.sw?
+*.bak
+*~
+*.sh
+.*
+*.js-dict
+editor-helper.js
+tokenizer.js
+kurumoji.js
+sglkc-kuromoji-dict
+Session.vim

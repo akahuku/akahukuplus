@@ -1,0 +1,136 @@
+/*
+ * Definitions of name and description for each config item
+ *
+ * @note: - the "desc" property will be treated as HTML fragment.
+ *        - this json is written in extend format. see lib/utils-apext.js#parseExtendJson()
+ */
+{
+	"wheel_reload_unit_size": {
+		"name": "Unit scroll volume per wheel rotation",
+		"desc": "Normally it is 120, but it may be smaller depending on the environment.
+Rotate the wheel on the right text box to display the amount of movement, and enter the smallest positive value among them."
+	},
+	"wheel_reload_threshold_override": {
+		"name": "Number of wheel rotation to reload",
+		"desc": "Specify how many times the wheel should be rotated at the end of the page for reloading"
+	},
+	"catalog_popup_enabled": {
+		"name": "Pop up thumbnails in catalog"
+	},
+	"catalog_text_max_length": {
+		"name": "Length of topic text to be retrieved in catalog"
+	},
+	"catalog_thumbnail_scale": {
+		"name": "Zoom ratio of catalog thumbnails"
+	},
+	"storage": {
+		"name": "Storage to be used",
+		"desc": "Some browsers do not yet support FileSystemAccess API.",
+		"list": {
+			"fsa": "local (FileSystemAccess)",
+			"dropbox": "dropbox - End of support",
+			"googledrive": "Google Drive - End of support",
+			"onedrive": "Microsoft OneDrive - End of support",
+			"local": "local (ChromeApps) - End of support"
+		}
+	},
+	"save_thread_name_template": {
+		"name": "Template for the path of the thread to be saved",
+		"desc": "You can use the following macros:
+<ul>
+	<li>$SERVER (server name)</li>
+	<li>$BOARD (board name)</li>
+	<li>$THREAD (thread number)</li>
+	<li>$YEAR (year the thread was posted)</li>
+	<li>$MONTH (month the thread was posted)</li>
+	<li>$DAY (day the thread was posted)</li>
+	<li>$TEXT (topic text of thread)</li>
+	<li>$TEXT2 (reply or topic text)</li>
+	<li>$EXT (extension)</li>
+</ul>"
+	},
+	"save_image_kokoni_name_template": {
+		"name": "Template file name for saving images, videos, etc. with the “Save Here”",
+		"desc": "You can use the following macros:
+<ul>
+	<li>$SERVER (server name)</li>
+	<li>$BOARD (board name)</li>
+	<li>$THREAD (thread number)</li>
+	<li>$YEAR (year the thread was posted)</li>
+	<li>$MONTH (month the thread was posted)</li>
+	<li>$DAY (day the thread was posted)</li>
+	<li>$SERIAL (image number)</li>
+	<li>$TEXT (topic text of thread)</li>
+	<li>$TEXT2 (reply or topic text)</li>
+	<li>$EXT (extension)</li>
+</ul>
+This template cannot contain path."
+	},
+	"save_image_name_template": {
+		"name": "Template path for saving images, videos, etc.",
+		"desc": "You can use the same macros as in the template for the “Save Here” function.
+This template can contain path."
+	},
+	"save_image_text_max_length": {
+		"name": "Maximum length of thread topic text in filename"
+	},
+	"auto_save_image": {
+		"name": "Save a image automatically when opened"
+	},
+	"save_image_bell_volume": {
+		"name": "Bell volume when image saved successfully"
+	},
+	"lightbox_enabled": {
+		"name": "Open image in lightbox"
+	},
+	"lightbox_zoom_mode": {
+		"name": "Initial zoom mode when displayed in lightbox",
+		"list": {
+			"whole": "Whole size",
+			"actual-size": "Actual size",
+			"fit-to-width": "Fit to width",
+			"fit-to-height": "Fit to Height",
+			"last": "Use the last used zoom mode"
+		}
+	},
+	"banner_enabled": {
+		"name": "Display ads"
+	},
+	"hook_space_key": {
+		"name": "Handle scrolling with the space key"
+	},
+	"hook_edit_shortcuts": {
+		"name": "Use Emacs-like shortcuts when editing text"
+	},
+	"full_reload_interval": {
+		"name": "Interval to full reload (in minutes)"
+	},
+	"full_reload_after_post": {
+		"name": "Full reload after post"
+	},
+	"tegaki_max_width": {
+		"name": "Maximum width of the tegaki canvas"
+	},
+	"tegaki_max_height": {
+		"name": "Maximum height of the tegaki canvas"
+	},
+	"autotrack_expect_replies": {
+		"name": "Number of posts to wait for when auto-tracking",
+		"desc": "Wait for auto-tracking until this number of posts are made"
+	},
+	"autotrack_sampling_replies": {
+		"name": "Number of sample posts",
+		"desc": "Number of samples of existing posts to be referenced to calculate waiting time"
+	},
+	"osaka_conversion": {
+		"name": "Be a Kansai person"
+	},
+	"strip_exif": {
+		"name": "Remove EXIF",
+		"desc": "Remove EXIF data block when uploading JPEG or PNG: Since EXIF may contain sensitive data -- such as location information and shooting datetime, uploading them in general may lead to information leakage."
+	},
+	"custom_subst_leader": {
+		"name": "Custom subst string for leader",
+		"desc": "Specify a string that replaces the punctuation mark such as “…”."
+	}
+}

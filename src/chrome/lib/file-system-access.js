@@ -1,12 +1,11 @@
-/*
+/**
  * File System Access utilities
  *
  * @see https://web.dev/file-system-access/
  * @see https://wicg.github.io/file-system-access/
- */
-
-/**
- * Copyright 2022-2024 akahuku, akahuku@gmail.com
+ *
+ *
+ * Copyright 2022-2025 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,7 +78,7 @@ export function resolveRelativePath (components) {
 				return result;
 			}
 
-			if (result.length == 0) {
+			if (result.length === 0) {
 				return null;
 			}
 
@@ -369,7 +368,7 @@ export function createFileSystemAccess (id = 'default', globalOptions = {}) {
 						baseName = '';
 					}
 				}
-				catch (e) {
+				catch {
 					//
 				}
 			}
@@ -416,7 +415,7 @@ export function createFileSystemAccess (id = 'default', globalOptions = {}) {
 				}
 			}
 
-			if (baseName != '') {
+			if (baseName !== '') {
 				files = files.filter(f => f.name === baseName);
 				directories = directories.filter(d => d.name === baseName);
 			}
@@ -463,7 +462,7 @@ export function createFileSystemAccess (id = 'default', globalOptions = {}) {
 				`  current root: ${Object.prototype.toString.call(rootDirectoryHandle)}`
 			].join('\n'));
 
-			if (typeof showDirectoryPicker != 'function') {
+			if (typeof showDirectoryPicker !== 'function') {
 				log('queryRootDirectoryPermission: returning "unavailable"');
 				return {permission: 'unavailable'};
 			}
@@ -510,7 +509,7 @@ export function createFileSystemAccess (id = 'default', globalOptions = {}) {
 				`  current root: ${Object.prototype.toString.call(rootDirectoryHandle)}`
 			].join('\n'));
 
-			if (typeof showDirectoryPicker != 'function') {
+			if (typeof showDirectoryPicker !== 'function') {
 				log(`getRootDirectory: file system access API is unavailable`);
 				throw new Error('File System Access API is unavailable on this platform.');
 			}
@@ -534,7 +533,7 @@ export function createFileSystemAccess (id = 'default', globalOptions = {}) {
 					rootDirectoryHandle = await window.showDirectoryPicker(options);
 					idbkeyval.set(`root-${id}`, rootDirectoryHandle);
 				}
-				catch (e) {
+				catch {
 					// if user aborted a request, exception occurs.
 					log(`getRootDirectory: user aborted the request.`);
 					await forgetRootDirectory();
@@ -566,7 +565,7 @@ export function createFileSystemAccess (id = 'default', globalOptions = {}) {
 	}
 
 	async function getStatus () {
-		const apiAvailable = typeof showDirectoryPicker == 'function';
+		const apiAvailable = typeof showDirectoryPicker === 'function';
 		const handles = {
 			memory: rootDirectoryHandle || null,
 			database: await idbkeyval.get(`root-${id}`) || null
@@ -605,7 +604,7 @@ export function createFileSystemAccess (id = 'default', globalOptions = {}) {
 			return log;
 		},
 		set logger (fn) {
-			if (typeof fn == 'function') {
+			if (typeof fn === 'function') {
 				log = fn;
 			}
 		}

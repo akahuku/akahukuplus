@@ -1,16 +1,14 @@
 # application macros
 # ========================================
 
-SHELL := /bin/sh
+AWK := gawk
+SED := sed -E
+ZIP := zip -qr9
+RSYNC := rsync
+JQ := jq
 
 CHROME := google-chrome
 FIREFOX := firefox
-
-AWK := gawk
-SED := sed
-ZIP := zip -qr9
-RSYNC := rsync
-RSYNC_OPT := -rptLv --delete --exclude-from=embryo-excludes.txt
 
 
 
@@ -23,6 +21,8 @@ PRODUCT = akahukuplus
 DIST_DIR = dist
 SRC_DIR = src
 EMBRYO_DIR = .embryo
+
+RSYNC_OPT := -rptLv --delete --exclude-from=embryo-excludes.txt
 
 CHROMEZIP_SUFFIX = zip
 CHROMEZIP_SRC_DIR = chromezip
@@ -101,21 +101,14 @@ $(CHROMEZIP_TARGET_PATH): $(CHROME_LATEST_SRC_PATH)
 	@$(RSYNC) $(RSYNC_OPT) \
 		$(CHROME_SRC_PATH)/ $(CHROMEZIP_EMBRYO_SRC_PATH)
 
-#	update utils.js
-	@echo updating utils.js...
-	@bin/disable-debug-block.awk \
-		$(CHROME_SRC_PATH)/lib/utils.js \
-		> $(CHROMEZIP_EMBRYO_SRC_PATH)/lib/utils.js
+#	minify and strip debug codes from javascript source codes
+	@echo updating source code...
+	find $(CHROMEZIP_EMBRYO_SRC_PATH) -name '*.js' -print0 | xargs -0 bin/minify.js -c terser.config.json
 
-#	update akahukuplus.js
+#	reset some const of akahukuplus.js
 	@echo updating akahukuplus.js...
 	@bin/disable-debug-const.sed \
-		$(CHROME_SRC_PATH)/frontend/akahukuplus.js \
-		> $(CHROMEZIP_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
-
-#
-#	build zip archive for google web store
-#
+		$(CHROMEZIP_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
 
 #	update manifest
 	@echo updating manifest.json for zip...
@@ -123,8 +116,6 @@ $(CHROMEZIP_TARGET_PATH): $(CHROME_LATEST_SRC_PATH)
 		--indir $(CHROME_SRC_PATH) \
 		--outdir $(CHROMEZIP_EMBRYO_SRC_PATH) \
 		--ver $(VERSION) \
-		--strip-update-url \
-		--strip-applications \
 		--update-version-name
 
 #	build zip archive
@@ -157,21 +148,14 @@ $(CHROME_TARGET_PATH): $(CHROME_LATEST_SRC_PATH)
 	@$(RSYNC) $(RSYNC_OPT) \
 		$(CHROME_SRC_PATH)/ $(CHROME_EMBRYO_SRC_PATH)
 
-#	update utils.js
-	@echo updating utils.js...
-	@bin/disable-debug-block.awk \
-		$(CHROME_SRC_PATH)/lib/utils.js \
-		> $(CHROME_EMBRYO_SRC_PATH)/lib/utils.js
+#	minify and strip debug codes from javascript source codes
+	@echo updating source code...
+	find $(CHROME_EMBRYO_SRC_PATH) -name '*.js' -print0 | xargs -0 bin/minify.js -c terser.config.json
 
-#	update akahukuplus.js
+#	reset some const of akahukuplus.js
 	@echo updating akahukuplus.js...
 	@bin/disable-debug-const.sed \
-		$(CHROME_SRC_PATH)/frontend/akahukuplus.js \
-		> $(CHROME_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
-
-#
-#	build crx for github
-#
+		$(CHROME_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
 
 #	update manifest
 	@echo updating manifest.json for github...
@@ -179,13 +163,12 @@ $(CHROME_TARGET_PATH): $(CHROME_LATEST_SRC_PATH)
 		--indir $(CHROME_SRC_PATH) \
 		--outdir $(CHROME_EMBRYO_SRC_PATH) \
 		--ver $(VERSION) \
-		--strip-applications \
+		--update-url $(CHROME_UPDATE_LOCATION) \
 		--update-version-name
 
 #	tweak coin.js
 	@echo updating coin.js for github...
-	@bin/strip-exports.js $(CHROME_SRC_PATH)/lib/coin.js \
-		> $(CHROME_EMBRYO_SRC_PATH)/lib/coin.js
+	@bin/strip-exports.js -i $(CHROME_EMBRYO_SRC_PATH)/lib/coin.js
 
 #	build crx
 	@echo building crx...
@@ -200,9 +183,10 @@ $(CHROME_TARGET_PATH): $(CHROME_LATEST_SRC_PATH)
 #
 
 	@echo generating update xml...
-	@$(SED) -e 's/@appid@/$(CHROME_EXT_ID)/g' \
+	@$(SED) \
+		-e 's!@appid@!$(CHROME_EXT_ID)!g' \
 		-e 's!@location@!$(CHROME_EXT_LOCATION)!g' \
-		-e 's/@version@/$(VERSION)/g' \
+		-e 's!@version@!$(VERSION)!g' \
 		$(SRC_DIR)/update-manifest-chrome.xml > $(DIST_DIR)/$(notdir $(CHROME_UPDATE_LOCATION))
 
 	@echo ///
@@ -227,26 +211,19 @@ $(FIREFOX_TARGET_PATH): $(FIREFOX_LATEST_SRC_PATH)
 	@$(RSYNC) $(RSYNC_OPT) \
 		$(FIREFOX_SRC_PATH)/ $(FIREFOX_EMBRYO_SRC_PATH)
 
-#	update utils.js
-	@echo updating utils.js...
-	@bin/disable-debug-block.awk \
-		$(FIREFOX_SRC_PATH)/lib/utils.js \
-		> $(FIREFOX_EMBRYO_SRC_PATH)/lib/utils.js
+#	minify and strip debug codes from javascript source codes
+	@echo updating source code...
+	find $(FIREFOX_EMBRYO_SRC_PATH) -name '*.js' -print0 | xargs -0 bin/minify.js -c terser.config.json
 
-#	update akahukuplus.js
+#	reset some const of akahukuplus.js
 	@echo updating akahukuplus.js...
 	@bin/disable-debug-const.sed \
-		$(FIREFOX_SRC_PATH)/frontend/akahukuplus.js \
-		> $(FIREFOX_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
+		$(FIREFOX_EMBRYO_SRC_PATH)/frontend/akahukuplus.js
 
 #	update configNames.json
 	@echo updating configNames.json...
-	@bin/deex-json.js \
-		$(FIREFOX_SRC_PATH)/_locales/en/configNames.json \
-		> $(FIREFOX_EMBRYO_SRC_PATH)/_locales/en/configNames.json
-	@bin/deex-json.js \
-		$(FIREFOX_SRC_PATH)/_locales/ja/configNames.json \
-		> $(FIREFOX_EMBRYO_SRC_PATH)/_locales/ja/configNames.json
+	@bin/deex-json.js -i $(FIREFOX_EMBRYO_SRC_PATH)/_locales/en/configNames.json
+	@bin/deex-json.js -i $(FIREFOX_EMBRYO_SRC_PATH)/_locales/ja/configNames.json
 
 #
 #	build xpi for github
@@ -260,13 +237,12 @@ $(FIREFOX_TARGET_PATH): $(FIREFOX_LATEST_SRC_PATH)
 		--indir - \
 		--outdir $(FIREFOX_EMBRYO_SRC_PATH) \
 		--ver $(VERSION) \
-		--strip-update-url \
+		--update-url $(FIREFOX_UPDATE_LOCATION) \
 		--update-version-name
 
 #	tweak coin.js
 	@echo updating coin.js for github...
-	@bin/strip-exports.js $(FIREFOX_SRC_PATH)/lib/coin.js \
-		> $(FIREFOX_EMBRYO_SRC_PATH)/lib/coin.js
+	@bin/strip-exports.js -i $(FIREFOX_EMBRYO_SRC_PATH)/lib/coin.js
 
 #	build and sign xpi
 	@echo calling xpi signer script...
@@ -278,9 +254,10 @@ $(FIREFOX_TARGET_PATH): $(FIREFOX_LATEST_SRC_PATH)
 #	create update description file
 #
 
-	@$(SED) -e 's/@appid@/$(FIREFOX_EXT_ID)/g' \
+	@$(SED) \
+		-e 's!@appid@!$(FIREFOX_EXT_ID)!g' \
 		-e 's!@location@!$(FIREFOX_EXT_LOCATION)!g' \
-		-e 's/@version@/$(VERSION)/g' \
+		-e 's!@version@!$(VERSION)!g' \
 		$(SRC_DIR)/update-manifest-firefox.json > $(DIST_DIR)/$(notdir $(FIREFOX_UPDATE_LOCATION))
 
 	@echo ///
@@ -321,9 +298,7 @@ debug-firefox:
 		--firefox-profile $(FIREFOX_TEST_PROFILE_PATH) \
 		--source-dir $(FIREFOX_DEBUG_SRC_PATH) \
 		--keep-profile-changes \
-		--verbose \
-		--start-url https://img.2chan.net/b/futaba.htm \
-		2>/dev/null
+		--start-url https://img.2chan.net/b/futaba.htm
 
 
 

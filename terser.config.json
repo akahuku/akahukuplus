@@ -1,0 +1,14 @@
+{
+	"mangle": false,
+	"compress": {
+		"defaults": false,
+		"dead_code": true,
+		"drop_console": true,
+		"drop_debugger": true
+	},
+	"format": {
+		"beautify": true,
+		"comments": "/@author|License|Copyright/",
+		"quote_style": 3
+	}
+}

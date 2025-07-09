@@ -1,10 +1,9 @@
 'use strict';
-/*
- * akahukuplus
- */
-
 /**
- * Copyright 2012-2024 akahuku, akahuku@gmail.com
+ * akahukuplus
+ *
+ *
+ * Copyright 2012-2025 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -146,8 +145,6 @@ const substs = {leader: 'asis'};
 let xsltProcessor;
 let viewportRect;
 let sounds;
-let editorHelper;
-let tokenizer;
 
 /*
  * <<<1 bootstrap functions
@@ -163,7 +160,7 @@ let styleInitializer = (() => {
 			try {
 				s = document.documentElement.appendChild(document.createElement('style'));
 			}
-			catch (e) {
+			catch {
 				s = null;
 			}
 		}
@@ -196,7 +193,7 @@ let scriptWatcher = (() => {
 	const result = new MutationObserver(ms => {
 		ms.forEach(m => {
 			m.addedNodes.forEach(node => {
-				if (node.nodeType != 1 || node.nodeName != 'SCRIPT') return;
+				if (node.nodeType !== 1 || node.nodeName !== 'SCRIPT') return;
 
 				// more generic method
 				node.type = 'text/plain';
@@ -228,7 +225,8 @@ let scriptWatcher = (() => {
 			// text/html parsing is natively supported
 			return;
 		}
-	} catch (ex) {
+	}
+	catch {
 		//
 	}
 
@@ -263,7 +261,7 @@ function transformWholeDocument (xsl) {
 
 	const generateResult = xmlGenerator.run(
 		bootVars.bodyHTML,
-		pageModes[0].mode == 'reply' ? LEAD_REPLIES_COUNT : null);
+		pageModes[0].mode === 'reply' ? LEAD_REPLIES_COUNT : null);
 
 	try {
 		timingLogger.startTag('parsing xsl');
@@ -306,7 +304,7 @@ function transformWholeDocument (xsl) {
 	const body = $qs('body', fragment);
 	const removeHeadElements = () => {
 		$qsa('head > *').forEach(node => {
-			if (node.nodeName == 'BASE') return;
+			if (node.nodeName === 'BASE') return;
 			node.parentNode.removeChild(node);
 		});
 	};
@@ -381,7 +379,7 @@ function transformWholeDocument (xsl) {
 	}
 
 	// some tweaks: ensure title element exists
-	if (document.head.getElementsByTagName('title').length == 0) {
+	if (document.head.getElementsByTagName('title').length === 0) {
 		const title = document.head.appendChild(document.createElement('title'));
 		title.dataset.binding = 'xpath:/futaba/meta/title';
 	}
@@ -420,7 +418,7 @@ function install () {
 	try {
 		siteInfo.lastModified = new Date(document.lastModified).toUTCString();
 	}
-	catch (e) {
+	catch {
 		siteInfo.lastModified = 0;
 	}
 
@@ -441,7 +439,7 @@ function install () {
 
 			log(`Exception on window: ${message}@${source}:${lineno}${error ? '\n' + error.stack : ''}`);
 		}
-		catch (e) {
+		catch {
 			//
 		}
 	});
@@ -450,7 +448,7 @@ function install () {
 		try {
 			log(`Unhandled promise rejection on window: ${e.reason}`);
 		}
-		catch (e) {
+		catch {
 			//
 		}
 	});
@@ -506,23 +504,6 @@ function install () {
 		backend.log(`got ${data.type} message: ${JSON.stringify(data)}`);
 
 		switch (data.type) {
-		case 'tokenize':
-			try {
-				getTokenizer().then(
-					tokenizer => {
-						response({tokens: tokenizer(data.text)});
-					},
-					() => {
-						response();
-					}
-				);
-				return true;
-			}
-			catch (err) {
-				response();
-			}
-			break;
-
 		case 'query-filesystem-permission':
 			try {
 				resourceSaver.savers(data.id)
@@ -546,7 +527,7 @@ function install () {
 					});
 				return true;
 			}
-			catch (err) {
+			catch {
 				response();
 			}
 			break;
@@ -602,7 +583,7 @@ function install () {
 					});
 				return true;
 			}
-			catch (err) {
+			catch {
 				response();
 			}
 			break;
@@ -773,7 +754,7 @@ function install () {
 			let newActive;
 
 			$qsa('#catalog .catalog-options a').forEach(node => {
-				if (node == t) {
+				if (node === t) {
 					node.classList.add('active');
 					newActive = node;
 				}
@@ -790,7 +771,7 @@ function install () {
 			const order = newActive.href.match(/\w+$/)[0];
 			const contentId = `catalog-threads-wrap-${order}`;
 			$qsa('#catalog .catalog-threads-wrap > div').forEach(node => {
-				if (node.id == contentId) {
+				if (node.id === contentId) {
 					node.classList.remove('hide');
 				}
 				else {
@@ -813,8 +794,8 @@ function install () {
 		.add('a', (e, t) => {
 			const re1 = /(.*)#[^#]*$/.exec(t.href);
 			const re2 = /(.*)(#[^#]*)?$/.exec(location.href);
-			if (t.target != '_blank') return clickDispatcher.PASS_THROUGH;
-			if (re1 && re2 && re1[1] == re2[1]) return clickDispatcher.PASS_THROUGH;
+			if (t.target !== '_blank') return clickDispatcher.PASS_THROUGH;
+			if (re1 && re2 && re1[1] === re2[1]) return clickDispatcher.PASS_THROUGH;
 
 			backend.send('open', {
 				url: t.href,
@@ -863,32 +844,13 @@ function install () {
 		.addStroke('command', 'i', commands.activatePostForm)
 		.addStroke('command', '\u001b', commands.deactivatePostForm)
 
-		.addStroke('command.edit', '\u001b', commands.deactivatePostForm)			// <esc>
+		.addStroke('command.edit', '\u001b', commands.deactivateEditor)			// <esc>
 		.addStroke('command.edit', '\u000d', commands.newLine)						// <enter>
 		.addStroke('command.edit', ['\u0013', '<A-S>'], commands.toggleSage)		// ^S, <Alt+S>
 		.addStroke('command.edit', '<A-D>', commands.voice)							// <Alt+D>
 		.addStroke('command.edit', '<A-S>', commands.semiVoice)						// <Alt+S>
 		.addStroke('command.edit', '<S-enter>', commands.post)						// <Shift+Enter>
-
-		// These shortcuts for text editing are basically emacs-like...
-		.addStroke('command.edit', '\u0001', commands.cursorBeginningOfLine)		// ^A
-		.addStroke('command.edit', '\u0005', commands.cursorEndOfLine)				// ^E
-		.addStroke('command.edit', ['\u000e', '<A-N>'], commands.cursorNextLine)	// ^N, <Alt+N>
-		.addStroke('command.edit', ['\u0010', '<A-P>'], commands.cursorPreviousLine)// ^P, <Alt+P>
-		.addStroke('command.edit', '<A-B>',  commands.cursorBackwardWord)			// <Alt+B>
-		.addStroke('command.edit', '<A-F>',  commands.cursorForwardWord)			// <Alt+F>
-		.addStroke('command.edit', '\u0002', commands.cursorBackwardChar)			// ^B
-		.addStroke('command.edit', '\u0006', commands.cursorForwardChar)			// ^F
-		.addStroke('command.edit', '\u0015', commands.cursorDeleteBackwardBlock)	// ^U
-		.addStroke('command.edit', '\u0017', commands.cursorDeleteBackwardWord)		// ^W
-		.addStroke('command.edit', '\u0008', commands.cursorDeleteBackwardChar)		// ^H
-		.addStroke('command.edit', '\u000B', commands.cursorDeleteForwardBlock)		// ^K
-		.addStroke('command.edit', '\u0004', commands.cursorDeleteForwardChar)		// ^D
-		.addStroke('command.edit', '\u0019', commands.yank)							// ^Y
-		.addStroke('command.edit', '<A-W>', commands.copy)							// <Alt+W>
-		.addStroke('command.edit', '<A-C>', commands.expr)							// <Alt+C>
-		.addStroke('command.edit', '<C-/>',  commands.selectAll)					// ^/
-		.addStroke('command.edit', '<C-A-space>', commands.toggleSelectMode);		// <Ctrl+Alt+Space>
+	;
 
 	/*
 	 * another debug handlers
@@ -899,10 +861,10 @@ function install () {
 			.add('#reload-ext',        commands.reloadExtension)
 			.add('#notice-test',       commands.noticeTest)
 			.add('#reload-full',       () => {
-				return commands[pageModes[0].mode == 'reply' ? 'reloadReplies' : 'reload']();
+				return commands[pageModes[0].mode === 'reply' ? 'reloadReplies' : 'reload']();
 			})
 			.add('#reload-delta',      () => {
-				return commands[pageModes[0].mode == 'reply' ? 'reloadRepliesViaAPI' : 'reload']();
+				return commands[pageModes[0].mode === 'reply' ? 'reloadRepliesViaAPI' : 'reload']();
 			})
 			.add('#dump-stats',        commands.dumpStats)
 			.add('#dump-reload-data',  commands.dumpReloadData)
@@ -998,19 +960,19 @@ function install () {
 		].join('\n'));
 		*/
 
-		const isCatalog = location.hash == '#mode=cat';
+		const isCatalog = location.hash === '#mode=cat';
 
-		if (pageModes[0].mode == 'catalog' && !isCatalog
-		||  pageModes[0].mode != 'catalog' && isCatalog) {
+		if (pageModes[0].mode === 'catalog' && !isCatalog
+		||  pageModes[0].mode !== 'catalog' && isCatalog) {
 			commands.toggleCatalogVisibility();
 		}
 
-		if (pageModes[0].mode == 'summary') {
+		if (pageModes[0].mode === 'summary') {
 			const re = /(\d+)\.htm$/.exec(location.pathname);
 			siteInfo.summaryIndex = re ? re[1] : 0;
 			commands.reload();
 		}
-		else if (pageModes[0].mode == 'catalog' && pageModes[1].mode == 'summary') {
+		else if (pageModes[0].mode === 'catalog' && pageModes[1].mode === 'summary') {
 			const re = /(\d+)\.htm$/.exec(location.pathname);
 			const summaryIndex = siteInfo.summaryIndex = re ? re[1] : 0;
 
@@ -1030,7 +992,7 @@ function install () {
 			const pageCount = Math.min(11, navElement.childElementCount);
 			empty(navElement);
 			for (let i = 0; i < pageCount; i++) {
-				if (i == summaryIndex) {
+				if (i === summaryIndex) {
 					const span = navElement.appendChild(document.createElement('span'));
 					span.className = 'current';
 					$t(span, i);
@@ -1038,7 +1000,7 @@ function install () {
 				else {
 					const a = navElement.appendChild(document.createElement('a'));
 					a.className = 'switch-to';
-					a.href = `${location.protocol}//${location.host}/${siteInfo.board}/${i == 0 ? 'futaba' : i}.htm`;
+					a.href = `${location.protocol}//${location.host}/${siteInfo.board}/${i === 0 ? 'futaba' : i}.htm`;
 					$t(a, i);
 				}
 			}
@@ -1090,12 +1052,12 @@ function install () {
 	(drawButtonWrap => {
 		if (!drawButtonWrap) return;
 
-		if (document.getElementsByName('baseform').length == 0) {
+		if (document.getElementsByName('baseform').length === 0) {
 			// baseform not exists. disable tegaki link
 			drawButtonWrap.classList.add('hide');
 
 			// additionally in reply mode, disable upload feature
-			if (pageModes[0].mode == 'reply') {
+			if (pageModes[0].mode === 'reply') {
 				const upfile = $('upfile');
 				const textonly = $('textonly');
 				upfile.disabled = textonly.disabled = true;
@@ -1132,7 +1094,7 @@ function install () {
 			frameOutTimer = setTimeout(() => {
 				frameOutTimer = null;
 				let p = document.elementFromPoint(cursorPos.x, cursorPos.y);
-				while (p && p.id != 'postform-wrap') {
+				while (p && p.id !== 'postform-wrap') {
 					p = p.parentNode;
 				}
 				if (p) return;
@@ -1205,7 +1167,7 @@ function install () {
 		// We found that this code was removed from base4ajax.js on Jan.22
 		/*
 		const uuc = getCookie('uuc');
-		if (uuc != '1') {
+		if (uuc !== '1') {
 			// uucount: unique user per hour?
 			p.push(getImageFrom(`//dec.2chan.net/bin/uucount.php?${Math.random()}`));
 			document.cookie = 'uuc=1; max-age=3600; path=/;';
@@ -1259,7 +1221,7 @@ function applyDataBindings (xml) {
 		// xpath:<path/to/xml/element>
 		// xpath[<page-mode>]:<path/to/xml/element>
 		if ((re = /^xpath(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
-			if (typeof re[1] == 'string' && re[1] != pageModes[0].mode) continue;
+			if (typeof re[1] === 'string' && re[1] !== pageModes[0].mode) continue;
 			try {
 				const result = xml.evaluate(re[2], xml, null,
 					window.XPathResult.FIRST_ORDERED_NODE_TYPE, null);
@@ -1278,7 +1240,7 @@ function applyDataBindings (xml) {
 		// xpath-class:<path/to/xml/element>
 		// xpath-class[<page-mode>]:<path/to/xml/element>
 		else if ((re = /^xpath-class(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
-			if (typeof re[1] == 'string' && re[1] != pageModes[0].mode) continue;
+			if (typeof re[1] === 'string' && re[1] !== pageModes[0].mode) continue;
 			try {
 				const result = xml.evaluate(re[2], xml, null,
 					window.XPathResult.STRING_TYPE, null);
@@ -1295,11 +1257,11 @@ function applyDataBindings (xml) {
 		// template:<template-name>
 		// template[<page-mode>]:<template-name>
 		else if ((re = /^template(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
-			if (typeof re[1] == 'string' && re[1] != pageModes[0].mode) continue;
+			if (typeof re[1] === 'string' && re[1] !== pageModes[0].mode) continue;
 			try {
 				xsltProcessor.setParameter(null, 'render_mode', re[2]);
 				const f = fixFragment(xsltProcessor.transformToFragment(xml, document));
-				if (f.textContent.replace(/^\s+|\s+$/g, '') == '' && !$qs('[data-doe]', f)) continue;
+				if (f.textContent.replace(/^\s+|\s+$/g, '') === '' && !$qs('[data-doe]', f)) continue;
 				empty(node);
 				extractDisableOutputEscapingTags(node, f);
 			}
@@ -1313,7 +1275,7 @@ function applyDataBindings (xml) {
 		// coin:<key>
 		// coin[<page-mode>]:<key>
 		else if ((re = /^coin(?:\[([^\]]+)\])?:(.+)/.exec(binding))) {
-			if (typeof re[1] == 'string' && re[1] != pageModes[0].mode) continue;
+			if (typeof re[1] === 'string' && re[1] !== pageModes[0].mode) continue;
 			try {
 				let key = re[2], paren = false, toAttr = false, numberOnly = false;
 
@@ -1480,7 +1442,7 @@ function createExtensionBackend () {
 		try {
 			devMode && send('log', {message});
 		}
-		catch (err) {
+		catch {
 			//
 		}
 	}
@@ -1524,11 +1486,11 @@ function createResourceManager () {
 				s = s.replace(/<style[^>]*>[\s\S]*?<\/style[^>]*>/gi, s1 => {
 					return s1.replace(/#((?:ffe|800|ea8)[0-9a-f]?|(?:f0e0d6|faf4e6)(?:[0-9a-f]{2})?)\b/gi, (s2, s3) => {
 						// 4 digits
-						if (s3.length == 4) {
+						if (s3.length === 4) {
 							const alpha = s3.substr(-1);
 							s3 = s3.substring(0, s3.length - 1);
 							const result = map[s3.toLowerCase()];
-							if (result.length == 3) {
+							if (result.length === 3) {
 								return `#${result}${alpha}`;
 							}
 							else {
@@ -1537,7 +1499,7 @@ function createResourceManager () {
 						}
 
 						// 8 digits
-						else if (s3.length == 8) {
+						else if (s3.length === 8) {
 							const alpha = s3.substr(-2);
 							s3 = s3.substring(0, s3.length - 2);
 							const result = map[s3.toLowerCase()];
@@ -1587,7 +1549,7 @@ function createResourceManager () {
 			else {
 				let content = result.content;
 
-				if (type == 'text') {
+				if (type === 'text') {
 					content = transformers.reduce(
 						(prev, current) => current(prev),
 						content);
@@ -1626,7 +1588,7 @@ function createXMLGenerator () {
 		const pattern = /<[^>]+>|[^<]+/g;
 		let re;
 		while ((re = pattern.exec(s))) {
-			if (re[0].charAt(0) != '<') {
+			if (re[0].charAt(0) !== '<') {
 				result.push(re[0]);
 			}
 		}
@@ -1638,7 +1600,7 @@ function createXMLGenerator () {
 		const pattern = /<[^>]+>|[^<]+/g;
 		let re;
 		while ((re = pattern.exec(s))) {
-			if (re[0].charAt(0) == '<') {
+			if (re[0].charAt(0) === '<') {
 				let re2;
 				if ((re2 = /<a\b.*href="([^"]*)"/.exec(re[0]))) {
 					result.push(`<a href="${re2[1]}">`);
@@ -1684,20 +1646,20 @@ function createXMLGenerator () {
 		let re;
 		while ((re = regex.exec(s))) {
 			re = re[0];
-			if (re.charAt(0) == '<') {
-				if (re.charAt(1) == '/') {
+			if (re.charAt(0) === '<') {
+				if (re.charAt(1) === '/') {
 					stack.shift();
-					stack.length == 0 && stack.push(node);
+					stack.length === 0 && stack.push(node);
 				}
 				else {
-					if (re == '<br>') {
+					if (re === '<br>') {
 						stack[0].appendChild(text('\n'));
 						stack[0].appendChild(element(stack[0], 'br'));
 					}
-					else if (re == '<font color="#789922">') {
+					else if (re === '<font color="#789922">') {
 						stack.unshift(element(stack[0], 'q'));
 					}
-					else if (re == '<font color="#ff0000">') {
+					else if (re === '<font color="#ff0000">') {
 						stack.unshift(element(stack[0], 'mark'));
 					}
 				}
@@ -1744,25 +1706,25 @@ function createXMLGenerator () {
 			}
 
 			// 23:00 -> 01:00頃消えます: treat as next day
-			/*if (h != undefined && h < fromDate.getHours() && D == undefined) {
+			/*if (h !== undefined && h < fromDate.getHours() && D === undefined) {
 				D = fromDate.getDate() + 1;
 			}*/
 			// 31日 -> 1日頃消えます: treat as next month
-			if (D != undefined && D < fromDate.getDate() && M == undefined) {
+			if (D !== undefined && D < fromDate.getDate() && M === undefined) {
 				M = fromDate.getMonth() + 1;
 			}
 			// 12月 -> 1月頃消えます: treat as next year
-			if (M != undefined && M < fromDate.getMonth() && Y == undefined) {
+			if (M !== undefined && M < fromDate.getMonth() && Y === undefined) {
 				Y = fromDate.getFullYear() + 1;
 			}
 
 			//
 			expireDate = new Date(
-				Y == undefined ? fromDate.getFullYear() : Y,
-				M == undefined ? fromDate.getMonth() : M,
-				D == undefined ? fromDate.getDate() : D,
-				h == undefined ? fromDate.getHours() : h,
-				m == undefined ? fromDate.getMinutes() : m
+				Y === undefined ? fromDate.getFullYear() : Y,
+				M === undefined ? fromDate.getMonth() : M,
+				D === undefined ? fromDate.getDate() : D,
+				h === undefined ? fromDate.getHours() : h,
+				m === undefined ? fromDate.getMinutes() : m
 			);
 		}
 
@@ -1775,8 +1737,8 @@ function createXMLGenerator () {
 			let remainsString = [];
 			[
 				[1000 * 60 * 60 * 24, 'day',  true],
-				[1000 * 60 * 60,      'hour', h != undefined && m != undefined],
-				[1000 * 60,           'min',  h != undefined && m != undefined]
+				[1000 * 60 * 60,      'hour', h !== undefined && m !== undefined],
+				[1000 * 60,           'min',  h !== undefined && m !== undefined]
 			].forEach(([unit, msgid, enable]) => {
 				if (!enable) return;
 				if (remains < unit) return;
@@ -1791,7 +1753,7 @@ function createXMLGenerator () {
 				remains %= unit;
 			});
 
-			if (remainsString.length == 0) {
+			if (remainsString.length === 0) {
 				expireDateString = _('expire_soon');
 			}
 			else {
@@ -1863,7 +1825,7 @@ function createXMLGenerator () {
 		timingLogger.startTag('createXMLGenerator#run');
 
 		const url = location.href;
-		const isReplyMode = pageModes[0].mode == 'reply';
+		const isReplyMode = pageModes[0].mode === 'reply';
 		const remainingRepliesContext = [];
 		const xml = createFutabaXML(isReplyMode ? 'reply' : 'summary');
 		const text = textFactory(xml);
@@ -1872,7 +1834,7 @@ function createXMLGenerator () {
 		let baseUrl = url;
 
 		let re;
-		if (typeof maxReplies != 'number') {
+		if (typeof maxReplies !== 'number') {
 			maxReplies = 0x7fffffff;
 		}
 
@@ -2134,16 +2096,16 @@ function createXMLGenerator () {
 				const adNode = element(bannersNode, 'ad');
 				let className = 'unknown';
 
-				if (width == 336) {
+				if (width === 336) {
 					className = 'standard';
 				}
-				else if (width == 300) {
+				else if (width === 300) {
 					className = 'mini';
 				}
-				else if (width == 728) {
+				else if (width === 728) {
 					className = 'large';
 				}
-				else if (width == 160 && height == 600) {
+				else if (width === 160 && height === 600) {
 					className = 'skyscraper';
 				}
 
@@ -2172,7 +2134,7 @@ function createXMLGenerator () {
 
 			paramNode = configNode.appendChild(element(configNode, 'param'));
 			paramNode.setAttribute('name', 'catalog.text');
-			paramNode.setAttribute('value', cs[2] != 0 ? '1' : '0');
+			paramNode.setAttribute('value', cs[2] !== 0 ? '1' : '0');
 
 			paramNode = configNode.appendChild(element(configNode, 'param'));
 			paramNode.setAttribute('name', 'storage')
@@ -2269,10 +2231,10 @@ function createXMLGenerator () {
 
 			// number
 			let threadNumber = 0;
-			if (typeof htmlref[2] == 'string' && htmlref[2] != '') {
+			if (typeof htmlref[2] === 'string' && htmlref[2] !== '') {
 				threadNumber = htmlref[2] - 0;
 			}
-			else if (typeof htmlref[3] == 'string' && htmlref[3] != '') {
+			else if (typeof htmlref[3] === 'string' && htmlref[3] !== '') {
 				threadNumber = htmlref[3] - 0;
 			}
 			if (threadNumber) {
@@ -2283,7 +2245,7 @@ function createXMLGenerator () {
 					threadNumberNode.setAttribute('lead', re[1]);
 					threadNumberNode.setAttribute('trail', re[2]);
 				}
-				if (threadIndex == 0) {
+				if (threadIndex === 0) {
 					siteInfo.latestNumber = threadNumber;
 				}
 			}
@@ -2304,7 +2266,7 @@ function createXMLGenerator () {
 				postDateNode.appendChild(text(formatDateTime(postedDate, re)));
 				postDateNode.setAttribute('value', postedDate.getTime());
 				postDateNode.setAttribute('orig', re[0]);
-				if (pageModes[0].mode == 'reply' && !siteInfo.date) {
+				if (pageModes[0].mode === 'reply' && !siteInfo.date) {
 					siteInfo.date = postedDate;
 				}
 			}
@@ -2410,7 +2372,7 @@ function createXMLGenerator () {
 				if (re) {
 					thumbHeight = re[1];
 				}
-				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
+				if (thumbUrl !== '' && thumbWidth !== false && thumbHeight !== false) {
 					const thumbNode = element(topicNode, 'thumb');
 					const thumbnailSize = getThumbnailSize(thumbWidth, thumbHeight, 250, 250);
 					thumbNode.appendChild(text(thumbUrl));
@@ -2421,10 +2383,10 @@ function createXMLGenerator () {
 
 			// communist sign :-)
 			re = /(\[|dice\d+d\d+(?:[-+]\d+)?=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(topic);
-			if (re && (!re[1] || re[1].substr(-1) != '=')) {
+			if (re && (!re[1] || re[1].substr(-1) !== '=')) {
 				const markNode = element(topicNode, 'mark');
-				re[0].charAt(0) == '['
-					&& re[0].substr(-1) == ']'
+				re[0].charAt(0) === '['
+					&& re[0].substr(-1) === ']'
 					&& markNode.setAttribute('bracket', 'true');
 				markNode.appendChild(text(stripTags(re[2])));
 			}
@@ -2473,7 +2435,7 @@ function createXMLGenerator () {
 			 */
 
 			// if summary mode, store lastest number
-			if (pageModes[0].mode == 'summary' && threadIndex == 0) {
+			if (pageModes[0].mode === 'summary' && threadIndex === 0) {
 				if (result.repliesNode.childElementCount) {
 					siteInfo.latestNumber = $qs('number', result.repliesNode.lastElementChild).textContent - 0;
 				}
@@ -2533,13 +2495,11 @@ function createXMLGenerator () {
 			}
 
 			// ID
-			// TODO: support ID with email
-			//   <span class="cnw"><a href="mailto:sage">22/07/03(日)06:11:03</a> ID:hHuZSHj2</span>
-			re = /<span([^>]*)>[^<]*?ID:([^\s]+)<\/span>/i.exec(info);
-			if (re && /\bclass="[^"]*\bcnw\b[^"]*"/.test(re[1])) {
+			if (/<span\s+class="cnw"[^>]*>(.+?)<\/span>/.test(info)
+			&& (re = /ID:(\S+)/.exec(RegExp.$1))) {
 				const idNode = element(replyNode, 'user_id');
-				idNode.appendChild(text(stripTags(re[2])));
-				postStats.notifyId(number, re[2]);
+				idNode.appendChild(text(stripTags(re[1])));
+				postStats.notifyId(number, re[1]);
 			}
 
 			// IP
@@ -2551,13 +2511,13 @@ function createXMLGenerator () {
 
 			// mark
 			re = /(\[|dice\d+d\d+(?:[-+]\d+)?=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(comment);
-			if (re && (!re[1] || re[1].substr(-1) != '=')) {
+			if (re && (!re[1] || re[1].substr(-1) !== '=')) {
 				if (!$qs('deleted', replyNode)) {
 					element(replyNode, 'deleted');
 				}
 
 				const markNode = element(replyNode, 'mark');
-				if (re[0].charAt(0) == '[' && re[0].substr(-1) == ']') {
+				if (re[0].charAt(0) === '[' && re[0].substr(-1) === ']') {
 					markNode.setAttribute('bracket', 'true');
 				}
 				re[2] = stripTags(re[2]);
@@ -2676,7 +2636,7 @@ function createXMLGenerator () {
 				if (re) {
 					thumbHeight = re[1];
 				}
-				if (thumbUrl != '' && thumbWidth !== false && thumbHeight !== false) {
+				if (thumbUrl !== '' && thumbWidth !== false && thumbHeight !== false) {
 					const thumbNode = element(replyNode, 'thumb');
 					const thumbnailSize = getThumbnailSize(thumbWidth, thumbHeight, 250, 250);
 					thumbNode.appendChild(text(thumbUrl));
@@ -2751,7 +2711,7 @@ function createXMLGenerator () {
 		});
 		reloadStatus.expireDate = expireDate.at;
 
-		if (content.maxres && content.maxres != '') {
+		if (content.maxres && content.maxres !== '') {
 			expiresNode.setAttribute('maxreached', 'true');
 		}
 
@@ -2794,13 +2754,13 @@ function createXMLGenerator () {
 				else {
 					re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(reply.com);
 				}
-				if (re && (!re[1] || re[1].substr(-1) != '=')) {
+				if (re && (!re[1] || re[1].substr(-1) !== '=')) {
 					if (!$qs('deleted', replyNode)) {
 						element(replyNode, 'deleted');
 					}
 
 					const markNode = element(replyNode, 'mark');
-					if (re[0].charAt(0) == '[' && re[0].substr(-1) == ']') {
+					if (re[0].charAt(0) === '[' && re[0].substr(-1) === ']') {
 						markNode.setAttribute('bracket', 'true');
 					}
 					re[2] = stripTags(re[2]);
@@ -2810,7 +2770,7 @@ function createXMLGenerator () {
 			}
 
 			// ID
-			if (reply.id != '') {
+			if (reply.id !== '') {
 				const id = reply.id.replace(/^id:\s*/i, '');
 				if (/^ip:\s*/i.test(id)) {
 					const ipNode = element(replyNode, 'ip');
@@ -2851,26 +2811,26 @@ function createXMLGenerator () {
 
 			// subject and name
 			if (content.dispname - 0) {
-				if (reply.sub != '') {
+				if (reply.sub !== '') {
 					element(replyNode, 'sub').appendChild(text(reply.sub));
 					siteInfo.subHash[reply.sub] = (siteInfo.subHash[reply.sub] || 0) + 1;
 				}
 
-				if (reply.name != '') {
+				if (reply.name !== '') {
 					element(replyNode, 'name').appendChild(text(reply.name));
 					siteInfo.nameHash[reply.name] = (siteInfo.nameHash[reply.name] || 0) + 1;
 				}
 			}
 
 			// mail address
-			if (reply.email != '') {
+			if (reply.email !== '') {
 				const emailNode = element(replyNode, 'email');
 				emailNode.appendChild(text(stripTags(reply.email)));
 				linkify(emailNode);
 			}
 
 			// src & thumbnail url
-			if (reply.ext != '') {
+			if (reply.ext !== '') {
 				const imageNode = element(replyNode, 'image');
 				const srcUrl = resolveRelativePath(reply.src, baseUrl);
 				imageNode.appendChild(text(srcUrl));
@@ -2888,7 +2848,7 @@ function createXMLGenerator () {
 				}
 
 				// thumbnail
-				if (reply.thumb != '') {
+				if (reply.thumb !== '') {
 					let thumbUrl = resolveRelativePath(reply.thumb, baseUrl);
 
 					const thumbNode = element(replyNode, 'thumb');
@@ -3074,10 +3034,6 @@ function createPersistentStorage () {
 			type: 'bool',
 			value: true,
 		},
-		hook_edit_shortcuts: {
-			type: 'bool',
-			value: true,
-		},
 		full_reload_interval: {
 			type: 'int',
 			value: 2,
@@ -3193,7 +3149,7 @@ function createPersistentStorage () {
 		const config = {};
 
 		for (let i in data) {
-			if (data[i].value != data[i].defaultValue) {
+			if (data[i].value !== data[i].defaultValue) {
 				config[i] = data[i].value;
 			}
 		}
@@ -3207,7 +3163,7 @@ function createPersistentStorage () {
 		for (let i in storage) {
 			if (!(i in data)) continue;
 			const value = validate(i, storage[i]);
-			if (value != undefined) {
+			if (value !== undefined) {
 				data[i].value = value;
 			}
 		}
@@ -3359,7 +3315,7 @@ function createTimingLogger () {
 				item.message +
 				(message ? (' ' + message) : '') +
 				` (${(now - item.time).toFixed(4)} msecs)`);
-			if (stack.length == 0) {
+			if (stack.length === 0) {
 				devMode && console.log(`*** timing dump ***\n${this.dump()}\n\n${getVersion()}`);
 				this.reset();
 			}
@@ -3394,7 +3350,7 @@ function createClickDispatcher () {
 
 	function handler (e) {
 		for (let t = e.target; t instanceof Element; t = t.parentNode) {
-			const elementType = (t.nodeName == 'INPUT' ? `${t.nodeName}-${t.type}` : t.nodeName).toLowerCase();
+			const elementType = (t.nodeName === 'INPUT' ? `${t.nodeName}-${t.type}` : t.nodeName).toLowerCase();
 
 			if (TARGET_ELEMENTS.includes(elementType) || 'href' in t.dataset) {
 				const fragment = t.getAttribute('href') ?? t.dataset.href;
@@ -3404,7 +3360,7 @@ function createClickDispatcher () {
 				}
 
 				for (const pattern in keys) {
-					if (pattern.charAt(0) == '.' && t.classList.contains(pattern.substring(1))) {
+					if (pattern.charAt(0) === '.' && t.classList.contains(pattern.substring(1))) {
 						return invoke(pattern, e, t);
 					}
 				}
@@ -3500,10 +3456,13 @@ function createKeyManager () {
 		}
 
 		if (e.isComposing) {
+			if (e.ctrlKey && e.key === 'h') {
+				e.preventDefault();
+			}
 			return;
 		}
 
-		if ((stroke == 'Enter' || stroke == 'Escape')
+		if ((stroke === '\u000d' || stroke === '\u001b' || stroke === 'Enter' || stroke === 'Escape')
 		&& isSpecialInputElement(focusedNodeName)) {
 			return;
 		}
@@ -3569,7 +3528,7 @@ function createKeyManager () {
 
 		case 0x80:
 			// use visible characters as they are (except space)
-			if (key.length == 1 && key != ' ') {
+			if (key.length === 1 && key !== ' ') {
 				result = key;
 				break;
 			}
@@ -3587,7 +3546,7 @@ function createKeyManager () {
 	function getDetailedNodeName (target) {
 		const el = target || document.activeElement;
 		let focusedNodeName = el.nodeName.toLowerCase();
-		if (focusedNodeName == 'input') {
+		if (focusedNodeName === 'input') {
 			focusedNodeName += `.${el.type.toLowerCase()}`;
 		}
 		else if (el.isContentEditable) {
@@ -3622,7 +3581,7 @@ function createKeyManager () {
 
 	function removeStroke (mode, stroke) {
 		if (mode in strokes) {
-			if (stroke == undefined) {
+			if (stroke === undefined) {
 				delete strokes[mode];
 			}
 			else {
@@ -3632,7 +3591,7 @@ function createKeyManager () {
 				stroke.forEach(s => {
 					delete strokes[mode][s.toLowerCase()];
 				});
-				if (Object.keys(strokes[mode]).length == 0) {
+				if (Object.keys(strokes[mode]).length === 0) {
 					delete strokes[mode];
 				}
 			}
@@ -3640,7 +3599,6 @@ function createKeyManager () {
 		return this;
 	}
 
-	editorHelper.passThroughValue = PASS_THROUGH;
 	document.addEventListener('keydown', keydown, true);
 
 	return {addStroke, removeStroke, PASS_THROUGH};
@@ -3758,7 +3716,7 @@ function createPostStats () {
 		if (isNaN(value)) return;
 
 		if (number in data.sodanes) {
-			if (data.sodanes[number] != value) {
+			if (data.sodanes[number] !== value) {
 				newData.sodanes[number] = [data.sodanes[number], value];
 			}
 			if (value) {
@@ -3839,7 +3797,7 @@ function createPostStats () {
 					item.push({isNew, number});
 				}
 
-				if (item.length && item.length == newIdCount) {
+				if (item.length && item.length === newIdCount) {
 					newIds.add(id);
 				}
 
@@ -3883,10 +3841,10 @@ function createPostStats () {
 	}
 
 	function updatePanelView (stats) {
-		if (pageModes[0].mode != 'reply') return;
+		if (pageModes[0].mode !== 'reply') return;
 
 		function setListItemVisibility (node, value) {
-			while (node && node.nodeName != 'LI') {
+			while (node && node.nodeName !== 'LI') {
 				node = node.parentNode;
 			}
 			if (node) {
@@ -3996,7 +3954,7 @@ function createPostStats () {
 			const current = stats.count[i];
 			let diff;
 
-			if (!stats.delta || (diff = stats.delta[i]) == undefined || diff == 0) {
+			if (!stats.delta || (diff = stats.delta[i]) === undefined || diff === 0) {
 				$t(`replies-${i}`, current);
 				$t(`pf-replies-${i}`, current);
 				continue;
@@ -4006,16 +3964,16 @@ function createPostStats () {
 			$t(`replies-${i}`, s);
 			$t(`pf-replies-${i}`, s);
 
-			if (i == 'mark') {
+			if (i === 'mark') {
 				marked = true;
 			}
-			else if (i == 'id') {
+			else if (i === 'id') {
 				identified = true;
 			}
 		}
 
 		if (identified) {
-			if (siteInfo.server == 'may' && siteInfo.board == 'id') {
+			if (siteInfo.server === 'may' && siteInfo.board === 'id') {
 				identified = false;
 			}
 			else if (siteInfo.idDisplay) {
@@ -4124,7 +4082,7 @@ function createUrlStorage () {
 
 		const catviews = slot.reduce((result, item) => {
 			const [server, board, number] = item.key.split('-');
-			if (server == siteInfo.server && board == siteInfo.board) {
+			if (server === siteInfo.server && board === siteInfo.board) {
 				result.push(number);
 			}
 			return result;
@@ -4135,7 +4093,7 @@ function createUrlStorage () {
 	function indexOf (slot, key) {
 		let result = -1;
 		slot.some((item, i) => {
-			if (item.key == key) {
+			if (item.key === key) {
 				result = i;
 				return true;
 			}
@@ -4166,11 +4124,11 @@ function createUrlStorage () {
 				slot.push(item);
 			}
 
-			if (typeof callback == 'function') {
+			if (typeof callback === 'function') {
 				try {
 					callback(item);
 				}
-				catch (err) {
+				catch {
 					//
 				}
 			}
@@ -4184,7 +4142,7 @@ function createUrlStorage () {
 			const result = {};
 			slot.forEach(item => {
 				const key = item.key.split('-');
-				if (siteInfo.server == key[0] && siteInfo.board == key[1]) {
+				if (siteInfo.server === key[0] && siteInfo.board === key[1]) {
 					result[key[2]] = item;
 				}
 			});
@@ -4218,9 +4176,9 @@ function createCatalogPopup (container) {
 		_log('mover: ' + (e.target.outerHTML || '<#document>').match(/<[^>]*>/)[0]);
 
 		let target;
-		if (e.target.nodeName == 'IMG' || e.target.classList.contains('text')) {
+		if (e.target.nodeName === 'IMG' || e.target.classList.contains('text')) {
 			target = e.target;
-			while (target && target.nodeName != 'A') {
+			while (target && target.nodeName !== 'A') {
 				target = target.parentNode;
 			}
 		}
@@ -4238,7 +4196,7 @@ function createCatalogPopup (container) {
 		timer = setTimeout(target => {
 			timer = null;
 			for (let p = document.elementFromPoint(cursorPos.x, cursorPos.y); p; p = p.parentNode) {
-				if (p == target) {
+				if (p === target) {
 					_log('mover phase 2: target found');
 					prepare(target);
 					break;
@@ -4250,7 +4208,7 @@ function createCatalogPopup (container) {
 	function indexOf (target) {
 		let result = -1;
 		popups.some((item, i) => {
-			if (item.target == target) {
+			if (item.target === target) {
 				result = i;
 				return true;
 			}
@@ -4364,7 +4322,7 @@ function createCatalogPopup (container) {
 	}
 
 	function open (target) {
-		const index = typeof target == 'number' ? target : indexOf(target);
+		const index = typeof target === 'number' ? target : indexOf(target);
 		if (index < 0 || target >= popups.length) {
 			_log(`open: index ${index} is invalid. exit.`);
 			return;
@@ -4415,23 +4373,23 @@ function createCatalogPopup (container) {
 	}
 
 	function close (target) {
-		const index = typeof target == 'number' ? target : indexOf(target);
+		const index = typeof target === 'number' ? target : indexOf(target);
 		if (index < 0 || index >= popups.length) {
 			_log(`close: index ${index} is invalid. exit.`);
 			return;
 		}
 
 		let item = popups[index];
-		if (item.state == 'closing') return;
+		if (item.state === 'closing') return;
 
 		const handleTransitionend = e => {
 			if (e && e.target) {
 				const t = e.target;
 				t.parentNode && t.parentNode.removeChild(t);
 			}
-			if (item && --item.closingCount <= 0 && item.state == 'closing') {
+			if (item && --item.closingCount <= 0 && item.state === 'closing') {
 				for (let i = 0; i < popups.length; i++) {
-					if (popups[i] == item) {
+					if (popups[i] === item) {
 						item = null;
 						popups.splice(i, 1);
 						break;
@@ -4471,7 +4429,7 @@ function createCatalogPopup (container) {
 				const index = elms.indexOf(popups[i][p]);
 				index >= 0 && elms.splice(index, 1);
 			});
-			if (popups[i].target == except) continue;
+			if (popups[i].target === except) continue;
 			close(i);
 		}
 		elms.forEach(elm => {
@@ -4505,7 +4463,7 @@ function createQuotePopup () {
 	let cache = new Map;
 
 	function init () {
-		if (pageModes[0].mode != 'reply') return;
+		if (pageModes[0].mode !== 'reply') return;
 
 		document.body.addEventListener(
 			'mousemove',
@@ -4830,9 +4788,9 @@ function createQuotePopup () {
 
 	function popup () {
 		const element = document.elementFromPoint(cursorPos.x, cursorPos.y);
-		const q = element.closest('q');
-		const comment = element.closest('.comment');
-		const wrap = element.closest(':not(.topic-wrap)[data-number]');
+		const q = element?.closest('q');
+		const comment = element?.closest('.comment');
+		const wrap = element?.closest(':not(.topic-wrap)[data-number]');
 
 		if (q && comment && wrap && /\S/.test(q.textContent)) {
 			const no = getPostNumber(wrap);
@@ -4902,7 +4860,7 @@ function createSelectionMenu () {
 
 		let element = document.elementFromPoint(cursorPos.x, cursorPos.y);
 		while (element) {
-			if (element.contentEditable == 'true') return;
+			if (element.isContentEditable) return;
 			element = element.parentNode;
 		}
 
@@ -4919,7 +4877,7 @@ function createSelectionMenu () {
 				.replace(/\n+$/, '') || '';
 		}
 
-		if (s != '') {
+		if (s !== '') {
 			text = s;
 			show(menu);
 		}
@@ -4977,12 +4935,12 @@ function createSelectionMenu () {
 
 					let start = r1.startContainer;
 					for (; start; start = start.parentNode) {
-						if (start.nodeType == 1) break;
+						if (start.nodeType === 1) break;
 					}
 
 					let end = r1.endContainer;
 					for (; end; end = end.parentNode) {
-						if (end.nodeType == 1) break;
+						if (end.nodeType === 1) break;
 					}
 
 					if (start && end) {
@@ -5008,7 +4966,7 @@ function createSelectionMenu () {
 		case 'copy':
 		case 'copy-with-quote':
 			{
-				const quoted = key == 'copy' ? text : getQuoted(text);
+				const quoted = key === 'copy' ? text : getQuoted(text);
 
 				if ('clipboard' in navigator) {
 					navigator.clipboard.writeText(quoted);
@@ -5052,7 +5010,6 @@ function createSelectionMenu () {
 			.join('\n');
 	}
 
-	/*
 	function toPrintable (s) {
 		return s.replace(
 			/[\x00-\x1f]/g,
@@ -5067,30 +5024,27 @@ function createSelectionMenu () {
 			}
 		);
 	}
-	*/
 
 	function quote (target, text, addPrefix) {
 		target = $(target);
 		if (!target) return;
 
 		const s = (addPrefix ? getQuoted(text) : text).replace(/^\s+|\s+$/g, '');
-		if (s == '') return;
-
-		const lead = target.lastChild && target.lastChild.nodeName !== 'BR' ? '\n' : '';
+		if (s === '') return;
 
 		if ('value' in target) {
 			target.setSelectionRange(target.value.length, target.value.length);
-			document.execCommand('insertText', false, `${lead}${s}\n`);
+			execCommand('insertText', `\n${s}\n`);
 		}
 		else {
-			regalizeEditable(target);
-			document.execCommand('selectAll', false, null);
-			document.getSelection().getRangeAt(0).collapse(false);
-			document.execCommand('insertText', false, `${lead}${s}\n`);
-			regalizeEditable(target);
+			console.log(toPrintable(target.innerHTML));
+			const isSpecialCase = /^\s*$/.test(target.textContent)
+				|| IS_GECKO && /\n$/.test(target.textContent)
+				|| !IS_GECKO && /<div><br><\/div>$/.test(target.innerHTML);
 
-			// note: Here is a bug that breaks the input method state in
-			//       the fcitx+skk environment.
+			execCommand('selectAll', null);
+			document.getSelection().getRangeAt(0).collapse(false);
+			execCommand('insertText', (isSpecialCase ? '' : '\n') + `${s}\n`);
 		}
 	}
 
@@ -5117,7 +5071,7 @@ function createFavicon () {
 	function overwriteFavicon (image, favicon) {
 		image = $(image);
 		if (!image) return;
-		if (image.naturalWidth == 0 || image.naturalHeight == 0) return;
+		if (image.naturalWidth === 0 || image.naturalHeight === 0) return;
 
 		favicon = $(favicon);
 		if (!favicon) return;
@@ -5210,7 +5164,7 @@ function createFavicon () {
 				if (!re) break;
 
 				// thumbnail exists in the same domain as the document?
-				if (re[1] == location.host) {
+				if (re[1] === location.host) {
 					// yes: use thumbnail directly
 					if (thumb.naturalWidth && thumb.naturalHeight) {
 						overwriteFavicon(thumb, createLinkNode());
@@ -5259,11 +5213,15 @@ function createHistoryStateWrapper () {
 			popstateHandler();
 		},
 		updateHash: hash => {
-			if (hash != '') {
+			if (hash !== '') {
 				hash = '#' + hash.replace(/^#/, '');
 			}
 			const url = `${location.protocol}//${location.host}${location.pathname}${hash}${location.search}`;
-			window.history.replaceState(null, '', url);
+
+			if (url !== location.href) {
+				backend.send('notify-hashchange');
+				window.history.replaceState(null, '', url);
+			}
 		}
 	};
 }
@@ -5284,7 +5242,7 @@ function createScrollManager (frequencyMsecs) {
 				try {
 					listener();
 				}
-				catch (e) {
+				catch {
 					//
 				}
 			});
@@ -5414,7 +5372,7 @@ function createActiveTracker () {
 
 		l('activeTracker#startTimer2');
 		timer2 = setInterval(() => {
-			if (currentState != 'running') {
+			if (currentState !== 'running') {
 				return;
 			}
 
@@ -5426,7 +5384,7 @@ function createActiveTracker () {
 			}
 
 			setCurrentState('reloading');
-			if (pageModes[0].mode == 'reply') {
+			if (pageModes[0].mode === 'reply') {
 				log(`active tracker: calling reload()`);
 				commands.reload({
 					isAutotrack: true,
@@ -5434,7 +5392,7 @@ function createActiveTracker () {
 					ignoreWaiting: true
 				});
 			}
-			else if (pageModes.length >= 2 && pageModes[1].mode == 'reply') {
+			else if (pageModes.length >= 2 && pageModes[1].mode === 'reply') {
 				setCurrentState();
 				start();
 			}
@@ -5476,11 +5434,11 @@ function createActiveTracker () {
 			intervals.push(Math.max(1, postTimes[i + 1].getTime() - postTimes[i].getTime()));
 		}
 
-		if (intervals.length == 0 && !lastMedian) {
+		if (intervals.length === 0 && !lastMedian) {
 			median = DEFAULT_MEDIAN;
 			logs.push(`frequency median set to default ${median}.`);
 		}
-		else if (referencedReplyNumber == lastReferencedReplyNumber) {
+		else if (referencedReplyNumber === lastReferencedReplyNumber) {
 			median = lastMedian * 1.25;
 			median = Math.floor(median / 1000) * 1000;
 			median = Math.min(median, MEDIAN_MAX);
@@ -5572,7 +5530,7 @@ function createActiveTracker () {
 	}
 
 	function reset () {
-		if (currentState != 'running') return;
+		if (currentState !== 'running') return;
 
 		l('activeTracker#reset');
 		setCurrentState();
@@ -5598,13 +5556,13 @@ function createPassiveTracker () {
 			try {
 				clearTimeout(timerID);
 			}
-			catch (err) {
+			catch {
 				//
 			}
 			timerID = undefined;
 		}
 
-		if (pageModes[0].mode != 'reply' || activeTracker.running) {
+		if (pageModes[0].mode !== 'reply' || activeTracker.running) {
 			return;
 		}
 
@@ -5621,7 +5579,7 @@ function createPassiveTracker () {
 	function timer () {
 		timerID = undefined;
 
-		if (pageModes[0].mode != 'reply' || activeTracker.running) {
+		if (pageModes[0].mode !== 'reply' || activeTracker.running) {
 			update(expireDate);
 		}
 		else {
@@ -5636,7 +5594,7 @@ function createPassiveTracker () {
 
 	function update (ed) {
 		if (!(ed instanceof Date)) return;
-		if (pageModes[pageModes.length - 1].mode != 'reply') return;
+		if (pageModes[pageModes.length - 1].mode !== 'reply') return;
 
 		expireDate = ed;
 
@@ -5675,7 +5633,7 @@ function createTitleIndicator () {
 			return;
 		}
 
-		document.title = blinkCount++ % 2 == 0 ? originalTitle : _('thread_updated');
+		document.title = blinkCount++ % 2 === 0 ? originalTitle : _('thread_updated');
 	}
 
 	function startBlink () {
@@ -6118,7 +6076,7 @@ function createResourceSaver () {
 
 				firstCommentText = firstCommentText.split('\n');
 				// if all comments are quoted line...
-				if (firstCommentText.filter(line => /^\s*>/.test(line)).length == firstCommentText.length) {
+				if (firstCommentText.filter(line => /^\s*>/.test(line)).length === firstCommentText.length) {
 					// reduce 1 quote level
 					firstCommentText = firstCommentText
 						.map(line => line.replace(/^\s*>/, ''));
@@ -6134,10 +6092,10 @@ function createResourceSaver () {
 					return true;
 				}).join('\n');
 
-				if (firstCommentText == '') {
+				if (firstCommentText === '') {
 					firstCommentText = defaultCommentText;
 				}
-				if (firstCommentText == '') {
+				if (firstCommentText === '') {
 					firstCommentText = 'ｷﾀ━━━(ﾟ∀ﾟ)━━━!!';
 				}
 
@@ -6192,7 +6150,7 @@ function createResourceSaver () {
 					storage.config.save_image_text_max_length.min
 				);
 
-				return replyCommentText == '' ? null : replyCommentText;
+				return replyCommentText === '' ? null : replyCommentText;
 			})(targetNode && targetNode.closest('.reply-wrap'));
 
 			return result;
@@ -6358,7 +6316,7 @@ function createResourceSaver () {
 				return;
 			}
 
-			if (typeof options.pathOverride == 'string' && options.pathOverride != '') {
+			if (typeof options.pathOverride === 'string' && options.pathOverride !== '') {
 				localPath = [options.pathOverride, localPath.split('/').pop()].join('/');
 			}
 
@@ -6460,7 +6418,7 @@ function createResourceSaver () {
 			const FLOAT_THRESHOLD = 3;
 			const LRU_ITEM_MAX = 10;
 
-			if (!('label' in currentItem) || currentItem.label == '') {
+			if (!('label' in currentItem) || currentItem.label === '') {
 				return;
 			}
 
@@ -6473,7 +6431,7 @@ function createResourceSaver () {
 					return Date.now() - ACCESS_TIME_TTL < time;
 				});
 
-				if (item.path == currentItem.path) {
+				if (item.path === currentItem.path) {
 					item.accessed.push(Date.now());
 
 					const n = item.accessed.filter(time => {
@@ -6537,7 +6495,7 @@ function createResourceSaver () {
 			if (busy) return;
 			if (threadSaver.running) return;
 			if (pageModes[0].mode !== 'reply') return;
-			if (reloadStatus.lastStatus == 404) return;
+			if (reloadStatus.lastStatus === 404) return;
 			if (!ensureFileSystemEnabled(threadSaver, LABEL)) return;
 
 			const localPath = _getLocalPath(location.href);
@@ -6581,7 +6539,7 @@ function createResourceSaver () {
 		async function push (stats) {
 			if (busy) return;
 			if (!threadSaver.running) return;
-			if (pageModes[0].mode != 'reply') return;
+			if (pageModes[0].mode !== 'reply') return;
 
 			busy = true;
 			updateAnchor(_('now_adding_new_posts'));
@@ -6604,7 +6562,7 @@ function createResourceSaver () {
 		}
 
 		function stop () {
-			if (pageModes[0].mode != 'reply') return;
+			if (pageModes[0].mode !== 'reply') return;
 
 			threadSaver.stop();
 		}
@@ -6641,7 +6599,7 @@ function createResourceSaver () {
 
 	registerAfterReloadCallback(() => {
 		if (savers[THREAD_FILE_SYSTEM_NAME]?.running) {
-			if (reloadStatus.lastStatus == 404) {
+			if (reloadStatus.lastStatus === 404) {
 				savers[THREAD_FILE_SYSTEM_NAME].stop();
 			}
 		}
@@ -6661,7 +6619,7 @@ function createResourceSaver () {
 				createThreadSaverWrap);
 		},
 		savers: function (...ids) {
-			if (ids.length == 0) {
+			if (ids.length === 0) {
 				ids = [ASSET_FILE_SYSTEM_NAME, THREAD_FILE_SYSTEM_NAME];
 			}
 
@@ -6676,7 +6634,7 @@ function createResourceSaver () {
 						return Promise.resolve(null);
 					}
 				}, this))
-			.then(p => p.length == 1 ? p[0] : p);
+			.then(p => p.length === 1 ? p[0] : p);
 		},
 		rawSavers: id => {
 			return savers[id];
@@ -6772,7 +6730,7 @@ function setupVideoViewer () {
 			else {
 				// visible
 				const markup = node.dataset.markup;
-				if (markup && node.childNodes.length == 0) {
+				if (markup && node.childNodes.length === 0) {
 					setBottomStatus(`${_('video_loading')}: ${node.parentNode.getElementsByTagName('a')[0].href}`);
 					node.insertAdjacentHTML('beforeend', markup);
 				}
@@ -6788,7 +6746,7 @@ function setupMouseHoverEvent (element, nodeName, hoverCallback, leaveCallback) 
 
 	function findTarget (e) {
 		while (e) {
-			if (e.nodeName.toLowerCase() == nodeName) return e;
+			if (e.nodeName.toLowerCase() === nodeName) return e;
 			e = e.parentNode;
 		}
 		return null;
@@ -6800,24 +6758,24 @@ function setupMouseHoverEvent (element, nodeName, hoverCallback, leaveCallback) 
 		let needInvokeHoverEvent = false;
 		let needInvokeLeaveEvent = false;
 
-		if (fromElement != toElement) {
+		if (fromElement !== toElement) {
 			// causes leave event?
 			if (fromElement) {
-				if (lastHoverElement != null) {
+				if (lastHoverElement !== null) {
 					needInvokeLeaveEvent = true;
 				}
 			}
 
 			// causes hover event?
 			if (toElement) {
-				if (lastHoverElement != toElement) {
+				if (lastHoverElement !== toElement) {
 					needInvokeHoverEvent = true;
 				}
 			}
 
 			// causes leave event?
 			else {
-				if (lastHoverElement != null) {
+				if (lastHoverElement !== null) {
 					needInvokeLeaveEvent = true;
 				}
 			}
@@ -6881,7 +6839,7 @@ function setupPostFormItemEvent (items) {
 		const el = $(item.id);
 		if (!el) return result;
 
-		const cacheEntry = cache[item.id] && cache[item.id].html == el.innerHTML ?
+		const cacheEntry = cache[item.id] && cache[item.id].html === el.innerHTML ?
 			cache[item.id] : null;
 		const contents = cacheEntry ?
 			cacheEntry.contents :
@@ -6915,12 +6873,12 @@ function setupPostFormItemEvent (items) {
 
 	function adjustTextAreaHeight (e) {
 		// do nothing during composing
-		if (e.type == 'input' && e.isComposing) {
+		if (e.type === 'input' && e.isComposing) {
 			return;
 		}
 
 		const com = e.target;
-		if (com.innerHTML != '' && /^\n*$/.test(com.innerText)) {
+		if (com.innerHTML !== '' && /^\n*$/.test(com.innerText)) {
 			empty(com);
 		}
 
@@ -6965,7 +6923,7 @@ function setupPostFormItemEvent (items) {
 			clearTimeout(timers[tag]);
 			delete timers[tag];
 		}
-		if (typeof fn == 'function') {
+		if (typeof fn === 'function') {
 			timers[tag] = setTimeout(e => {
 				delete timers[tag];
 				fn(e);
@@ -7007,10 +6965,10 @@ function setupPostFormItemEvent (items) {
 			case 1: // ELEMENT_NODE
 				{
 					let result = elm.tagName;
-					if (elm.id != '') {
+					if (elm.id !== '') {
 						result += `#${elm.id}`;
 					}
-					if (elm.className != '') {
+					if (elm.className !== '') {
 						result += '.' + elm.className.replace(/\s+/g, '.');
 					}
 					logs.push(result);
@@ -7032,7 +6990,7 @@ function setupPostFormItemEvent (items) {
 	*/
 
 	function pasteText (e, text) {
-		document.execCommand('insertText', false, text);
+		execCommand('insertText', text);
 	}
 
 	async function encodeJpeg (canvas, maxSize) {
@@ -7259,7 +7217,7 @@ function setupPostFormItemEvent (items) {
 			e.preventDefault();
 			pasteFile(e, data).then(setPastedFile);
 		}
-		else if ((data = dataTransfer.getData('text/plain')) != '') {
+		else if ((data = dataTransfer.getData('text/plain')) !== '') {
 			e.preventDefault();
 			pasteText(e, data.replace(/\t/g, ' '));
 		}
@@ -7286,7 +7244,7 @@ function setupPostFormItemEvent (items) {
 		const el = $(item.id);
 		if (!el) return;
 
-		if (el.nodeName == 'TEXTAREA' || el.contentEditable == 'true') {
+		if (el.nodeName === 'TEXTAREA' || el.isContentEditable) {
 			el.addEventListener('input', registerTextAreaHeightAdjuster);
 			el.addEventListener('compositionend', adjustTextAreaHeight);
 			el.addEventListener('paste', handleTextAreaPaste);
@@ -7324,7 +7282,7 @@ function setupWheelReload () {
 		try {
 			e.preventDefault();
 		}
-		catch (ex) {
+		catch {
 			//
 		}
 	}
@@ -7356,7 +7314,7 @@ function setupWheelReload () {
 		const factor = storage.config.wheel_reload_threshold_override.value;
 		const threshold = storage.config.wheel_reload_unit_size.value * factor;
 
-		if (wheelDelta == 0) {
+		if (wheelDelta === 0) {
 			wheelDelta = threshold;
 		}
 
@@ -7399,7 +7357,7 @@ function setupCustomEventHandler () {
 		if (!ws) return;
 
 		const s = e.detail.message;
-		if (!s || s == '') {
+		if (!s || s === '') {
 			ws.classList.add('hide');
 		}
 		else {
@@ -7432,7 +7390,7 @@ function setupCustomEventHandler () {
 			navStatusHideTimer = null;
 		}
 
-		if (s == '') {
+		if (s === '') {
 			shrinkChars = Array.from($qs('.wheel-status-text', ns).textContent);
 			persistent = false;
 			interval = 0;
@@ -7479,11 +7437,11 @@ function setupSearchResultPopup () {
 
 			let element = document.elementFromPoint(cursorPos.x, cursorPos.y);
 			while (element) {
-				if (element.nodeName == 'A') break;
+				if (element.nodeName === 'A') break;
 				element = element.parentNode;
 			}
 
-			if (element == target) {
+			if (element === target) {
 				const panelRect = $('panel-aside-wrap').getBoundingClientRect();
 				const targetRect = target.getBoundingClientRect();
 				const originNumber = target.dataset.number;
@@ -7576,7 +7534,7 @@ function modalDialog (opts = {}) {
 	function initTitle (opt) {
 		const title = $qs('.dialog-content-title', dialogWrap);
 		if (!title) return;
-		title.textContent = opt != undefined ? opt : 'dialog';
+		title.textContent = opt !== undefined ? opt : 'dialog';
 	}
 
 	function initButtons (opt) {
@@ -7586,7 +7544,7 @@ function modalDialog (opts = {}) {
 		const buttons = [];
 
 		while (footer.childNodes.length) {
-			if (footer.firstChild.nodeName == 'A') {
+			if (footer.firstChild.nodeName === 'A') {
 				buttons.push(footer.firstChild);
 				footer.firstChild.classList.remove('disabled');
 			}
@@ -7596,7 +7554,7 @@ function modalDialog (opts = {}) {
 		(opt || '').split(/\s*,\s*/).forEach(opt => {
 			buttons.forEach((button, i) => {
 				if (!button) return;
-				if (button.getAttribute('href') != `#${opt}-dialog`) return;
+				if (button.getAttribute('href') !== `#${opt}-dialog`) return;
 				button.classList.remove('hide');
 				footer.appendChild(button);
 				buttons[i] = null;
@@ -7611,7 +7569,7 @@ function modalDialog (opts = {}) {
 	}
 
 	async function initFromXML (xml, xslName, bypassCache = false) {
-		if (state != 'initializing') return;
+		if (state !== 'initializing') return;
 		if (isPending) return;
 
 		isPending = true;
@@ -7669,7 +7627,7 @@ function modalDialog (opts = {}) {
 
 	function startTransition () {
 		if (isPending) return;
-		if (state != 'initializing') return;
+		if (state !== 'initializing') return;
 
 		clickDispatcher
 			.add('#apply-dialog', handleApply)
@@ -7680,7 +7638,7 @@ function modalDialog (opts = {}) {
 			.addStroke('dialog', '\u001b', handleCancel)
 			.addStroke('dialog', '\u000d', handleOk)
 			.addStroke('dialog.edit', ['\u000d', '<S-enter>'], (e, t) => {
-				if (t.nodeName != 'TEXTAREA'
+				if (t.nodeName !== 'TEXTAREA'
 				|| !t.classList.contains('config-item')) {
 					return keyManager.PASS_THROUGH;
 				}
@@ -7717,7 +7675,7 @@ function modalDialog (opts = {}) {
 	function isDisabled (node) {
 		let result = false;
 		for (; node; node = node.parentNode) {
-			if (node.nodeName == 'A') {
+			if (node.nodeName === 'A') {
 				break;
 			}
 		}
@@ -7732,7 +7690,7 @@ function modalDialog (opts = {}) {
 		if (!(handlerName in opts)) return;
 
 		const handler = opts[handlerName];
-		if (typeof handler != 'function') return;
+		if (typeof handler !== 'function') return;
 
 		try {
 			return handler(getRemoteController(eventName));
@@ -7743,14 +7701,14 @@ function modalDialog (opts = {}) {
 	}
 
 	function handleApply (e) {
-		if (state != 'running') return;
+		if (state !== 'running') return;
 		if (isDisabled(e.target)) return;
 		disableButtonsWithout('apply');
 		invokeEvent('apply');
 	}
 
 	function handleOk (e) {
-		if (state != 'running') return;
+		if (state !== 'running') return;
 		if (isDisabled(e.target)) return;
 		disableButtonsWithout('ok');
 
@@ -7769,7 +7727,7 @@ function modalDialog (opts = {}) {
 	}
 
 	function handleCancel (e) {
-		if (state != 'running') return;
+		if (state !== 'running') return;
 		if (isDisabled(e.target)) return;
 		disableButtonsWithout('cancel');
 
@@ -7788,14 +7746,14 @@ function modalDialog (opts = {}) {
 	}
 
 	function handleMouseCancel (e) {
-		if (e.target == e.currentTarget) {
+		if (e.target === e.currentTarget) {
 			e.preventDefault();
 			e.stopPropagation();
 		}
 	}
 
 	function leave () {
-		if (state != 'running') return;
+		if (state !== 'running') return;
 		if (isPending) return;
 
 		clickDispatcher
@@ -7864,7 +7822,7 @@ let LOCALE, _, delay, $, $qs, $qsa,
 let $t, fixFragment, serializeXML, getCookie, setCookie,
 	getDOMFromString, docScrollTop, docScrollLeft,
 	transitionend, transitionendp, getBlobFrom, getImageFrom,
-	regalizeEditable, getContentsFromEditable, resolveCharacterReference,
+	getContentsFromEditable, resolveCharacterReference,
 	新字体の漢字を舊字體に変換, osaka, reverseText, mergeDeep, substringWithStrictUnicode,
 	invokeMousewheelEvent, voice, resolveRelativePath, tweakImage,
 	parseExtendJson, getStringSimilarity;
@@ -7881,7 +7839,7 @@ function log (...args) {
 }
 
 function modules (...args) {
-	if (args.length == 1) {
+	if (args.length === 1) {
 		return import(chromeWrap.runtime.getURL(`lib/${args[0]}.js`));
 	}
 	else {
@@ -7907,8 +7865,14 @@ function setBoardCookie (key, value, lifeDays) {
 
 function getCatalogSettings () {
 	let data = getCookie('cxyl');
-	if (data == undefined) {
-		data = [15, 5, 0];
+	if (data === undefined) {
+		data = [
+			15,		// number of columns
+			5,		// number of lines
+			0,		// length of text
+			0,		// text position code
+			0		// thumbnail size code
+		];
 	}
 	else {
 		data = data.split('x').map(a => a - 0);
@@ -7975,7 +7939,7 @@ function getTextForCatalog (text, maxLength) {
 
 function getTextForJoin (commentNode) {
 	return Array.from(commentNode.childNodes)
-		.filter(child => child.nodeType == 3)
+		.filter(child => child.nodeType === 3)
 		.map(child => child.nodeValue.replace(/\n+$/, ''))
 		.join('');
 }
@@ -8007,7 +7971,7 @@ function commentToString (container) {
 	while ((currentNode = iterator.nextNode())) {
 		switch (currentNode.nodeType) {
 		case 1:
-			if (currentNode.nodeName == 'IMG') {
+			if (currentNode.nodeName === 'IMG') {
 				result.push(currentNode.getAttribute('alt') || '');
 			}
 			break;
@@ -8108,7 +8072,7 @@ function displayInlineVideo (anchor) {
 		if (!$qs('img', anchor)) {
 			thumbContainer = thumbContainer.nextSibling;
 			while (thumbContainer) {
-				if (thumbContainer.nodeName == 'A' && thumbContainer.href == anchor.href) {
+				if (thumbContainer.nodeName === 'A' && thumbContainer.href === anchor.href) {
 					break;
 				}
 				thumbContainer = thumbContainer.nextSibling;
@@ -8116,7 +8080,7 @@ function displayInlineVideo (anchor) {
 		}
 
 		if (thumbContainer) {
-			if (thumbContainer.previousSibling.nodeName == 'VIDEO') {
+			if (thumbContainer.previousSibling.nodeName === 'VIDEO') {
 				thumbContainer.parentNode.removeChild(thumbContainer.previousSibling);
 				thumbContainer.classList.remove('hide');
 			}
@@ -8128,7 +8092,7 @@ function displayInlineVideo (anchor) {
 		else {
 			const quote = anchor.closest('q');
 			if (!quote) return;
-			if (quote.nextSibling && quote.nextSibling.nodeName == 'VIDEO') {
+			if (quote.nextSibling && quote.nextSibling.nodeName === 'VIDEO') {
 				quote.parentNode.removeChild(quote.nextSibling);
 			}
 			else {
@@ -8140,7 +8104,7 @@ function displayInlineVideo (anchor) {
 	// topic video
 	else if ((parent = anchor.closest('a'))) {
 		const thumbContainer = $qs('img', parent);
-		if (parent.previousSibling && parent.previousSibling.nodeName == 'VIDEO') {
+		if (parent.previousSibling && parent.previousSibling.nodeName === 'VIDEO') {
 			parent.parentNode.removeChild(parent.previousSibling);
 			thumbContainer.classList.remove('hide');
 		}
@@ -8190,47 +8154,67 @@ function displayInlineAudio (anchor) {
 	}
 }
 
-function execEditorCommand (name, e) {
-	if (storage.config.hook_edit_shortcuts.value) {
-		return editorHelper[name](e);
-	}
-	else {
-		return keyManager.PASS_THROUGH;
-	}
+function execCommand (commandName, arg = null) {
+	return document.execCommand(commandName, false, arg);
 }
 
 function getVersion () {
-	let app, machine = [];
+	let re, appVersion, browserSpec, machine = [];
 
+	appVersion = `${APP_NAME}/${version}`;
+	if (devMode) {
+		appVersion += ' [develop mode]'
+	}
+
+	// browser info
 	const ua = navigator.userAgent;
-	if (IS_GECKO && /\bfirefox\/(\d+(?:\.\d+)*)/i.test(ua)) {
-		app = `Firefox/${RegExp.$1}`;
+	if (IS_GECKO && (re = /\bfirefox\/(\d+(?:\.\d+)*)/i.exec(ua))) {
+		browserSpec = `Firefox/${re[1]}`;
 	}
-	else if (/\bvivaldi\/(\d+(?:\.\d+)*)/i.test(ua)) {
-		app = `Vivaldi/${RegExp.$1}`;
+	else if ((re = /\bvivaldi\/(\d+(?:\.\d+)*)/i.exec(ua))) {
+		browserSpec = `Vivaldi/${re[1]}`;
 	}
-	else if (/\bopr\/(\d+(?:\.\d+)*)/i.test(ua)) {
-		app = `Opera/${RegExp.$1}`;
+	else if ((re = /\bopr\/(\d+(?:\.\d+)*)/i.exec(ua))) {
+		browserSpec = `Opera/${re[1]}`;
 	}
-	else if (/\bchromium\/(\d+(?:\.\d+)*)/i.test(ua)) {
-		app = `Chromium/${RegExp.$1}`;
+	else if (typeof opr === 'object') {
+		browserSpec = 'Opera';
 	}
-	else if (/\bchrome\/(\d+(?:\.\d+)*)/i.test(ua)) {
-		app = `Chrome/${RegExp.$1}`;
+	else if ((re = /\bchromium\/(\d+(?:\.\d+)*)/i.exec(ua))) {
+		browserSpec = `Chromium/${re[1]}`;
+	}
+	else if ((re = /\bchrome\/(\d+(?:\.\d+)*)/i.exec(ua))) {
+		browserSpec = `Chrome/${re[1]}`;
+	}
+	if (!browserSpec) {
+		if (backend.browserInfo.name && backend.browserInfo.version) {
+			browserSpec = `${backend.browserInfo.name}/${backend.browserInfo.version}`;
+		}
+		else if (backend.browserInfo.name) {
+			browserSpec = backend.browserInfo.name;
+		}
+		else {
+			browserSpec = 'Unknown browser';
+		}
 	}
 
-	if (backend.browserInfo.name && backend.browserInfo.version) {
-		app = `${backend.browserInfo.name}/${backend.browserInfo.version}`;
+	// machine spec
+	if ('platform' in backend.browserInfo) {
+		machine.push(backend.browserInfo.platform);
 	}
-	else if (backend.browserInfo.name) {
-		app = backend.browserInfo.name;
+	else if ('platform' in navigator) {
+		machine.push(navigator.platform);
 	}
 
-	'platform' in navigator && machine.push(navigator.platform);
-	'deviceMemory' in navigator && machine.push(`${navigator.deviceMemory}GB`);
-	'hardwareConcurrency' in navigator && machine.push(`${navigator.hardwareConcurrency}CPUs`);
+	if ('deviceMemory' in navigator) {
+		machine.push(`${navigator.deviceMemory}GB`);
+	}
 
-	return `${APP_NAME}/${version} on ${app} (${machine.join(', ')})`;
+	if ('hardwareConcurrency' in navigator) {
+		machine.push(`${navigator.hardwareConcurrency}CPUs`);
+	}
+
+	return `${appVersion} on ${browserSpec} (${machine.join(', ')})`;
 }
 
 function dumpDebugText (text) {
@@ -8239,7 +8223,7 @@ function dumpDebugText (text) {
 	const ID = 'akahukuplus-debug-dump-container';
 	let node = $(ID);
 
-	if (text != undefined) {
+	if (text !== undefined) {
 		if (!node) {
 			node = document.body.appendChild(document.createElement('pre'));
 			node.id = ID;
@@ -8345,14 +8329,6 @@ function setSodaneState (node, sodaneValue) {
 	}
 }
 
-async function getTokenizer () {
-	if (!tokenizer) {
-		const nativeTokenizer = await modules('tokenizer').then(module => module.getTokenizer());
-		tokenizer = text => nativeTokenizer.getClauses(text, true);
-	}
-	return tokenizer;
-}
-
 /*
  * <<<1 functions for posting
  */
@@ -8385,7 +8361,7 @@ function populateTextFormItems (form, callback, populateAll) {
 	].join(','), form);
 
 	inputNodes.forEach(node => {
-		if (node.name == '') return;
+		if (node.name === '') return;
 		if (node.disabled) return;
 		callback(node);
 	});
@@ -8397,9 +8373,9 @@ function populateFileFormItems (form, callback) {
 	].join(','), form);
 
 	inputNodes.forEach(node => {
-		if (node.name == '') return;
+		if (node.name === '') return;
 		if (node.disabled) return;
-		if (node.files.length == 0) return;
+		if (node.files.length === 0) return;
 		callback(node);
 	});
 }
@@ -8461,15 +8437,15 @@ async function postBase (form) {
 
 			if (needTraditionalConversion) {
 				content = 新字体の漢字を舊字體に変換(content);
-				if (node.id == 'email') {
+				if (node.id === 'email') {
 					content = content.replace(/!(?:trad|[旧舊]字[体體])!\s*/g, '');
 				}
 			}
 			if (needReverse) {
-				if (node.id == 'email') {
+				if (node.id === 'email') {
 					content = content.replace(/!rtl!\s*/g, '');
 				}
-				if (node.id == 'com2' || node.id == 'email') {
+				if (node.id === 'com2' || node.id === 'email') {
 					content = content
 						.split(/\r?\n/)
 						.map(line => /^>/.test(line) ? line : reverseText(line))
@@ -8481,7 +8457,7 @@ async function postBase (form) {
 					.split(/\r?\n/)
 					.map(line => /^>/.test(line) ? line : osaka(line))
 					.join('\n');
-				if (node.id == 'email') {
+				if (node.id === 'email') {
 					content = content.replace(/!osaka!\s*/g, '');
 				}
 			}
@@ -8516,7 +8492,7 @@ async function postBase (form) {
 					case 'email':
 					case 'sub':
 					case 'name':
-						if (value != '') {
+						if (value !== '') {
 							payload[key] = value;
 						}
 						break;
@@ -8691,14 +8667,14 @@ async function postBase (form) {
 			data.push(
 				delimiter, key, '=',
 				items[key].map(code => {
-					if (code == 32) return '+';
+					if (code === 32) return '+';
 					const ch = String.fromCharCode(code);
 					return /[a-z0-9-_.!~*'()]/i.test(ch) ?
 						ch : '%' + ('0' + code.toString(16).toUpperCase()).substr(-2);
 				}).join('')
 			);
 
-			if (delimiter == '') {
+			if (delimiter === '') {
 				delimiter = '&';
 			}
 		}
@@ -8721,7 +8697,7 @@ async function postBase (form) {
 		throw new Error('Failed to convert a charset');
 	}
 
-	const {contentType, data, transactionKey, id} = form.enctype == 'multipart/form-data' ?
+	const {contentType, data, transactionKey, id} = form.enctype === 'multipart/form-data' ?
 		await getMultipartFormData(textPayload, getFilePayload(form)) :
 		getUrlEncodedFormData(textPayload);
 
@@ -8776,7 +8752,7 @@ function resetForm (...args) {
 	for (const arg of args) {
 		const org = $(arg) || $qs(`#postform [name="${arg}"]`);
 		if (org) {
-			if (org.contentEditable == 'true') {
+			if (org.isContentEditable) {
 				empty(org);
 			}
 			else if (/^(?:text|hidden)$/i.test(org.type)) {
@@ -8854,7 +8830,7 @@ function parsePostResponse (response, baseUrl) {
 			refreshURL = resolveRelativePath(re[1], baseUrl);
 		}
 	}
-	if (refreshURL != '') {
+	if (refreshURL !== '') {
 		return {redirect: refreshURL};
 	}
 
@@ -8897,7 +8873,7 @@ async function reloadBase (opts = {}) {
 					'afterbegin',
 					'<font color="#ff0000">marked post</font><br>');
 				let n = node;
-				for (; n && n.nodeName != 'TABLE'; n = n.parentNode);
+				for (; n && n.nodeName !== 'TABLE'; n = n.parentNode);
 				n && n.classList.add('deleted');
 				break;
 			case 3:
@@ -8906,7 +8882,7 @@ async function reloadBase (opts = {}) {
 					'afterbegin',
 					'[<font color="#ff0000">marked post</font>]<br>');
 				let n = node;
-				for (; n && n.nodeName != 'TABLE'; n = n.parentNode);
+				for (; n && n.nodeName !== 'TABLE'; n = n.parentNode);
 				n && n.classList.add('deleted');
 				break;
 			}
@@ -8949,7 +8925,7 @@ async function reloadBase (opts = {}) {
 		timingLogger.endTag();
 	}
 
-	if (result.status == 304 || result.status == 404) {
+	if (result.status === 304 || result.status === 404) {
 		return {doc: null, now, status: result.status};
 	}
 
@@ -8965,7 +8941,7 @@ async function reloadBase (opts = {}) {
 		reloadStatus.lastReceivedText = result.content;
 	}
 
-	if (method != 'HEAD' && result.status == 200) {
+	if (method !== 'HEAD' && result.status === 200) {
 		timingLogger.startTag('parsing html');
 		try {
 			doc = result.content;
@@ -9045,7 +9021,7 @@ async function reloadBaseViaAPI () {
 	try {
 		doc = result.content;
 		doc = JSON.parse(doc, (key, value) => {
-			if (typeof value != 'string') return value;
+			if (typeof value !== 'string') return value;
 
 			const value2 = value.replace(
 				/(^|>)([^<]+)($|<)/g,
@@ -9061,7 +9037,7 @@ async function reloadBaseViaAPI () {
 			return value2;
 		});
 	}
-	catch (e) {
+	catch {
 		doc = undefined;
 	}
 	finally {
@@ -9135,7 +9111,7 @@ async function reloadCatalogBase (query) {
 					buffer.push(`<td><a href='res/${item.no}.htm' target='_blank'><small>${com}</small></a><br><font size=2>${item.cr}</font></td>`);
 				}
 
-				if (i > 0 && (i % 15) == 14) {
+				if (i > 0 && (i % 15) === 14) {
 					buffer.push(`</tr>\n<tr>`);
 				}
 			}
@@ -9230,7 +9206,7 @@ async function extractTweets () {
 			await Promise.race([
 				new Promise(resolve => {
 					iframe.onload = e => {
-						e.target.src == iframeSource && resolve();
+						e.target.src === iframeSource && resolve();
 					};
 				}),
 				delay(1000 * 3)
@@ -9307,7 +9283,7 @@ async function completeDefectiveLinks () {
 			const fragment = fixFragment(xsltProcessor.transformToFragment(xml, document));
 
 			// apply transform result
-			if (parent == comment) {
+			if (parent === comment) {
 				/*
 				 * fragment:
 				 *
@@ -9379,13 +9355,13 @@ function detectNoticeModification (notice, noticeNew) {
 			.split('\n');
 		const add = (rows, index1, index2, lines, className) => {
 			let markup = undefined;
-			if (typeof index1 == 'number' && index1 >= 0 && index1 < lines.length) {
+			if (typeof index1 === 'number' && index1 >= 0 && index1 < lines.length) {
 				markup = lines[index1];
 			}
-			else if (typeof index2 == 'number' && index2 >= 0 && index2 < lines.length) {
+			else if (typeof index2 === 'number' && index2 >= 0 && index2 < lines.length) {
 				markup = lines[index2];
 			}
-			if (markup != undefined) {
+			if (markup !== undefined) {
 				rows.push({className, markup});
 			}
 		};
@@ -9424,7 +9400,7 @@ function detectNoticeModification (notice, noticeNew) {
 				}
 			}
 
-			if (change == 'replace') {
+			if (change === 'replace') {
 				rows.push.apply(rows, topRows);
 				rows.push.apply(rows, botRows);
 			}
@@ -9435,7 +9411,7 @@ function detectNoticeModification (notice, noticeNew) {
 			const li = list.appendChild(document.createElement('li'));
 			li.className = row.className;
 			li.innerHTML = row.markup;
-			if (row.className != 'equal') {
+			if (row.className !== 'equal') {
 				console.log(`${row.className}: "${row.markup}"`);
 			}
 		});
@@ -9451,7 +9427,7 @@ function setReloaderStatus (content, persistent) {
 	const fetchStatusText = $('fetch-status-text');
 	if (!fetchStatus || !fetchStatusText) return;
 
-	if (content != undefined) {
+	if (content !== undefined) {
 		fetchStatus.classList.remove('hide');
 		$t(fetchStatusText, content);
 		if (persistent) {
@@ -9483,7 +9459,7 @@ function updateTopic (xml, container) {
 			const comment = $qs('.comment', node);
 			if (!comment) continue;
 
-			const isBracket = marks[i].getAttribute('bracket') == 'true';
+			const isBracket = marks[i].getAttribute('bracket') === 'true';
 			comment.insertBefore(document.createElement('br'), comment.firstChild);
 			isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
 			const m = comment.insertBefore(document.createElement('span'), comment.firstChild);
@@ -9581,7 +9557,7 @@ function updateReplies (xml, container) {
 			}
 
 			// insert mark
-			const isBracket = asset.getAttribute('bracket') == 'true';
+			const isBracket = asset.getAttribute('bracket') === 'true';
 			comment.insertBefore(document.createElement('br'), comment.firstChild);
 			isBracket && comment.insertBefore(document.createTextNode(']'), comment.firstChild);
 			const m = comment.insertBefore(document.createElement('span'), comment.firstChild);
@@ -9641,7 +9617,7 @@ function updateSodanePosts (stat) {
 
 		const re = /^\d+$/.exec(sodaneNode.textContent);
 
-		if (re && re[0] - 0 == value) {
+		if (re && re[0] - 0 === value) {
 			continue;
 		}
 
@@ -9655,7 +9631,7 @@ function updateIdFrequency (stat) {
 	timingLogger.startTag(`updateIdFrequency`);
 	for (const [id, idData] of stat.idData) {
 		// Single ID must not be counted
-		if (idData.length == 1) continue;
+		if (idData.length === 1) continue;
 
 		const selector = [
 			`article .topic-wrap span.user-id[data-id="${id}"]`,
@@ -9665,7 +9641,7 @@ function updateIdFrequency (stat) {
 		// Important optimization: If the total number of IDs has not changed,
 		// It is not necessary to update entire posts with current ID
 		const re = /\d+\/(\d+)/.exec($qs(selector).nextSibling.textContent);
-		if (re && re[1] - 0 == idData.length) continue;
+		if (re && re[1] - 0 === idData.length) continue;
 
 		// Count up all posts with the same ID...
 		const posts = $qsa(selector);
@@ -9752,7 +9728,7 @@ function processRemainingReplies (opts, context, lowBoundNumber, callback) {
 	opts || (opts = {});
 
 	// 'read more' function in reply mode, process whole new replies
-	if (typeof lowBoundNumber == 'number') {
+	if (typeof lowBoundNumber === 'number') {
 		maxReplies = 0x7fffffff;
 	}
 	// other: process per chunk
@@ -9842,7 +9818,7 @@ function processRemainingReplies (opts, context, lowBoundNumber, callback) {
 			timingLogger.startTag('statistics update');
 
 			// reload on reply mode
-			if (pageModes[0].mode == 'reply' && lowBoundNumber >= 0) {
+			if (pageModes[0].mode === 'reply' && lowBoundNumber >= 0) {
 				const stats = postStats.done();
 
 				if (stats.delta.total || stats.delta.mark || stats.delta.id) {
@@ -10072,7 +10048,7 @@ async function doDisplayThumbnail (thumbWrap, thumb, media) {
 			*/
 
 			media.addEventListener('timeupdate', () => {
-				if (media.dataset.resolved != '1') {
+				if (media.dataset.resolved !== '1') {
 					media.dataset.resolved = '1';
 					media.pause();
 					resolve();
@@ -10080,7 +10056,7 @@ async function doDisplayThumbnail (thumbWrap, thumb, media) {
 			}, {once: true});
 
 			setTimeout(() => {
-				if (media.dataset.resolved != '1') {
+				if (media.dataset.resolved !== '1') {
 					media.dataset.resolved = '1';
 					media.pause();
 					resolve();
@@ -10196,7 +10172,7 @@ function showPanel (callback) {
 	$('ad-aside-wrap').classList.add('hide');
 
 	// if catalog mode, ensure right margin
-	if (pageModes[0].mode == 'catalog') {
+	if (pageModes[0].mode === 'catalog') {
 		Array.from($qsa('#catalog .catalog-threads-wrap > div'))
 			.forEach(div => {div.style.marginRight = '24%';});
 	}
@@ -10220,7 +10196,7 @@ function hidePanel (callback) {
 		setTimeout(() => {panel.classList.remove('run')}, 0);
 		transitionend(panel, e => {
 			// if catalog mode, restore right margin
-			if (pageModes[0].mode == 'catalog') {
+			if (pageModes[0].mode === 'catalog') {
 				Array.from($qsa('#catalog .catalog-threads-wrap > div'))
 					.forEach(div => {div.style.marginRight = '';});
 			}
@@ -10243,14 +10219,14 @@ function activatePanelTab (tab) {
 
 	$qsa('.panel-tab-wrap .panel-tab', 'panel-aside-wrap').forEach(node => {
 		node.classList.remove('active');
-		if (node.getAttribute('href') == `#${tabId}`) {
+		if (node.getAttribute('href') === `#${tabId}`) {
 			node.classList.add('active');
 		}
 	});
 
 	$qsa('.panel-content-wrap', 'panel-aside-wrap').forEach(node => {
 		node.classList.add('hide');
-		if (node.id == `panel-content-${tabId}`) {
+		if (node.id === `panel-content-${tabId}`) {
 			node.classList.remove('hide');
 		}
 	});
@@ -10333,6 +10309,10 @@ const commands = {
 
 		return setPostThumbnailVisibility(false);
 	},
+	deactivateEditor (e) {
+		console.log(e.target.outerHTML);
+		return keyManager.PASS_THROUGH;
+	},
 	scrollPage (e) {
 		const sh = document.documentElement.scrollHeight;
 		if (!e.shiftKey && scrollManager.lastScrollTop >= sh - viewportRect.height) {
@@ -10391,11 +10371,11 @@ const commands = {
 			{
 				const now = Date.now();
 
-				if (reloadStatus.state == 'loading') {
+				if (reloadStatus.state === 'loading') {
 					log(`reload: aborting reload...`);
 					return Promise.resolve();
 				}
-				else if (reloadStatus.state == 'waiting') {
+				else if (reloadStatus.state === 'waiting') {
 					if (!args[0]?.ignoreWaiting) {
 						log(`reload: we are still in the waiting time.`);
 						return Promise.resolve();
@@ -10421,7 +10401,7 @@ const commands = {
 		}
 	},
 	async reloadSummary () {
-		if (pageModes[0].mode != 'summary') {
+		if (pageModes[0].mode !== 'summary') {
 			return;
 		}
 
@@ -10509,7 +10489,7 @@ const commands = {
 		}
 		catch (err) {
 			let message;
-			if (err.name == 'AbortError') {
+			if (err.name === 'AbortError') {
 				message = _('aborted');
 			}
 			else {
@@ -10527,7 +10507,7 @@ const commands = {
 		}
 	},
 	async reloadReplies (opts = {}) {
-		if (pageModes[0].mode != 'reply') {
+		if (pageModes[0].mode !== 'reply') {
 			log(`reloadReplies: not reply mode`);
 			return;
 		}
@@ -10631,7 +10611,7 @@ const commands = {
 		}
 		catch (err) {
 			let message;
-			if (err.name == 'AbortError') {
+			if (err.name === 'AbortError') {
 				message = _('aborted');
 				setReloaderStatus(message);
 				setBottomStatus(message);
@@ -10649,11 +10629,11 @@ const commands = {
 			timingLogger.forceEndTag();
 
 			if ('noticeNew' in siteInfo) {
-				if (siteInfo.notice == siteInfo.noticeNew) {
+				if (siteInfo.notice === siteInfo.noticeNew) {
 					delete siteInfo.noticeNew;
 				}
 				else {
-					if (siteInfo.notice != '') {
+					if (siteInfo.notice !== '') {
 						detectNoticeModification(siteInfo.notice, siteInfo.noticeNew).then(() => {
 							commands.activateNoticeTab();
 							alert(_('notice_updated'));
@@ -10675,7 +10655,7 @@ const commands = {
 		}
 	},
 	async reloadRepliesViaAPI (opts = {}) {
-		if (pageModes[0].mode != 'reply') {
+		if (pageModes[0].mode !== 'reply') {
 			log(`reloadRepliesViaAPI: not reply mode`);
 			return;
 		}
@@ -10768,7 +10748,7 @@ const commands = {
 		}
 		catch (err) {
 			let message;
-			if (err.name == 'AbortError') {
+			if (err.name === 'AbortError') {
 				message = _('aborted');
 				setReloaderStatus(message);
 				setBottomStatus(message);
@@ -10788,7 +10768,7 @@ const commands = {
 		}
 	},
 	async reloadCatalog () {
-		if (pageModes[0].mode != 'catalog') {
+		if (pageModes[0].mode !== 'catalog') {
 			return;
 		}
 
@@ -10880,7 +10860,7 @@ const commands = {
 			 * in history sort, bring posted threads to the top
 			 */
 
-			if (sortType.n == 7) {
+			if (sortType.n === 7) {
 				let first = $qs('table[align="center"] td a', doc);
 				if (first) {
 					first = first.parentNode;
@@ -10893,7 +10873,7 @@ const commands = {
 						if (openedThreads[number].post <= 0) return;
 
 						node = node.parentNode;
-						if (node == first) {
+						if (node === first) {
 							first = node.nextSibling;
 						}
 						else {
@@ -10926,7 +10906,7 @@ const commands = {
 				let anchor = $(`c-${sortType.key}-${threadNumber}`);
 				if (anchor) {
 					// found. reuse it
-					if (anchor == insertee) {
+					if (anchor === insertee) {
 						insertee = insertee.nextSibling;
 					}
 					anchor.parentNode.insertBefore(anchor, insertee);
@@ -10937,7 +10917,7 @@ const commands = {
 					info.firstChild.textContent = repliesCount;
 					if (!isNaN(repliesCount - 0)
 					&&  !isNaN(oldRepliesCount - 0)
-					&&  repliesCount != oldRepliesCount) {
+					&&  repliesCount !== oldRepliesCount) {
 						repliesCount -= 0;
 						oldRepliesCount -= 0;
 						anchor.className = repliesCount > CATALOG_LONG_CLASS_THRESHOLD ? 'long' : '';
@@ -10968,7 +10948,7 @@ const commands = {
 				// attribute conversion #1
 				for (let atr in attributeConverter1) {
 					const value = node.getAttribute(atr);
-					if (value == null) continue;
+					if (value === null) continue;
 					attributeConverter1[atr](anchor, atr, value);
 				}
 
@@ -10979,7 +10959,7 @@ const commands = {
 					// attribute conversion #2
 					for (let atr in attributeConverter2) {
 						const value = from.getAttribute(atr);
-						if (value == null) continue;
+						if (value === null) continue;
 						attributeConverter2[atr](to, imageWrap, atr, value);
 					}
 
@@ -11034,13 +11014,13 @@ const commands = {
 						imageNumber -= 0;
 
 						let isDead = false;
-						if (siteInfo.minThreadLifeTime == 0) {
+						if (siteInfo.minThreadLifeTime === 0) {
 							if (threadNumber < deleteLimit) {
 								isDead = true;
 							}
 						}
 						else {
-							if (imageNumber == 0) {
+							if (imageNumber === 0) {
 								if (threadNumber < deleteLimit) {
 									isDead = true;	// TODO: text-only thread may be considered to be dead even
 													// though it is alive
@@ -11082,7 +11062,7 @@ const commands = {
 						const isAdult = imageNumber > 0 && now - imageNumber >= siteInfo.minThreadLifeTime;
 
 						if (threadNumber < warnLimit
-						&& (siteInfo.minThreadLifeTime == 0 || imageNumber == 0 || isAdult)) {
+						&& (siteInfo.minThreadLifeTime === 0 || imageNumber === 0 || isAdult)) {
 							node.classList.add('warned');
 						}
 					}
@@ -11103,7 +11083,7 @@ const commands = {
 						threadNumber -= 0;
 
 						if (threadNumber in openedThreads) {
-							if (sortType.n == 7) {
+							if (sortType.n === 7) {
 								if (openedThreads[threadNumber].post <= 0) {
 									node.classList.add('soft-link');
 									node.classList.remove('soft-visited');
@@ -11132,7 +11112,7 @@ const commands = {
 		}
 		catch (err) {
 			let message;
-			if (err.name == 'AbortError') {
+			if (err.name === 'AbortError') {
 				message = _('aborted');
 			}
 			else {
@@ -11183,7 +11163,7 @@ const commands = {
 				switch (pageModes[0].mode) {
 				case 'summary':
 				case 'catalog':
-					if (result.redirect != '') {
+					if (result.redirect !== '') {
 						backend.send('open', {
 							url: result.redirect,
 							selfUrl: location.href
@@ -11206,7 +11186,7 @@ const commands = {
 		}
 		catch (err) {
 			let message;
-			if (err.name == 'AbortError') {
+			if (err.name === 'AbortError') {
 				message = _('aborted');
 			}
 			else {
@@ -11259,7 +11239,7 @@ const commands = {
 					return dialog.initFromXML(xml, 'delete-dialog');
 				},
 				onopen: dialog => {
-					if (postNumbers.length == 0) return;
+					if (postNumbers.length === 0) return;
 
 					// reasons
 					const select = $qs('select.reason', dialog.content);
@@ -11300,7 +11280,7 @@ const commands = {
 					}
 				},
 				onok: dialog => {
-					if (postNumbers.length == 0) return;
+					if (postNumbers.length === 0) return;
 
 					switch ($qs('[name="evalmode"]:checked', dialog.content).value) {
 					case 'delete':
@@ -11355,7 +11335,7 @@ const commands = {
 							const li = item.appendChild(xml.createElement('li'));
 							li.textContent = config[i].list[j];
 							li.setAttribute('value', j);
-							j == config[i].value && li.setAttribute('selected', 'true');
+							j === config[i].value && li.setAttribute('selected', 'true');
 						}
 					}
 				}
@@ -11380,7 +11360,7 @@ const commands = {
 					const name = item.name.replace(/^config-item\./, '');
 					let value = item.value;
 
-					if (item.nodeName == 'INPUT') {
+					if (item.nodeName === 'INPUT') {
 						switch (item.type) {
 						case 'checkbox':
 							value = item.checked;
@@ -11559,14 +11539,23 @@ const commands = {
 	},
 	voice () {
 		const s = window.getSelection().toString();
-		if (s == '') return;
-		document.execCommand('insertText', false, voice(s));
+		if (s === '') return;
+		execCommand('insertText', voice(s));
 	},
 	semiVoice () {
 		const s = window.getSelection().toString();
-		if (s == '') return;
-		document.execCommand('insertText', false, voice(s, true));
+		if (s === '') return;
+		execCommand('insertText', voice(s, true));
 	},
+	newLine (e) {
+		if (e.target.nodeName === 'INPUT') {
+			return keyManager.PASS_THROUGH;
+		}
+		else {
+			document.execCommand('insertLineBreak', false);
+		}
+	},
+	/*
 	cursorBeginningOfLine (e) {return execEditorCommand('cursorBeginningOfLine', e)},
 	cursorEndOfLine (e) {return execEditorCommand('cursorEndOfLine', e)},
 	cursorNextLine (e) {return execEditorCommand('cursorNextLine', e)},
@@ -11584,8 +11573,8 @@ const commands = {
 	copy (e) {return execEditorCommand('copy', e)},
 	expr (e) {return execEditorCommand('expr', e)},
 	selectAll (e) {return execEditorCommand('selectAll', e)},
-	newLine (e) {return execEditorCommand('newLine', e)},
 	toggleSelectMode (e) {return execEditorCommand('toggleSelectMode', e)},
+	*/
 
 	/*
 	 * catalog
@@ -11600,7 +11589,7 @@ const commands = {
 		let scrollTop = 0;
 
 		// activate catalog
-		if (pageModes.length == 1) {
+		if (pageModes.length === 1) {
 			pageModes.unshift({mode: 'catalog', scrollTop: docScrollTop()});
 			threads.classList.add('hide');
 			catalog.classList.remove('hide');
@@ -11616,7 +11605,7 @@ const commands = {
 
 			const active = $qs(
 				'#catalog .catalog-threads-wrap > div:not([class*="hide"])');
-			if (active && active.childNodes.length == 0) {
+			if (active && active.childNodes.length === 0) {
 				commands.reloadCatalog();
 			}
 
@@ -11658,6 +11647,7 @@ const commands = {
 				cs[2] = tmp;
 			}
 		}
+		cs[4] = 0;
 		setBoardCookie('cxyl', cs.join('x'), CATALOG_COOKIE_LIFE_DAYS);
 	},
 
@@ -11666,7 +11656,7 @@ const commands = {
 	 */
 
 	registerAutotrack () {
-		if (reloadStatus.lastStatus == 404) {
+		if (reloadStatus.lastStatus === 404) {
 			return;
 		}
 		if (activeTracker.running) {
@@ -11742,11 +11732,11 @@ const commands = {
 		function doForCheckedPosts (fn) {
 			try {
 				const nodes = getCheckedArticles();
-				if (typeof fn == 'function') {
+				if (typeof fn === 'function') {
 					const lines = [];
 					nodes.forEach(node => {
 						const result = fn(node);
-						if (result != undefined) {
+						if (result !== undefined) {
 							lines.push(result);
 						}
 					});
@@ -12009,7 +11999,7 @@ const commands = {
 	 */
 
 	search () {
-		if (pageModes[0].mode == 'catalog') {
+		if (pageModes[0].mode === 'catalog') {
 			commands.searchCatalog();
 		}
 		else {
@@ -12022,7 +12012,7 @@ const commands = {
 			targetElementSelector: '.sub, .name, .postdate, span.user-id, .email, .comment',
 			getTextContent: node => {
 				// to optimize performance
-				if (node.childElementCount == 0) {
+				if (node.childElementCount === 0) {
 					return node.textContent;
 				}
 				else {
@@ -12089,7 +12079,7 @@ const commands = {
 				if (info) {
 					const content = target.classList.contains('new') ?
 						_('catsearch_item_new', info[0].textContent) :
-						_('search_item', info[0].textContent, info[1].textContent);
+						_('catsearch_item', info[0].textContent, info[1].textContent);
 					$t(sentinel, content);
 				}
 				else {
@@ -12228,7 +12218,7 @@ font-size: initial;
 			$t(t, '完了');
 			await delay(1000);
 		}
-		catch (err) {
+		catch {
 			//
 		}
 		finally {
@@ -12288,7 +12278,7 @@ font-size: initial;
 timingLogger.startTag(`booting ${APP_NAME}`);
 
 timingLogger.startTag('waiting import of utility functions');
-modules('utils', 'utils-apext', 'editor-helper', 'linkifier').then(([utils, utilsApext, eh, linkifier]) => {
+modules('utils', 'utils-apext', 'linkifier').then(([utils, utilsApext, linkifier]) => {
 	timingLogger.endTag();
 
 	({LOCALE, _, delay, $, $qs, $qsa,
@@ -12297,12 +12287,10 @@ modules('utils', 'utils-apext', 'editor-helper', 'linkifier').then(([utils, util
 	({$t, fixFragment, serializeXML, getCookie, setCookie,
 	getDOMFromString, docScrollTop, docScrollLeft,
 	transitionend, transitionendp, getBlobFrom, getImageFrom,
-	regalizeEditable, getContentsFromEditable, resolveCharacterReference,
+	getContentsFromEditable, resolveCharacterReference,
 	新字体の漢字を舊字體に変換, osaka, reverseText, mergeDeep, substringWithStrictUnicode,
 	invokeMousewheelEvent, voice, resolveRelativePath, tweakImage,
 	parseExtendJson, getStringSimilarity} = utilsApext);
-
-	editorHelper = eh.createEditorHelper();
 
 	({linkify} = linkifier);
 
@@ -12390,8 +12378,8 @@ modules('utils', 'utils-apext', 'editor-helper', 'linkifier').then(([utils, util
 				}
 			}
 
-			if (document.readyState == 'complete'
-			|| document.readyState == 'interactive') {
+			if (document.readyState === 'complete'
+			|| document.readyState === 'interactive') {
 				next();
 			}
 			else {
@@ -12428,26 +12416,15 @@ modules('utils', 'utils-apext', 'editor-helper', 'linkifier').then(([utils, util
 	devMode = backendConnection.devMode;
 	debugMode = backendConnection.debugMode;
 
-	if (version != syncedStorageData.version) {
+	if (version !== syncedStorageData.version) {
 		// TODO: storage format upgrade goes here
 
 		storage.setSynced({version});
 	}
 
-	if (version != window.localStorage.getItem(`${APP_NAME}_version`)) {
+	if (version !== window.localStorage.getItem(`${APP_NAME}_version`)) {
 		resources.clearCache();
 		window.localStorage.setItem(`${APP_NAME}_version`, version);
-	}
-
-	if (devMode) {
-		editorHelper.log = log;
-	}
-	if (backendConnection.useTokenizeDict) {
-		editorHelper.tokenizer = text => {
-			return backend
-				.send('tokenize', {useProxy: true, text})
-				.then(response => response.tokens);
-		};
 	}
 
 	/*

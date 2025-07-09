@@ -1,0 +1,542 @@
+{
+	"locale": {
+		"message": "english"
+	},
+	"locale_code": {
+		"message": "en"
+	},
+	"extension_name": {
+		"message": "akahukuplus"
+	},
+	"extension_shortname": {
+		"message": "akahukuplus"
+	},
+	"extension_desc": {
+		"message": "Take your futaba life higher."
+	},
+	"cannot_connect_to_backend_reload": {
+		"message": "Cannot connect to backend. Please reload this page."
+	},
+	"cannot_connect_to_backend_stop": {
+		"message": "$1: Cannot connect to backend. Stop."
+	},
+	"failed_to_retrieve_xsl_file": {
+		"message": "$1: Failed to retrieve internal XSL file. stop."
+	},
+	"failed_to_parse_xsl_file": {
+		"message": "$1: Failed to parse XSL file. stop."
+	},
+	"failed_to_import_xsl_file": {
+		"message": "$1: Failed to import XSL file. stop."
+	},
+	"failed_to_transform_xml_document": {
+		"message": "$1: Failed to transform XML document. stop."
+	},
+	"rebuilding_page": {
+		"message": "$1: Rebuilding the page. Please hold on..."
+	},
+	"canceled": {
+		"message": "Canceled."
+	},
+	"page": {
+		"message": "page"
+	},
+	"thread": {
+		"message": "Thread"
+	},
+	"thread_short": {
+		"message": "Thr."
+	},
+	"summary": {
+		"message": "Summary"
+	},
+	"reply": {
+		"message": "Reply"
+	},
+	"reply_short": {
+		"message": "Re."
+	},
+	"catalog": {
+		"message": "Catalog"
+	},
+	"hour_short": {
+		"message": "$1h"
+	},
+	"min_short": {
+		"message": "$1m"
+	},
+	"sec_short": {
+		"message": "$1s"
+	},
+	"day": {
+		"message": "$1 day"
+	},
+	"hour": {
+		"message": "$1 hour"
+	},
+	"min": {
+		"message": "$1 minute"
+	},
+	"sec": {
+		"message": "$1 second"
+	},
+	"expire": {
+		"message": "in about $1"
+	},
+	"expire_joiner": {
+		"message": ", "
+	},
+	"expire_soon": {
+		"message": "soon"
+	},
+	"snip": {
+		"message": "...(snip)"
+	},
+	"invalid_selection": {
+		"message": "Invalid selection."
+	},
+	"moderated_result": {
+		"message": "$1 post has been sent “del”."
+	},
+	"deleted_result": {
+		"message": "$1 post has been requested for deletion."
+	},
+	"liked_result": {
+		"message": "$1 post has been liked."
+	},
+	"evaluation_title": {
+		"message": "Posts Evaluation"
+	},
+	"error_insufficient_coins": {
+		"message": "You do not have enough coins!!"
+	},
+	"error_coin_charge_multiple_evaluation": {
+		"message": "In order to evaluate multiple posts, auto-charging for coins must be enabled."
+	},
+	"error_valid_id_multiple_evaluation": {
+		"message": "In order to evaluate multiple posts, you need to be logged into this browser with a Google account."
+	},
+	"failed_to_evaluate_posts": {
+		"message": "Failed to evaluate the posts."
+	},
+	"not_https": {
+		"message": "The page you are opening now is not https, so you can't save images or threads."
+	},
+	"not_have_fsa": {
+		"message": "The browser you are using now does not have a file access API, so you can't save images or threads."
+	},
+	"no_longer_supported": {
+		"message": "$1 storage is no longer supported."
+	},
+	"force_local_storage": {
+		"message": "Select “local (FileSystemAccess)” storage in the config dialog."
+	},
+	"trying_to_get_fs": {
+		"message": "Trying to get authorization for file access..."
+	},
+	"saving_image": {
+		"message": "Saving Image"
+	},
+	"loading_folder_tree": {
+		"message": "Loading Folder Tree"
+	},
+	"invalid_file_name": {
+		"message": "Invalid file name. Please correct the file name template in the config dialog."
+	},
+	"now_saving_image": {
+		"message": "Now saving image..."
+	},
+	"saving_completed": {
+		"message": "Saving completed"
+	},
+	"saving_failed": {
+		"message": "Saving failed"
+	},
+	"saving_failed_by": {
+		"message": "Saving failed by:"
+	},
+	"saved": {
+		"message": "Saved"
+	},
+	"saved_to": {
+		"message": "Saved to $1"
+	},
+	"updated_folder_tree": {
+		"message": "Updated folder tree."
+	},
+	"update_folder_tree_failed": {
+		"message": "Could not update folder tree."
+	},
+	"save_hist_cleared": {
+		"message": "The save history has been cleared."
+	},
+	"saving_thread": {
+		"message": "Saving Thread"
+	},
+	"now_saving_thread": {
+		"message": "Now saving thread..."
+	},
+	"now_adding_new_posts": {
+		"message": "Adding new posts to the thread..."
+	},
+	"add_new_posts_failed": {
+		"message": "Could not add new posts to the thread."
+	},
+	"autosaving_enabled": {
+		"message": "Autosaving ✅"
+	},
+	"autosaving_stat": {
+		"message": "Saved to: $1\nNumber of replies: $2"
+	},
+	"will_reload_soon": {
+		"message": "Will be reloaded shortly..."
+	},
+	"will_reload_in": {
+		"message": "Will be reloaded in about $1..."
+	},
+	"autotrack": {
+		"message": "Autotrack"
+	},
+	"autotrack_enabled": {
+		"message": "Autotrack ✅"
+	},
+	"thread_updated": {
+		"message": "!Updated!"
+	},
+	"video_freed": {
+		"message": "Freed"
+	},
+	"video_loading": {
+		"message": "Loading"
+	},
+	"jpeg_encode_too_large": {
+		"message": "File is too large, even if encoded in JPEG."
+	},
+	"pasting_image": {
+		"message": "Pasting the image..."
+	},
+	"generating_thumbnail": {
+		"message": "Generating thumbnail..."
+	},
+	"non_image_cannot_be_attached": {
+		"message": "File other than images can not be attached."
+	},
+	"error_coin_charge_paste_image": {
+		"message": "In order to paste a pseudo-reply image, auto-charging for coins must be enabled."
+	},
+	"cannot_load_image": {
+		"message": "Cannot load image."
+	},
+	"hand_drawing": {
+		"message": "Tegaki"
+	},
+	"pseudo_reply_image": {
+		"message": "Pseudo-reply image"
+	},
+	"file_too_large": {
+		"message": "File size is too large."
+	},
+	"re_encoded_jpeg": {
+		"message": "Re-Encoded JPEG($1)"
+	},
+	"reload_power": {
+		"message": "Reload power: $1%"
+	},
+	"error_coin_charge_image_randomize": {
+		"message": "In order to randomize the hash of an image, auto-charging for coins must be enabled."
+	},
+	"error_valid_id_image_randomize": {
+		"message": "In order to randomize the hash of an image, you need to be logged into this browser with a Google account."
+	},
+	"failed_to_tweak_image": {
+		"message": "Failed to tweak the image to be attached."
+	},
+	"error_coin_charge_pseudo_reply_image": {
+		"message": "In order to attach an image to reply, auto-charging for coins must be enabled."
+	},
+	"error_valid_id_pseudo_reply_image": {
+		"message": "In order to attach an image to reply, you need to be logged into this browser with a Google account."
+	},
+	"invalid_moderation_response": {
+		"message": "Invalid response to moderation request."
+	},
+	"invalid_post_response": {
+		"message": "Invalid response to post request ($1)"
+	},
+	"network_error": {
+		"message": "Unable to retrieve content due to network error."
+	},
+	"failed_to_build_dom": {
+		"message": "Failed to build DOM tree from loaded html."
+	},
+	"failed_to_parse_json": {
+		"message": "Failed to parse the loaded JSON."
+	},
+	"invalid_thumbnail_data": {
+		"message": "The thumbnail service returned invalid data."
+	},
+	"invalid_completion_data": {
+		"message": "Invalid completion data: $1"
+	},
+	"completion_failed": {
+		"message": "(Completion Failed)"
+	},
+	"search_result_count": {
+		"message": "Matched $1 post"
+	},
+	"loading_hold_on": {
+		"message": "Loading, Hold On..."
+	},
+	"strange_content": {
+		"message": "Strange content ($1)"
+	},
+	"aborted": {
+		"message": "Aborted"
+	},
+	"loading": {
+		"message": "Loading..."
+	},
+	"posting": {
+		"message": "Posting..."
+	},
+	"failed_to_load_summary_page": {
+		"message": "Failed to load summary page."
+	},
+	"no_further_posts": {
+		"message": "Thread not updated"
+	},
+	"server_error": {
+		"message": "Server error"
+	},
+	"load_complete_404_anchor": {
+		"message": "Not Found: The thread has gone."
+	},
+	"full_reload_complete_404": {
+		"message": "Complete: full reload, 404 Not Found"
+	},
+	"full_reload_complete_304": {
+		"message": "Complete: full reload, 304 Not Modified"
+	},
+	"full_reload_complete_5xx": {
+		"message": "Complete: full reload, server error ($1)"
+	},
+	"full_reload_complete": {
+		"message": "Complete: full reload"
+	},
+	"diff_reload_complete_404": {
+		"message": "Complete: delta reload, 404 Not Found"
+	},
+	"diff_reload_complete_304": {
+		"message": "Complete: delta reload, 304 Not Modified"
+	},
+	"diff_reload_complete_5xx": {
+		"message": "Complete: delta reload, server error ($1)"
+	},
+	"diff_reload_complete": {
+		"message": "Complete: delta reload"
+	},
+	"processing": {
+		"message": "Processing..."
+	},
+	"new_posts": {
+		"message": "new $1 post"
+	},
+	"no_new_posts": {
+		"message": "No new posts"
+	},
+	"failed_to_load_further_posts": {
+		"message": "Failed to load further posts."
+	},
+	"notice_updated": {
+		"message": "The notices for this board seems to have been updated."
+	},
+	"failed_to_load_catalog": {
+		"message": "Failed to load catalog."
+	},
+	"catalog_load_complete": {
+		"message": "Complete: catalog loading"
+	},
+	"posting_completed": {
+		"message": "Posting completed"
+	},
+	"failed_to_post": {
+		"message": "Failed to post a reply."
+	},
+	"dialog_evaluation": {
+		"message": "Post deletion and DEL request"
+	},
+	"dialog_config": {
+		"message": "Configuration"
+	},
+	"dialog_move_delta": {
+		"message": "Delta: $1"
+	},
+	"dialog_keyboard_shortcuts": {
+		"message": "Keyboard shortcuts"
+	},
+	"dialog_coin_autocharge": {
+		"message": "Coin auto-charging"
+	},
+	"coin_registered": {
+		"message": "Your ID has been registered for auto-charging.\nPlease check the email sent to the primary address of your Google account for approval."
+	},
+	"coin_await_approval": {
+		"message": "This account is waiting for approval.\nPlease check the email sent to the primary address of your Google account."
+	},
+	"coin_valid_id": {
+		"message": "Coin auto-charging enabled. You did it."
+	},
+	"coin_invalid_status": {
+		"message": "Invalid coin status."
+	},
+	"coin_invalid_response": {
+		"message": "Invalid coin response."
+	},
+	"coin_autocharge_disabled": {
+		"message": "Coin auto-charging is now disabled."
+	},
+	"menu_quote": {
+		"message": "Quote"
+	},
+	"menu_copy_to_comment": {
+		"message": "Copy to comment"
+	},
+	"menu_daikuuji": {
+		"message": "Dai!Kuu!Ji!"
+	},
+	"menu_copy": {
+		"message": "Copy"
+	},
+	"menu_copy_with_quote": {
+		"message": "Copy with quote"
+	},
+	"menu_sodane": {
+		"message": "So damn"
+	},
+	"menu_delete": {
+		"message": "Request for delete..."
+	},
+	"menu_moderate": {
+		"message": "Downvote..."
+	},
+	"menu_select_between": {
+		"message": "Select all posts between two posts"
+	},
+	"menu_clear_selection": {
+		"message": "Clear all checked posts"
+	},
+	"menu_select_between_desc": {
+		"message": "First, select any two posts.\nThen run this menu to select all posts in between."
+	},
+	"menu_save_to": {
+		"message": "Save to"
+	},
+	"menu_save_to_default_path": {
+		"message": "Save to default path"
+	},
+	"menu_update_folder_tree": {
+		"message": "Update folder tree"
+	},
+	"menu_clear_histories": {
+		"message": "Clear history entries"
+	},
+	"menu_request_grant": {
+		"message": "Grant file access..."
+	},
+	"active_search_tab_title": {
+		"message": "$1 search"
+	},
+	"catsearch_item": {
+		"message": "$1 $2 reply"
+	},
+	"catsearch_item_new": {
+		"message": "$1 reply (new)"
+	},
+	"menu_autocharge_state": {
+		"message": "Configure auto-charging..."
+	},
+	"menu_purchase_coins": {
+		"message": "Purchase coins..."
+	},
+	"stat_count": {
+		"message": "$1 post"
+	},
+	"suspicious_url": {
+		"message": "(suspicious URL)"
+	},
+	"failed_to_refresh_coin_status": {
+		"message": "Failed to refresh the coin status."
+	},
+	"invalid_account_info": {
+		"message": "Invalid account info."
+	},
+	"failed_to_commit_coin_transaction": {
+		"message": "Failed to commit the coin transaction."
+	},
+	"failed_to_get_google_account": {
+		"message": "Failed to get your google account information."
+	},
+	"in_coin_transaction": {
+		"message": "Still in coin transaction. Please hold on..."
+	},
+	"this_commnad_is_unavailable": {
+		"message": "This commnad is unavailable."
+	},
+	"not_in_auto_charge_mode_of_coins": {
+		"message": "Not in an auto-charge mode of coins"
+	},
+	"unknown_coin_command": {
+		"message": "Unknown coin command “$1”"
+	},
+	"replace_leader_asis": {
+		"message": "No replace"
+	},
+	"replace_leader_excite": {
+		"message": "Replace with “！”"
+	},
+	"replace_leader_love": {
+		"message": "Replace with “♥”"
+	},
+	"replace_leader_fate": {
+		"message": "Replace with “─”"
+	},
+	"replace_leader_3dots": {
+		"message": "Unify with “…”"
+	},
+	"replace_leader_custom": {
+		"message": "Replace with value of custom setting"
+	},
+	"there_is_no_word_after_pipe": {
+		"message": "There is no word after “|”."
+	},
+	"too_many_pipe": {
+		"message": "Too many “|”."
+	},
+	"too_many_words": {
+		"message": "Too many words."
+	},
+	"enter_least_one_word": {
+		"message": "Please enter at least one word that does not begin with “-”."
+	},
+	"enter_word_before_pipe": {
+		"message": "Please enter a word before “|”."
+	},
+	"enter_word_before_paren": {
+		"message": "Please enter a word before “)”."
+	},
+	"parentheses_are_unbalanced": {
+		"message": "Parentheses are unbalanced."
+	},
+	"invalid_regular_expression": {
+		"message": "Invalid Regular expression."
+	},
+	"type_something": {
+		"message": "Please type something."
+	},
+	"save_to_arg": {
+		"message": "Save to $1"
+	},
+	"save_to_here": {
+		"message": "Save to here"
+	}
+}

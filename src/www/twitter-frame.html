@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Twitter Frame for Akahukuplus</title>
+		<style>
+body {
+	margin:0;
+	color:#800000;
+	background-color:transparent;
+}
+.twitter-tweet:not(.twitter-tweet-rendered) {
+	max-width:550px;
+	margin:0;
+	padding:1em;
+	background-color:#fff;
+	color:#555;
+	border:1px solid #c0c0c0;
+	border-radius:1em;
+}
+.twitter-tweet:not(.twitter-tweet-rendered) p {
+	margin: 0 0 1em 0;
+	line-height:1.5;
+}
+.twitter-tweet.twitter-tweet-rendered {
+	margin-left:0 !important;
+	margin-right:0 !important;
+	margin-top:0 !important;
+	margin-bottom:0 !important;
+}
+		</style>
+		<script type="text/javascript">
+let iframeId;
+let bodyResizeObserver;
+
+window.addEventListener('message', e => {
+	if (!/^https?:\/\/[^.]+\.2chan\.net$/.test(e.origin)) {
+		/*
+		console.log(`twitter-frame: inknown origin: ${e.origin}`);
+		console.dir(e.data);
+		*/
+		return;
+	}
+
+	switch (e.data.command) {
+	case 'init-tweet':
+		{
+			const loadDetector = e => {
+				console.log(`twitter-frame: ${e.target.nodeName}: ${e.target.src} loaded.`);
+			};
+
+			iframeId = e.data.iframeId;
+
+			document.body.innerHTML = '';
+			document.body.insertAdjacentHTML('afterbegin', e.data.tweetData.html);
+
+			if (e.data.applyScript) {
+				const scriptSources = Array.prototype.map.call(
+					document.querySelectorAll('script'),
+					node => {
+						const src = node.src;
+						node.parentNode.removeChild(node);
+						return src;
+					}
+				);
+
+				scriptSources.forEach(source => {
+					if (!source) return;
+
+					const el = document.body.appendChild(document.createElement('script'));
+					el.type = 'text/javascript';
+					el.charset = 'UTF-8';
+					el.src = source;
+					//el.onload = loadDetector;
+				});
+			}
+		}
+		break;
+	}
+});
+
+window.addEventListener('DOMContentLoaded', e => {
+	bodyResizeObserver = new ResizeObserver(entries => {
+		try {
+			const payload = {
+				command: 'report-size',
+				iframeId: iframeId,
+				width: entries[0].contentRect.width,
+				height: entries[0].contentRect.height
+			};
+			const innerFrame = document.querySelector('iframe');
+
+			if (innerFrame) {
+				payload.iframeTag = innerFrame.outerHTML;
+			}
+
+			parent.postMessage(payload, '*');
+			//console.log(`twitter-frame: got resize event: ${payload.width}x${payload.height}`);
+		}
+		catch (err) {
+		}
+	});
+	bodyResizeObserver.observe(document.body);
+}, {once: true});
+
+console.log(`twitter-frame: loaded.`);
+		</script>
+	</head>
+	<body>
+		This is the twitter frame for Akahukuplus
+	</body>
+</html>

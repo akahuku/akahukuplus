@@ -1,9 +1,8 @@
-/*
- * up/up2 extender for akahukuplus
- */
-
 /**
- * Copyright 2022-2024 akahuku, akahuku@gmail.com
+ * up/up2 extender for akahukuplus
+ *
+ *
+ * Copyright 2022-2025 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +54,7 @@ function getReadableKSize (size) {
 }
 
 function getUUIDv4 () {
-	return typeof crypto != 'undefined' && 'randomUUID' in crypto ?
+	return typeof crypto !== 'undefined' && 'randomUUID' in crypto ?
 		crypto.randomUUID() :
 		'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
 			.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16))
@@ -83,7 +82,7 @@ function writeTextToClipboard (text) {
 	try {
 		navigator.clipboard.writeText(text);
 	}
-	catch (err) {
+	catch {
 		//
 	}
 }
@@ -502,8 +501,8 @@ function hideFirstPageLinks () {
 	const pageLinks = $qsa('.pagelink');
 
 	if (pageLinks.length >= 2) {
-		if ((pageLinks[0].previousElementSibling || {}).nodeName == 'HR'
-		&&  (pageLinks[0].nextElementSibling || {}).nodeName == 'HR') {
+		if ((pageLinks[0].previousElementSibling || {}).nodeName === 'HR'
+		&&  (pageLinks[0].nextElementSibling || {}).nodeName === 'HR') {
 			pageLinks[0].nextElementSibling.parentNode.removeChild(pageLinks[0].nextElementSibling);
 
 		}
@@ -583,7 +582,7 @@ function markLastUppedItem () {
 		indicatorContainer.id = 'akahukuplus-last-upped-item';
 		indicatorContainer.className = 'akahukuplus-last-upped-item';
 
-		if (fileCount == 1) {
+		if (fileCount === 1) {
 			indicator.textContent = [
 				`今アップロードしたファイルです。`,
 				`ファイル名 "${fileName}" はクリップボードにコピーされています。`

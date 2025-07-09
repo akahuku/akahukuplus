@@ -1,4 +1,7 @@
 /**
+ * miscellaneous utility functions
+ *
+ *
  * Copyright 2024 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +17,35 @@
  * limitations under the License.
  */
 
-export const chromeWrap =
-	typeof browser !== 'undefined' ? browser :
-	typeof chrome !== 'undefined' ? chrome :
-	null;
+/*
+ * helper vars/functions for chrome extension
+ */
+
+export const {chromeWrap, IS_WEB_EXTENSION} = (() => {
+	let chromeWrap = null;
+	let isWebExtension = false;
+
+	if (typeof browser !== 'undefined') {
+		chromeWrap = browser;
+		isWebExtension = true;
+	}
+	else if (typeof chrome !== 'undefined') {
+		chromeWrap = chrome;
+	}
+
+	if (typeof chromeWrap?.management?.getSelf === 'function') {
+		chromeWrap.management.getSelf().then(ei => {
+			Object.defineProperty(chromeWrap, 'IS_DEVELOP', {
+				value: ei.installType === 'development'
+			});
+		});
+	}
+
+	return {
+		chromeWrap,
+		IS_WEB_EXTENSION: isWebExtension
+	};
+})();
 
 /*
  * i18n functions (relies on Chrome extension)
@@ -41,8 +69,7 @@ export const {LOCALE, _} = (() => {
 			throw new Error('The current locale cannot be identified because the “locale_code” message is not registered.');
 		}
 	}
-	catch (err) {
-		console.error(err.message);
+	catch {
 		return {LOCALE: null, _: a => a};
 	}
 
@@ -85,34 +112,36 @@ export const {LOCALE, _} = (() => {
  * log functions (relies on Chrome extension)
  */
 
+let enableLogFunction = false;
+let enableExternalLog = false;
 let logName;
 let logCount = 0;
-let {enableLogFunction, enableExternalLog} = (manifest => {
-	return {
-		// enable logging on developer mode
-		enableLogFunction: !('key' in manifest),
+let logSetup = (async () => {
+	const manifest = chromeWrap?.runtime?.getManifest?.() ?? {};
+	const IS_DEVELOP = typeof chromeWrap?.management?.getSelf === 'function' ?
+		(await chromeWrap.management.getSelf()).installType === 'development' :
+		false;
 
-		// enable external logging on debug manifest
-		enableExternalLog: !('key' in manifest)
-			&& ('version_name' in manifest)
-			&& /(?:develop|debug)/.test(manifest.version_name)
-	};
-})((chromeWrap && chromeWrap.runtime?.getManifest?.()) || {});
+	// enable logging on developer mode
+	enableLogFunction = IS_DEVELOP;
 
-export function log (...args) {
+	// enable external logging on debug manifest
+	enableExternalLog = IS_DEVELOP
+		&& ('version_name' in manifest)
+		&& /(?:develop|debug)/.test(manifest.version_name)
+})();
+
+function logCore (...args) {
 	if (!enableLogFunction) return;
 
 	const now = new Date;
-
-	let s = args.map(a => {
+	const header = `[${++logCount}] ${now.toLocaleTimeString()}.${('' + now.getMilliseconds()).padStart(3, '0')}`;
+	const s = header + '\t' + args.map(a => {
 		if (a instanceof Error) {
 			a = `${a.message}\n${a.stack}`;
 		}
 		return a;
 	}).join(' ');
-
-	s = `[${++logCount}] ${s}`;
-	s = `${now.toLocaleTimeString()}.${('000' + now.getMilliseconds()).substr(-3)}\t${s}`;
 
 	// ###DEBUG CODE START###
 	if (enableExternalLog) {
@@ -128,14 +157,26 @@ export function log (...args) {
 				console.log(err.stack);
 			});
 		}
-		catch (e) {
+		catch {
 			console.log(s);
 		}
 	}
 	// ###DEBUG CODE END###
 	console.log(s);
+}
 
-	return s;
+export function log (...args) {
+	if (logSetup) {
+		console.log('log: waiting log setup...');
+		logSetup.then(() => {
+			console.log('log: after log setup');
+			logSetup = undefined;
+			logCore(...args);
+		});
+	}
+	else {
+		logCore(...args);
+	}
 }
 
 log.config = con => {
@@ -420,6 +461,17 @@ export function audioPlay (key) {
  * misc functions
  */
 
+export function dcl () {
+	return new Promise(resolve => {
+		if (document.readyState === 'complete' || document.readyState === 'interactive') {
+			resolve();
+		}
+		else {
+			document.addEventListener('DOMContentLoaded', resolve, {once: true});
+		}
+	});
+}
+
 export function delay (wait) {
 	return new Promise(resolve => {
 		setTimeout(resolve, wait);
@@ -427,7 +479,7 @@ export function delay (wait) {
 }
 
 export function $ (id) {
-	return typeof id == 'string' ? document.getElementById(id) : id;
+	return typeof id === 'string' ? document.getElementById(id) : id;
 }
 
 export function $qs (selector, node) {
@@ -458,18 +510,25 @@ export function updateI18n () {
 
 export function getErrorDescription (err) {
 	let result = '';
-	if ('stack' in err) {
-		result += err.stack;
-	}
-	else {
+
+	if ('message' in err) {
 		result += err.message;
-		if ('fileName' in err) {
-			result += ' at ' + err.fileName;
-		}
+	}
+
+	if ('fileName' in err) {
+		result += ' at ' + err.fileName;
 		if ('lineNumber' in err) {
 			result += ':' + err.lineNumber;
 		}
 	}
+
+	if ('stack' in err) {
+		if (result !== '') {
+			result += '\n';
+		}
+		result += err.stack;
+	}
+
 	return result;
 }
 
@@ -610,6 +669,19 @@ export function debounce (fn, interval = 100) {
 	}
 }
 
+export function throttle (fn, limit) {
+	let waiting = false;
+	return (...args) => {
+		if (!waiting) {
+			fn.apply(null, args);
+			waiting = true;
+			setTimeout(() => {
+				waiting = false;
+			}, limit);
+		}
+	}
+}
+
 export function createFormData (data) {
 	const result = new URLSearchParams;
 
@@ -624,7 +696,7 @@ export function parseJson (s) {
 	try {
 		return JSON.parse(s);
 	}
-	catch (err) {
+	catch {
 		return undefined;
 	}
 }

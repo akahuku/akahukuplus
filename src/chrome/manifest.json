@@ -92,6 +92,5 @@
 			"description": "Enable debug feature"
 		}
 	},
-	"homepage_url": "https://appsweets.net/akahukuplus/",
-	"update_url":"https://github.com/akahuku/akahukuplus/raw/master/dist/chrome.xml"
+	"homepage_url": "https://appsweets.net/akahukuplus/"
 }
