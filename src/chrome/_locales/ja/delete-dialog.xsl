@@ -3,7 +3,7 @@
 	post-delete dialog content
 -->
 <!--
- * Copyright 2014-2024 akahuku, akahuku@gmail.com
+ * Copyright 2014-2025 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.

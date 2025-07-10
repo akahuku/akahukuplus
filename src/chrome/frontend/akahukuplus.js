@@ -10309,9 +10309,10 @@ const commands = {
 
 		return setPostThumbnailVisibility(false);
 	},
-	deactivateEditor (e) {
-		console.log(e.target.outerHTML);
-		return keyManager.PASS_THROUGH;
+	deactivateEditor () {
+		return commands.deactivatePostForm();
+		//console.log(e.target.outerHTML);
+		//return keyManager.PASS_THROUGH;
 	},
 	scrollPage (e) {
 		const sh = document.documentElement.scrollHeight;
