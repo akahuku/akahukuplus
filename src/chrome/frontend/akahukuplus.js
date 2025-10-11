@@ -65,6 +65,7 @@ const INLINE_VIDEO_MAX_HEIGHT = '75vh';
 const QUICK_MODERATE_REASON_CODE = '110';
 const EXTRACT_UNIT = 10;
 const SODANE_NULL_MARK = '＋';
+const LINKIFY_MAX = 10;
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
@@ -173,7 +174,7 @@ let styleInitializer = (() => {
 	}
 
 	function done () {
-		let s = document.getElementById(STYLE_ID);
+		const s = document.getElementById(STYLE_ID);
 
 		if (s) {
 			s.parentNode.removeChild(s);
@@ -302,12 +303,6 @@ function transformWholeDocument (xsl) {
 
 	const head = $qs('head', fragment);
 	const body = $qs('body', fragment);
-	const removeHeadElements = () => {
-		$qsa('head > *').forEach(node => {
-			if (node.nodeName === 'BASE') return;
-			node.parentNode.removeChild(node);
-		});
-	};
 
 	/*
 	 * transform result has head or body:
@@ -323,7 +318,7 @@ function transformWholeDocument (xsl) {
 
 	if (head || body) {
 		if (head) {
-			removeHeadElements();
+			removeChild($qsa('head > :not(base)'));
 			document.head.appendChild(fixFragment(fragment, 'head'));
 		}
 		if (body) {
@@ -342,7 +337,7 @@ function transformWholeDocument (xsl) {
 	 */
 
 	else {
-		removeHeadElements();
+		removeChild($qsa('head > :not(base)'));
 		document.body.appendChild(fragment);
 	}
 
@@ -371,10 +366,8 @@ function transformWholeDocument (xsl) {
 	});
 
 	// some tweaks: move some elements to its proper position
-	const headNodes = Array.from($qsa('meta,title,link,style'.replace(/^|,/g, '$&body ')));
-	while (headNodes.length) {
-		const node = headNodes.shift();
-		node.parentNode.removeChild(node);
+	for (const node of $qsa('meta,title,link,style'.replace(/^|,/g, '$&body '))) {
+		removeChild(node);
 		document.head.appendChild(node);
 	}
 
@@ -646,7 +639,7 @@ function install () {
 			}, 1000);
 		})
 		.add('#select', (e, t) => {
-			$qsa('[data-number]', t.closest('li')).forEach(node => {
+			for (const node of $qsa('[data-number]', t.closest('li'))) {
 				const number = node.dataset.number;
 				const checkbox = $qs([
 					`article .topic-wrap[data-number="${number}"] input[type="checkbox"]`,
@@ -655,7 +648,7 @@ function install () {
 				if (checkbox) {
 					checkbox.checked = true;
 				}
-			});
+			}
 			updateCheckedPostIndicator();
 		})
 		.add('#save-catalog-settings', () => {
@@ -753,7 +746,7 @@ function install () {
 		.add('.catalog-order', (e, t) => {
 			let newActive;
 
-			$qsa('#catalog .catalog-options a').forEach(node => {
+			for (const node of $qsa('#catalog .catalog-options a')) {
 				if (node === t) {
 					node.classList.add('active');
 					newActive = node;
@@ -761,7 +754,7 @@ function install () {
 				else {
 					node.classList.remove('active');
 				}
-			});
+			}
 
 			if (!newActive) {
 				newActive = $qs('#catalog .catalog-options a');
@@ -770,14 +763,14 @@ function install () {
 
 			const order = newActive.href.match(/\w+$/)[0];
 			const contentId = `catalog-threads-wrap-${order}`;
-			$qsa('#catalog .catalog-threads-wrap > div').forEach(node => {
+			for (const node of $qsa('#catalog .catalog-threads-wrap > div')) {
 				if (node.id === contentId) {
 					node.classList.remove('hide');
 				}
 				else {
 					node.classList.add('hide');
 				}
-			});
+			}
 
 			storage.runtime.catalog.sortOrder = order;
 			storage.saveRuntime();
@@ -896,7 +889,7 @@ function install () {
 				viewportRect = vp.getBoundingClientRect();
 			}
 			finally {
-				vp.parentNode.removeChild(vp);
+				removeChild(vp);
 			}
 		}
 
@@ -923,16 +916,6 @@ function install () {
 				'}'
 			].join('\n')));
 		}
-
-		/*
-		function readjustReplyWidth () {
-			$qsa('.reply-wrap .reply-image.width-adjusted').forEach(node => {
-				node.classList.remove('width-adjusted');
-				node.style.minWidth = '';
-			});
-			adjustReplyWidth();
-		}
-		*/
 
 		function handler () {
 			const style = $('dynstyle-comment-maxwidth');
@@ -1643,6 +1626,8 @@ function createXMLGenerator () {
 	function pushComment (node, text, s) {
 		const stack = [node];
 		const regex = /<[^>]+>|[^<]+/g;
+		const links = [];
+
 		let re;
 		while ((re = regex.exec(s))) {
 			re = re[0];
@@ -1666,7 +1651,29 @@ function createXMLGenerator () {
 			}
 			else {
 				stack[0].appendChild(text(re));
-				linkify(stack[0]);
+				const subLinks = linkify(stack[0]);
+				if (subLinks.length) {
+					links.push(...subLinks);
+				}
+			}
+		}
+
+		if (links.length) {
+			const linkSet = new Set;
+			for (const link of $qsa('a', node)) {
+				const href = link.getAttribute('href');
+				if (linkSet.has(href)) {
+					link.className = 'link-overflow';
+				}
+				else {
+					linkSet.add(href);
+				}
+			}
+
+			if (links.length > LINKIFY_MAX) {
+				for (const link of $qsa('a', node)) {
+					link.className = 'link-overflow';
+				}
 			}
 		}
 	}
@@ -4384,8 +4391,7 @@ function createCatalogPopup (container) {
 
 		const handleTransitionend = e => {
 			if (e && e.target) {
-				const t = e.target;
-				t.parentNode && t.parentNode.removeChild(t);
+				removeChild(e.target);
 			}
 			if (item && --item.closingCount <= 0 && item.state === 'closing') {
 				for (let i = 0; i < popups.length; i++) {
@@ -4423,7 +4429,7 @@ function createCatalogPopup (container) {
 
 	function closeAll (except) {
 		_log(`closeAll: closing ${popups.length} popup(s)`);
-		const elms = Array.from($qsa('body > .catalog-popup'));
+		const elms = [...$qsa('body > .catalog-popup')];
 		for (let i = 0; i < popups.length; i++) {
 			['thumbnail', 'text'].forEach(p => {
 				const index = elms.indexOf(popups[i][p]);
@@ -4432,15 +4438,11 @@ function createCatalogPopup (container) {
 			if (popups[i].target === except) continue;
 			close(i);
 		}
-		elms.forEach(elm => {
-			elm.parentNode && elm.parentNode.removeChild(elm);
-		});
+		removeChild(elms);
 	}
 
 	function deleteAll () {
-		$qsa('body > .catalog-popup').forEach(node => {
-			node.parentNode && node.parentNode.removeChild(node);
-		});
+		removeChild($qsa('body > .catalog-popup'));
 		popups.length = 0;
 		cursorPos.moved = false;
 	}
@@ -4721,7 +4723,7 @@ function createQuotePopup () {
 				break;
 			}
 
-			ch.parentNode.removeChild(ch);
+			removeChild(ch);
 		}
 	}
 
@@ -4748,24 +4750,23 @@ function createQuotePopup () {
 			}
 		}
 
-		$qsa('input[type="checkbox"], iframe, video, audio', div).forEach(node => {
-			node.parentNode.removeChild(node);
-		});
-		$qsa('img.hide', div).forEach(node => {
+		removeChild($qsa('input[type="checkbox"], iframe, video, audio', div));
+
+		for (const node of $qsa('img.hide', div)) {
 			node.classList.remove('hide');
-		});
+		}
 
 		if (quoteOrigin.quotedFileName) {
-			$qsa('a img', div).forEach(node => {
+			for (const node of $qsa('a img', div)) {
 				const anchor = node.parentNode;
-				if (anchor.href.endsWith(quoteOrigin.quotedFileName)) return;
+				if (anchor.href.endsWith(quoteOrigin.quotedFileName)) continue;
 
 				if (anchor.nextElementSibling?.nodeName === 'BR') {
-					anchor.parentNode.removeChild(anchor.nextElementSibling);
+					removeChild(anchor.nextElementSibling);
 				}
 
-				anchor.parentNode.removeChild(anchor);
-			});
+				removeChild(anchor);
+			}
 		}
 
 		// positioning
@@ -4948,7 +4949,7 @@ function createSelectionMenu () {
 						r2.setStartBefore(start);
 						r2.setEndAfter(end);
 
-						const result = Array.from($qsa('.comment', r2.cloneContents()))
+						const result = [...$qsa('.comment', r2.cloneContents())]
 							.map(getTextForJoin)
 							.join('');
 
@@ -5289,9 +5290,9 @@ function createActiveTracker () {
 		const now = new Date;
 		const time = `${now.toLocaleTimeString()}.${now.getMilliseconds()}`;
 		devMode && console.log(`${time}: ${s}`);
-		$qsa('a[href="#autotrack"]').forEach(node => {
+		for (const node of $qsa('a[href="#autotrack"]')) {
 			node.title = `${time}: ${s}`;
-		});
+		}
 	}
 
 	function getTimeSpanText (span) {
@@ -5317,27 +5318,27 @@ function createActiveTracker () {
 	}
 
 	function updateNormalLink () {
-		$qsa('a[href="#autotrack"]').forEach(node => {
+		for (const node of $qsa('a[href="#autotrack"]')) {
 			$t(node, _('autotrack'));
 			node.title = '';
-		});
-		$qsa('.track-indicator').forEach(node => {
+		}
+		for (const node of $qsa('.track-indicator')) {
 			node.style.transitionProperty = '';
 			node.style.transitionDuration = '.25s';
 			node.style.width = '0px';
-		});
+		}
 	}
 
 	function updateTrackingLink (restSeconds, ratio) {
 		restSeconds = Math.max(0, restSeconds);
 		const text = getTimeSpanText(Math.floor(restSeconds));
 		const width = Math.floor($('reload-anchor').offsetWidth * Math.max(0, ratio));
-		$qsa('.track-indicator').forEach(node => {
+		for (const node of $qsa('.track-indicator')) {
 			node.style.transitionProperty = 'none';
 			node.style.transitionDuration = '0s';
 			node.style.width = `${width}px`;
 			node.title = /^0\b/.test(text) ? _('will_reload_soon') : _('will_reload_in', text);
-		});
+		}
 	}
 
 	function afterReload () {
@@ -5422,9 +5423,7 @@ function createActiveTracker () {
 		let median = 0;
 		let referencedReplyNumber = 0;
 
-		const postTimes = Array
-		.from($qsa(`.replies .reply-wrap:nth-last-child(-n+${storage.config.autotrack_sampling_replies.value + 1})`))
-		.map(node => {
+		const postTimes = [...$qsa(`.replies .reply-wrap:nth-last-child(-n+${storage.config.autotrack_sampling_replies.value + 1})`)].map(node => {
 			referencedReplyNumber = $qs('[data-number]', node).dataset.number - 0;
 			return new Date($qs('.postdate', node).dataset.value - 0);
 		});
@@ -5504,9 +5503,9 @@ function createActiveTracker () {
 
 		setCurrentState('preparing');
 
-		$qsa('a[href="#autotrack"]').forEach(node => {
+		for (const node of $qsa('a[href="#autotrack"]')) {
 			$t(node, _('autotrack_enabled'));
-		});
+		}
 
 		const indicator = $qs('.track-indicator');
 		indicator.style.transitionProperty = '';
@@ -5677,10 +5676,10 @@ function createPostingEvaluator () {
 		switch (reason) {
 		case 'moderate':
 			title = `del (${responseText})`;
-			$qsa(`[data-number="${postNumber}"] .del`).forEach(node => {
+			for (const node of $qsa(`[data-number="${postNumber}"] .del`)) {
 				node.classList.add('posted');
 				node.title = title;
-			});
+			}
 			break;
 
 		case 'delete':
@@ -5692,12 +5691,12 @@ function createPostingEvaluator () {
 				const newSodaneValue = parseInt(responseText, 10) || 0;
 				postStats.notifySodane(postNumber, newSodaneValue);
 
-				$qsa([
+				for (const node of $qsa([
 					`[data-number="${postNumber}"] .sodane`,
 					`[data-number="${postNumber}"] .sodane-null`
-				].join(',')).forEach(node => {
+				].join(','))) {
 					setSodaneState(node, newSodaneValue);
-				});
+				}
 				postStats.done();
 				modifyPage();
 			}
@@ -5706,9 +5705,9 @@ function createPostingEvaluator () {
 	}
 
 	function clearPostNumber (postNumber) {
-		$qsa(`article [data-number="${postNumber}"] input[type="checkbox"]:checked`).forEach(node => {
+		for (const node of $qsa(`article [data-number="${postNumber}"] input[type="checkbox"]:checked`)) {
 			node.checked = false;
-		});
+		}
 	}
 
 	function updateLastPostTime (reason, postNumber, responseText) {
@@ -5855,9 +5854,9 @@ function createPostingEvaluator () {
 		startEvaluate('moderate', ensureArray(postNumbers).map(pn => {
 			clearPostNumber(pn);
 			return async () => {
-				$qsa(`[data-number="${pn}"] .del`).forEach(node => {
+				for (const node of $qsa(`[data-number="${pn}"] .del`)) {
 					node.classList.add('posted');
-				});
+				}
 				const result = await load(
 					`${location.protocol}//${location.host}/del.php`,
 					{
@@ -6054,15 +6053,15 @@ function createResourceSaver () {
 				let firstCommentText = '';
 				let defaultCommentText = '';
 
-				$qsa('.topic-wrap', p).forEach(node => {
+				for (const node of $qsa('.topic-wrap', p)) {
 					result.serial = node.dataset.number - 0;
-				});
+				}
 
-				$qsa('.topic-wrap .postdate', p).forEach(node => {
+				for (const node of $qsa('.topic-wrap .postdate', p)) {
 					result.date = new Date(node.dataset.value - 0);
-				});
+				}
 
-				Array.from($qsa('.comment', p)).some(node => {
+				[...$qsa('.comment', p)].some(node => {
 					const comment = commentToString(node);
 					if (/^ｷﾀ━+\(ﾟ∀ﾟ\)━+\s*!+$/.test(comment)) {
 						defaultCommentText = comment;
@@ -6121,9 +6120,9 @@ function createResourceSaver () {
 
 				let replyCommentText = null;
 
-				$qsa('.comment', p).forEach(node => {
+				for (const node of $qsa('.comment', p)) {
 					replyCommentText = commentToString(node);
-				});
+				}
 
 				if (!replyCommentText) return null;
 
@@ -6347,17 +6346,17 @@ function createResourceSaver () {
 					sounds.imageSaved.play();
 				}
 
-				$qsa(`.save-image[href="${url}"]`).forEach(node => {
+				for (const node of $qsa(`.save-image[href="${url}"]`)) {
 					$t(node, _('saving_completed'));
 					node.setAttribute('title', _('saved_to', result.localPath));
 					node.dataset.imageSaved = '1';
-				});
+				}
 			}
 			catch (err) {
 				log(`exception at assetSaver#save: ${Object.prototype.toString.call(err)}\n${err.stack}`);
-				$qsa(`.save-image[href="${url}"]`).forEach(node => {
+				for (const node of $qsa(`.save-image[href="${url}"]`)) {
 					$t(node, _('saving_failed'));
-				});
+				}
 				alert(`${LABEL_SAVE}:\n${_('saving_failed_by')}\n${err.message}`);
 			}
 			finally {
@@ -6576,10 +6575,10 @@ function createResourceSaver () {
 		}
 
 		function updateAnchor (text, callback) {
-			$qsa('a[href="#autosave"]').forEach(node => {
+			for (const node of $qsa('a[href="#autosave"]')) {
 				$t(node, text);
 				callback && callback(node);
-			});
+			}
 		}
 
 		function _getLocalPath (url, anchor) {
@@ -6670,10 +6669,10 @@ function setupParallax (selector) {
 		scrollManager.addEventListener(handleScroll);
 		handleScroll();
 		setTimeout(() => {
-			$qsa('iframe[data-src]').forEach(iframe => {
+			for (const iframe of $qsa('iframe[data-src]')) {
 				iframe.src = iframe.dataset.src;
 				delete iframe.dataset.src;
-			});
+			}
 		}, 1000 * 1);
 	}
 
@@ -6717,7 +6716,7 @@ function setupVideoViewer () {
 		const st = docScrollTop();
 		const vt = st - viewportRect.height;
 		const vb = st + viewportRect.height * 2;
-		$qsa('.inline-video').forEach(node => {
+		for (const node of $qsa('.inline-video')) {
 			const rect = node.getBoundingClientRect();
 			if (rect.bottom + st < vt
 			||  rect.top + st > vb) {
@@ -6735,7 +6734,7 @@ function setupVideoViewer () {
 					node.insertAdjacentHTML('beforeend', markup);
 				}
 			}
-		});
+		}
 	}
 
 	init();
@@ -7261,13 +7260,13 @@ function setupPostFormItemEvent (items) {
 	document.addEventListener('dragleave', handleDragLeave, true);
 	document.addEventListener('drop', handleDrop);
 
-	$qsa('#com').forEach(() => {
+	for (const node of $qsa('#com')) {
 		updateInfo();
-	});
+	}
 
-	$qsa('#upfile').forEach(upfile => {
+	for (const upfile of $qsa('#upfile')) {
 		upfile.addEventListener('change', handleUpfileChange);
-	});
+	}
 }
 
 function setupWheelReload () {
@@ -7460,10 +7459,7 @@ function setupSearchResultPopup () {
 			clearTimeout(timer);
 			timer = null;
 		}
-		const popup = $('search-popup');
-		if (popup) {
-			popup.parentNode.removeChild(popup);
-		}
+		removeChild('search-popup');
 	}
 
 	if (siteInfo.resno) {
@@ -7548,7 +7544,7 @@ function modalDialog (opts = {}) {
 				buttons.push(footer.firstChild);
 				footer.firstChild.classList.remove('disabled');
 			}
-			footer.removeChild(footer.firstChild);
+			removeChild(footer.firstChild);
 		}
 
 		(opt || '').split(/\s*,\s*/).forEach(opt => {
@@ -7659,17 +7655,17 @@ function modalDialog (opts = {}) {
 	}
 
 	function enableButtons () {
-		$qsa('.dialog-content-footer a', dialogWrap).forEach(node => {
+		for (const node of $qsa('.dialog-content-footer a', dialogWrap)) {
 			node.classList.remove('disabled');
-		});
+		}
 	}
 
 	function disableButtonsWithout (exceptId) {
-		$qsa('.dialog-content-footer a', dialogWrap).forEach(node => {
+		for (const node of $qsa('.dialog-content-footer a', dialogWrap)) {
 			if (exceptId && node.href.indexOf(`#${exceptId}-dialog`) < 0) {
 				node.classList.add('disabled');
 			}
-		});
+		}
 	}
 
 	function isDisabled (node) {
@@ -7816,7 +7812,7 @@ async function dimmer (text) {
 
 // from utils.js
 let LOCALE, _, delay, $, $qs, $qsa,
-	empty, load, getReadableSize, debounce;
+	removeChild, empty, load, getReadableSize, debounce;
 
 // from utils-apext.js
 let $t, fixFragment, serializeXML, getCookie, setCookie,
@@ -7851,11 +7847,11 @@ function extractDisableOutputEscapingTags (container, extraFragment) {
 	container = $(container);
 	if (!container) return;
 	if (extraFragment) container.appendChild(extraFragment);
-	$qsa('[data-doe]', container).forEach(node => {
+	for (const node of $qsa('[data-doe]', container)) {
 		const doe = node.dataset.doe;
 		delete node.dataset.doe;
 		node.insertAdjacentHTML('beforeend', doe);
-	});
+	}
 	return container;
 }
 
@@ -7954,9 +7950,7 @@ function sanitizeComment (commentNode) {
 		'.inline-save-image-wrap',
 		'.up-media-container'
 	];
-	$qsa(strippedItems.join(','), result).forEach(node => {
-		node.parentNode && node.parentNode.removeChild(node);
-	});
+	removeChild($qsa(strippedItems.join(','), result));
 
 	return result;
 }
@@ -8009,10 +8003,10 @@ function displayLightbox (anchor) {
 					const lang = window.navigator.browserLanguage
 						|| window.navigator.language
 						|| window.navigator.userLanguage;
-					const url = 'http://www.google.com/searchbyimage'
-						+ `?sbisrc=${APP_NAME}`
-						+ `&hl=${lang.toLowerCase()}`
-						+ `&image_url=${encodeURIComponent(imageSource)}`;
+					const url = `https://lens.google.com/uploadbyurl?` + (new URLSearchParams([
+						['hl', lang.toLowerCase()],
+						['url', imageSource]
+					])).toString();
 					backend.send('open', {
 						url,
 						selfUrl: location.href
@@ -8081,7 +8075,7 @@ function displayInlineVideo (anchor) {
 
 		if (thumbContainer) {
 			if (thumbContainer.previousSibling.nodeName === 'VIDEO') {
-				thumbContainer.parentNode.removeChild(thumbContainer.previousSibling);
+				removeChild(thumbContainer.previousSibling);
 				thumbContainer.classList.remove('hide');
 			}
 			else {
@@ -8093,7 +8087,7 @@ function displayInlineVideo (anchor) {
 			const quote = anchor.closest('q');
 			if (!quote) return;
 			if (quote.nextSibling && quote.nextSibling.nodeName === 'VIDEO') {
-				quote.parentNode.removeChild(quote.nextSibling);
+				removeChild(quote.nextSibling);
 			}
 			else {
 				quote.parentNode.insertBefore(createMedia(), quote.nextSibling);
@@ -8105,7 +8099,7 @@ function displayInlineVideo (anchor) {
 	else if ((parent = anchor.closest('a'))) {
 		const thumbContainer = $qs('img', parent);
 		if (parent.previousSibling && parent.previousSibling.nodeName === 'VIDEO') {
-			parent.parentNode.removeChild(parent.previousSibling);
+			removeChild(parent.previousSibling);
 			thumbContainer.classList.remove('hide');
 		}
 		else {
@@ -8143,7 +8137,7 @@ function displayInlineAudio (anchor) {
 		const neighbor = anchor.nextElementSibling;
 
 		if (neighbor && neighbor.classList.contains('up-media-container')) {
-			neighbor.parentNode.removeChild(neighbor);
+			removeChild(neighbor);
 		}
 		else {
 			const mediaContainer = document.createElement('div');
@@ -8235,9 +8229,7 @@ function dumpDebugText (text) {
 		node.appendChild(document.createTextNode(text));
 	}
 	else {
-		if (node) {
-			node.parentNode.removeChild(node);
-		}
+		removeChild(node);
 	}
 }
 
@@ -8360,11 +8352,11 @@ function populateTextFormItems (form, callback, populateAll) {
 		'select'
 	].join(','), form);
 
-	inputNodes.forEach(node => {
-		if (node.name === '') return;
-		if (node.disabled) return;
+	for (const node of inputNodes) {
+		if (node.name === '') continue;
+		if (node.disabled) continue;
 		callback(node);
-	});
+	}
 }
 
 function populateFileFormItems (form, callback) {
@@ -8372,12 +8364,12 @@ function populateFileFormItems (form, callback) {
 		'input[type="file"]'
 	].join(','), form);
 
-	inputNodes.forEach(node => {
-		if (node.name === '') return;
-		if (node.disabled) return;
-		if (node.files.length === 0) return;
+	for (const node of inputNodes) {
+		if (node.name === '') continue;
+		if (node.disabled) continue;
+		if (node.files.length === 0) continue;
 		callback(node);
-	});
+	}
 }
 
 async function postBase (form) {
@@ -9193,6 +9185,35 @@ async function extractTweets () {
 			});
 			if (!data) continue;
 
+			/*
+			 * data = {
+			 *   author_name: "[[USER NAME]]"
+			 *   author_url: "https://twitter.com/[[ACTUAL USER ID]]"
+			 *   cache_age: "3153600000"
+			 *   height: null
+			 *   html: "<blockquote class=\"twitter-tweet\" data-lang=\"ja\"><p lang=\"ja\" dir=\"ltr\">[[CONTENT]]</p>&mdash; [[USER NAME]] (@[[USER_ID]]) <a href=\"[[URL]]\">2024年7月15日</a></blockquote>\n<script async src=\"https://platform.twitter.com/widgets.js\" charset=\"utf-8\"></script>\n\n"
+			 *   provider_name: "Twitter"
+			 *   provider_url: "https://twitter.com"
+			 *   type: "rich"
+			 *   url: "https://twitter.com/[[ACTUAL USER ID]]/status/[[ACTUAL TWEET ID]]"
+			 *   version: "1.0"
+			 *   width: 550
+			 * }
+			 */
+			const actualURL = /^https?:\/\/[^/]+\/([^/]+)\/status\/([^/?#]+)/.exec(data.url);
+			if (!actualURL) {
+				tweets[i].title = `[UNKNOWN URL FORMAT: "${data.url}"]`;
+				continue;
+			}
+			if (actualURL[1] !== userId) {
+				tweets[i].title = `[MALFORMED USER ID: "${userId}"]`;
+				continue;
+			}
+			if (actualURL[2] !== tweetId) {
+				tweets[i].title = `[MALFORMED TWEET ID: "${tweetId}"]`;
+				continue;
+			}
+
 			const iframeId = backend.getUniqueId();
 			const iframeSource = 'https://akahukuplus.appsweets.net/twitter-frame.html';
 
@@ -9244,7 +9265,7 @@ async function extractNico2 () {
 			iframe.style.maxWidth = '100%';
 
 			files[i].removeAttribute(KEY_NAME);
-			files[i].parentNode.removeChild(files[i]);
+			removeChild(files[i]);
 		}
 
 		await delay(Math.floor(Math.random() * 1000 + 1000));
@@ -9310,7 +9331,7 @@ async function completeDefectiveLinks () {
 				// we have to pick the anchor up
 				node.parentNode.insertBefore($qs('a', fragment), node);
 			}
-			node.parentNode.removeChild(node);
+			removeChild(node);
 		}
 		catch (err) {
 			log(`${APP_NAME}: completeUpLink : ${err.stack}`);
@@ -9645,8 +9666,33 @@ function updateIdFrequency (stat) {
 
 		// Count up all posts with the same ID...
 		const posts = $qsa(selector);
+		const leadComment = posts.length ?
+			commentToString($qs('.comment', getWrapElement(posts[0]))) :
+			'';
 		for (let i = 0, index = 1, goal = posts.length; i < goal; i++, index++) {
 			$t(posts[i].nextSibling, `(${index}/${idData.length})`);
+
+			if (i === 0) continue;
+			if (posts[i].dataset.sis) continue;
+
+			const wrap = getWrapElement(posts[i]);
+			const currentComment = commentToString($qs('.comment', wrap));
+			const similarity = getStringSimilarity(
+				currentComment, leadComment,
+				{normalize: true, prefixLength: 2});
+
+			/*
+			if (similarity >= .9) {
+				posts[i].dataset.sis = '9';
+				console.log(`ID #${id}: this subsequent comment appear to be duplicates of the first comment.`);
+			}
+			else {
+				posts[i].dataset.sis = '1';
+			}
+			*/
+
+			console.log(`ID #${id}: similarity: ${similarity} comment: "${currentComment}"`);
+			posts[i].dataset.sis = '1';
 		}
 	}
 	timingLogger.endTag();
@@ -9694,7 +9740,7 @@ function removeRule (container) {
 	if (!container) return;
 	const rule = $qs('.rule', container);
 	if (!rule) return;
-	rule.parentNode.removeChild(rule);
+	removeChild(rule);
 }
 
 function stripTextNodes (container) {
@@ -9713,8 +9759,7 @@ function stripTextNodes (container) {
 	if (!result) return;
 
 	for (let i = 0, goal = result.snapshotLength; i < goal; i++) {
-		const node = result.snapshotItem(i);
-		node.parentNode.removeChild(node);
+		removeChild(result.snapshotItem(i));
 	}
 }
 
@@ -9973,12 +10018,12 @@ async function getDelReasons (postNumber = '') {
 		const category = td.textContent.match(/^([^\n]+)\n/)?.[1] ?? `delの理由(${index + 1})`;
 		result[category] = [];
 
-		$qsa('input[name="reason"]', td).forEach(input => {
+		for (const input of $qsa('input[name="reason"]', td)) {
 			result[category].push({
 				value: input.getAttribute('value'),
 				text: input.nextSibling.nodeValue
 			});
-		});
+		}
 	});
 
 	return result;
@@ -10173,8 +10218,9 @@ function showPanel (callback) {
 
 	// if catalog mode, ensure right margin
 	if (pageModes[0].mode === 'catalog') {
-		Array.from($qsa('#catalog .catalog-threads-wrap > div'))
-			.forEach(div => {div.style.marginRight = '24%';});
+		for (const div of $qsa('#catalog .catalog-threads-wrap > div')) {
+			div.style.marginRight = '24%';
+		}
 	}
 
 	if (panel.classList.contains('run')) {
@@ -10197,8 +10243,9 @@ function hidePanel (callback) {
 		transitionend(panel, e => {
 			// if catalog mode, restore right margin
 			if (pageModes[0].mode === 'catalog') {
-				Array.from($qsa('#catalog .catalog-threads-wrap > div'))
-					.forEach(div => {div.style.marginRight = '';});
+				for (const div of $qsa('#catalog .catalog-threads-wrap > div')) {
+					div.style.marginRight = '';
+				}
 			}
 			// summary/reply mode: show ad container
 			else {
@@ -10217,19 +10264,19 @@ function activatePanelTab (tab) {
 	const tabId = /#(.+)/.exec(new URL(tab.href).hash)?.[1];
 	if (!tabId) return;
 
-	$qsa('.panel-tab-wrap .panel-tab', 'panel-aside-wrap').forEach(node => {
+	for (const node of $qsa('.panel-tab-wrap .panel-tab', 'panel-aside-wrap')) {
 		node.classList.remove('active');
 		if (node.getAttribute('href') === `#${tabId}`) {
 			node.classList.add('active');
 		}
-	});
+	}
 
-	$qsa('.panel-content-wrap', 'panel-aside-wrap').forEach(node => {
+	for (const node of $qsa('.panel-content-wrap', 'panel-aside-wrap')) {
 		node.classList.add('hide');
 		if (node.id === `panel-content-${tabId}`) {
 			node.classList.remove('hide');
 		}
-	});
+	}
 }
 
 /*
@@ -10254,18 +10301,18 @@ function searchBase (opts) {
 		$('search-guide').classList.add('hide');
 		empty(result);
 
-		const nodes = Array.from($qsa(opts.targetNodesSelector));
+		const nodes = [...$qsa(opts.targetNodesSelector)];
 		if (opts.sort) {
 			nodes.sort(opts.sort);
 		}
 
-		nodes.forEach(node => {
+		for (const node of nodes) {
 			let text = [];
-			$qsa(opts.targetElementSelector, node).forEach(subNode => {
+			for (const subNode of $qsa(opts.targetElementSelector, node)) {
 				let t = opts.getTextContent(subNode);
 				t = t.replace(/^\s+|\s+$/g, '');
 				text.push(t);
-			});
+			}
 			text = module.getLegalizedStringForSearch(text.join('\t'));
 
 			if (tester.test(text)) {
@@ -10276,7 +10323,7 @@ function searchBase (opts) {
 				opts.fillItem(anchor, node);
 				matched++;
 			}
-		});
+		}
 
 		$t('search-result-count', _('search_result_count', matched));
 	});
@@ -10866,22 +10913,22 @@ const commands = {
 				if (first) {
 					first = first.parentNode;
 
-					$qsa('table[align="center"] td a', doc).forEach(node => {
+					for (let node of $qsa('table[align="center"] td a', doc)) {
 						const href = /res\/(\d+)\.htm/.exec(node.getAttribute('href'));
-						if (!href) return;
+						if (!href) continue;
 						const number = href[1] - 0;
-						if (!(number in openedThreads)) return;
-						if (openedThreads[number].post <= 0) return;
+						if (!(number in openedThreads)) continue;
+						if (openedThreads[number].post <= 0) continue;
 
 						node = node.parentNode;
 						if (node === first) {
 							first = node.nextSibling;
 						}
 						else {
-							node.parentNode.removeChild(node);
+							removeChild(node);
 							first.parentNode.insertBefore(node, first);
 						}
-					});
+					}
 				}
 			}
 
@@ -10889,9 +10936,9 @@ const commands = {
 			 * traverse all anchors in new catalog
 			 */
 
-			$qsa('table[align="center"] td a', doc).forEach(node => {
+			for (const node of $qsa('table[align="center"] td a', doc)) {
 				let threadNumber = /(\d+)\.htm/.exec(node.getAttribute('href'));
-				if (!threadNumber) return;
+				if (!threadNumber) continue;
 
 				let repliesCount = 0, from, to;
 
@@ -10931,7 +10978,7 @@ const commands = {
 						info.lastChild.textContent = '';
 					}
 
-					return;
+					continue;
 				}
 
 				// not found. create new one
@@ -10985,7 +11032,7 @@ const commands = {
 				to.className = 'info';
 				to.appendChild(document.createElement('span')).textContent = repliesCount;
 				to.appendChild(document.createElement('span')).textContent = newIndicator;
-			});
+			}
 
 			// find latest post number
 			if (summaryReloadResult.status >= 200 && summaryReloadResult.status <= 299) {
@@ -11038,7 +11085,7 @@ const commands = {
 
 						if (isDead) {
 							const tmp = insertee.nextSibling;
-							insertee.parentNode.removeChild(insertee);
+							removeChild(insertee);
 							insertee = tmp;
 						}
 						else {
@@ -11075,7 +11122,7 @@ const commands = {
 				{
 					while (insertee) {
 						const tmp = insertee.nextSibling;
-						insertee.parentNode.removeChild(insertee);
+						removeChild(insertee);
 						insertee = tmp;
 					}
 
@@ -11600,8 +11647,9 @@ const commands = {
 				siteInfo.resno ? _('thread') : _('summary'));
 
 			if (panel.classList.contains('run')) {
-				Array.from($qsa('#catalog .catalog-threads-wrap > div'))
-					.forEach(div => {div.style.marginRight = '24%';});
+				for (const div of $qsa('#catalog .catalog-threads-wrap > div')) {
+					div.style.marginRight = '24%';
+				}
 			}
 
 			const active = $qs(
@@ -12283,7 +12331,7 @@ modules('utils', 'utils-apext', 'linkifier').then(([utils, utilsApext, linkifier
 	timingLogger.endTag();
 
 	({LOCALE, _, delay, $, $qs, $qsa,
-	empty, load, getReadableSize, debounce} = utils);
+	removeChild, empty, load, getReadableSize, debounce} = utils);
 
 	({$t, fixFragment, serializeXML, getCookie, setCookie,
 	getDOMFromString, docScrollTop, docScrollLeft,

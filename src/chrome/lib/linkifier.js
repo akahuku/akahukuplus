@@ -308,6 +308,7 @@ const leaderRegex = /[…‥]+|[・･]{2,}|(?:\.\.\.)+/;
 // public functions
 
 export function linkify (node, opts = {linkify: true, emojify: true}) {
+	const links = [];
 	const r = node.ownerDocument.createRange();
 	let re;
 	while (node.lastChild && node.lastChild.nodeType === 3) {
@@ -323,6 +324,11 @@ export function linkify (node, opts = {linkify: true, emojify: true}) {
 			anchor.textContent = decodePercentEncode(anchor.textContent);
 			anchor.textContent = reduceURL(anchor.textContent);
 			linkTarget.setupAnchor(re, anchor);
+
+			links.push({
+				content: anchor.textContent,
+				href: anchor.getAttribute('href')
+			});
 		}
 
 		else if (opts.emojify && (re = emojiRegex.exec(node.lastChild.nodeValue))) {
@@ -355,4 +361,6 @@ export function linkify (node, opts = {linkify: true, emojify: true}) {
 			break;
 		}
 	}
+
+	return links;
 }

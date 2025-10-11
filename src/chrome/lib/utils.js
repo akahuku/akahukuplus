@@ -490,12 +490,28 @@ export function $qsa (selector, node) {
 	return ($(node) || document).querySelectorAll(selector);
 }
 
-export function empty (node) {
-	node = $(node);
-	if (!node) return;
-	const r = document.createRange();
-	r.selectNodeContents(node);
-	r.deleteContents();
+export function removeChild (...args) {
+	for (let node of args) {
+		node = $(node);
+		if (node instanceof Node) {
+			if (node.parentNode) {
+				node.parentNode.removeChild(node);
+			}
+		}
+		else if (node instanceof NodeList) {
+			removeChild.apply(null, Array.from(node));
+		}
+	}
+}
+
+export function empty (...args) {
+	for (let node of args) {
+		node = $(node);
+		if (!node) continue;
+		const r = document.createRange();
+		r.selectNodeContents(node);
+		r.deleteContents();
+	}
 }
 
 export function updateI18n () {
