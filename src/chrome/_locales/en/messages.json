@@ -538,5 +538,8 @@
 	},
 	"save_to_here": {
 		"message": "Save to here"
+	},
+	"not_worth_showing": {
+		"message": "This post is not worth showing"
 	}
 }

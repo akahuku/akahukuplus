@@ -538,5 +538,8 @@
 	},
 	"save_to_here": {
 		"message": "ここに保存"
+	},
+	"not_worth_showing": {
+		"message": "映す価値なし"
 	}
 }

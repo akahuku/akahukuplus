@@ -4556,7 +4556,7 @@ function createQuotePopup () {
 				`article .topic-wrap[data-number="${quotedNo}"]`,
 				`article .reply-wrap > [data-number="${quotedNo}"]`
 			].join(','));
-			if (!origin || origin === sentinelWrap) {
+			if (!origin) {
 				return null;
 			}
 			if (!origin.classList.contains('topic-wrap')) {
@@ -4573,7 +4573,7 @@ function createQuotePopup () {
 		if (/^>+\s*(\w*\d+\.\w+)/i.test(quote.textContent)) {
 			const quotedFileName = RegExp.$1;
 			let origin = $qs(`article a[href$="${quotedFileName}"]`);
-			if (!origin || origin === sentinelWrap) {
+			if (!origin) {
 				return null;
 			}
 
@@ -4581,6 +4581,10 @@ function createQuotePopup () {
 			if (origin.closest('.reply-wrap')) {
 				origin = getWrapElement(origin);
 				index = $qs('.no', origin).textContent - 0;
+
+				if ($qs('[data-number]', origin) === sentinelWrap) {
+					return null;
+				}
 			}
 			else {
 				origin = $qs('article .topic-wrap');
@@ -4619,7 +4623,7 @@ function createQuotePopup () {
 				`cached no: ${cached.no}`,
 				`sentinel no: ${sentinelNo}`
 			].join('\n'));
-			if (cached.no !== sentinelNo) {
+			if (!cached || cached.no !== sentinelNo) {
 				return cached;
 			}
 		}
@@ -4633,7 +4637,7 @@ function createQuotePopup () {
 				`cached no: ${cached.no}`,
 				`sentinel no: ${sentinelNo}`
 			].join('\n'));
-			if (cached.no !== sentinelNo) {
+			if (!cached || cached.no !== sentinelNo) {
 				return cached;
 			}
 		}
@@ -4711,6 +4715,7 @@ function createQuotePopup () {
 			`element: "${result ? result.element.outerHTML.replace(/\n/g, '\\n') : null}"`,
 		].join('\n'));
 		cache.set(sentinelText, result);
+
 		return result;
 	}
 
@@ -7948,7 +7953,8 @@ function sanitizeComment (commentNode) {
 		'audio',
 		'iframe',
 		'.inline-save-image-wrap',
-		'.up-media-container'
+		'.up-media-container',
+		'.mark'
 	];
 	removeChild($qsa(strippedItems.join(','), result));
 
@@ -9561,11 +9567,22 @@ function updateReplies (xml, container) {
 
 	function updateMarkedReplies () {
 		return updateReplyAssets('reply > mark', (asset, node) => {
-			// Do nothing if already deleted-mark flagged
-			// TODO: We may have to distinguish remote host display, deletion by commenter,
-			// deletion by poster, and なー.
-			if (node.classList.contains('deleted')) return;
-			node.classList.add('deleted');
+			/*
+			 * asset examples:
+			 *
+			 *  - <mark>書き込みをした人によって削除されました</mark>
+			 *  - <mark bracket="true">なー</mark>
+			 *
+			 * reply node:
+			 *
+			 *  - <reply>
+			 *      <number>1362745234</number>
+			 *      <deleted/>
+			 *      <mark>書き込みをした人によって削除されました</mark>
+			 *      <sodane class="sodane-null">＋</sodane>
+			 *      <offset>29</offset>
+			 *    </reply>
+			 */
 
 			// retrieve current comment
 			const comment = $qs('.comment', node);
@@ -9575,6 +9592,21 @@ function updateReplies (xml, container) {
 					`${node.outerHTML}`
 				].join('\n'));
 				return;
+			}
+
+			// find an existing mark with the same content
+			let found = false;
+			for (const mark of $qsa('.mark', comment)) {
+				if (mark.textContent === asset.textContent) {
+					found = true;
+					break;
+				}
+			}
+			if (found) return;
+
+			// treat as deletion other than remote host mark
+			if (asset.textContent.match(/\./g)?.length ?? 0 < 2) {
+				node.classList.add('deleted');
 			}
 
 			// insert mark
@@ -9649,6 +9681,18 @@ function updateSodanePosts (stat) {
 
 // called from processRemainingReplies(), reloadRepliesViaAPI()
 function updateIdFrequency (stat) {
+	function replaceComment (node, originalContent) {
+		empty(node);
+		node.appendChild(document.createTextNode('['));
+		const span = node.appendChild(document.createElement('span'));
+		span.className = 'mark';
+		node.appendChild(document.createTextNode(']'));
+		$t(span, _('not_worth_showing'));
+		node.title = originalContent;
+
+		removeChild($qs('.reply-image', node.parentNode));
+	}
+
 	timingLogger.startTag(`updateIdFrequency`);
 	for (const [id, idData] of stat.idData) {
 		// Single ID must not be counted
@@ -9665,34 +9709,50 @@ function updateIdFrequency (stat) {
 		if (re && re[1] - 0 === idData.length) continue;
 
 		// Count up all posts with the same ID...
-		const posts = $qsa(selector);
-		const leadComment = posts.length ?
-			commentToString($qs('.comment', getWrapElement(posts[0]))) :
-			'';
+		const posts = [...$qsa(selector)].map(idNode => {
+			const wrapNode = getWrapElement(idNode);
+			const commentNode = $qs('.comment', wrapNode);
+			const comment = commentNode.title || commentToString(commentNode);
+			const offset = $qs('.no', wrapNode)?.textContent ?? '0';
+			return {idNode, commentNode, comment, offset};
+		});
 		for (let i = 0, index = 1, goal = posts.length; i < goal; i++, index++) {
-			$t(posts[i].nextSibling, `(${index}/${idData.length})`);
+			$t(posts[i].idNode.nextSibling, `(${index}/${idData.length})`);
+			if (siteInfo.idDisplay) continue;
+			if (posts[i].idNode.dataset.sis) continue;
 
-			if (i === 0) continue;
-			if (posts[i].dataset.sis) continue;
+			let replaced = false;
+			//const logLines = [];
+			for (let j = 0; j < i; j++) {
+				const similarity = getStringSimilarity(
+					posts[j].comment, posts[i].comment,
+					{normalize: true, prefixLength: 2});
 
-			const wrap = getWrapElement(posts[i]);
-			const currentComment = commentToString($qs('.comment', wrap));
-			const similarity = getStringSimilarity(
-				currentComment, leadComment,
-				{normalize: true, prefixLength: 2});
+				//logLines.push(`${posts[j].offset}:${similarity.toFixed(2)}`);
 
-			/*
-			if (similarity >= .9) {
-				posts[i].dataset.sis = '9';
-				console.log(`ID #${id}: this subsequent comment appear to be duplicates of the first comment.`);
+				if (similarity >= .9) {
+					replaced = true;
+					break;
+				}
+			}
+
+			if (replaced) {
+				replaceComment(posts[i].commentNode, posts[i].comment);
+				posts[i].idNode.dataset.sis = '9';
 			}
 			else {
-				posts[i].dataset.sis = '1';
+				posts[i].idNode.dataset.sis = '1';
 			}
-			*/
 
-			console.log(`ID #${id}: similarity: ${similarity} comment: "${currentComment}"`);
-			posts[i].dataset.sis = '1';
+			//posts[i].idNode.title = 'sis status: ' + logLines.join(', ');
+		}
+
+		const selector2 = [
+			`article .topic-wrap span.user-id[data-id="${id}"][data-sis="9"]`,
+			`article .reply-wrap span.user-id[data-id="${id}"][data-sis="9"]`
+		].join(',');
+		if (posts.length - 1 === $qsa(selector2).length) {
+			replaceComment(posts[0].commentNode, posts[0].comment);
 		}
 	}
 	timingLogger.endTag();
