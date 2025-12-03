@@ -66,6 +66,7 @@ const QUICK_MODERATE_REASON_CODE = '110';
 const EXTRACT_UNIT = 10;
 const SODANE_NULL_MARK = '＋';
 const LINKIFY_MAX = 10;
+const OUTER_IFRAME_ORIGIN = 'https://akahukuplus.appsweets.net';
 
 const DEBUG_ALWAYS_LOAD_XSL = false;		// default: false
 const DEBUG_DUMP_INTERNAL_XML = false;		// default: false
@@ -141,6 +142,7 @@ const appStates = ['command'];
 const globalPromises = {};
 const checkedPostNumbers = [];
 const substs = {leader: 'asis'};
+const metadataCache = {};
 
 // variables to be initialized at appropriate time
 let xsltProcessor;
@@ -274,6 +276,19 @@ function transformWholeDocument (xsl) {
 		throw new Error(_('failed_to_parse_xsl_file', APP_NAME));
 	}
 
+	/*
+	 * note: Chrome seems to be planning to remove XSLT support (!),
+	 *       so we may eventually have to use a polyfill.
+	 *
+	 *       Announce:
+	 *         https://developer.chrome.com/docs/web-platform/deprecating-xslt
+	 *
+	 *       Bug tracker:
+	 *         https://issues.chromium.org/issues/435623334
+	 *
+	 *       polyfill extension:
+	 *         https://chromewebstore.google.com/detail/xslt-polyfill/hlahhpnhgficldhfioiafojgdhcppklm
+	 */
 	xsltProcessor = new XSLTProcessor;
 	try {
 		timingLogger.startTag('constructing xsl');
@@ -708,7 +723,10 @@ function install () {
 			selectionMenu.dispatch('quote', comment);
 		})
 		.add('.save-image', (e, t) => {
-			commands.saveAsset(t);
+			commands.saveAssetViaMenu(t);
+		})
+		.add('.image-metadata', (e, t) => {
+			commands.showMetadataMenu(e, t);
 		})
 		.add('.panel-tab', (e, t) => {
 			showPanel(() => {
@@ -719,7 +737,7 @@ function install () {
 			historyStateWrapper.pushState(t.href);
 		})
 		.add('.lightbox', (e, t) => {
-			function saveAsset () {
+			function autoSaveAsset () {
 				if (!storage.config.auto_save_image.value) return;
 				const saveLink = $qs(`.save-image[href="${t.href}"]`);
 				if (!saveLink) return;
@@ -727,20 +745,18 @@ function install () {
 			}
 
 			if (!storage.config.lightbox_enabled.value) {
-				saveAsset();
+				autoSaveAsset();
 				return clickDispatcher.PASS_THROUGH;
 			}
 
 			if (/\.(?:jpe?g|gif|png|webp)$/i.test(t.href)) {
-				displayLightbox(t).then(saveAsset);
+				displayLightbox(t).then(autoSaveAsset);
 			}
 			else if (/\.(?:webm|mp4)$/i.test(t.href)) {
-				saveAsset();
-				displayInlineVideo(t);
+				displayInlineVideo(t, autoSaveAsset);
 			}
 			else if (/\.(?:mp3|ogg)$/i.test(t.href)) {
-				saveAsset();
-				displayInlineAudio(t);
+				displayInlineAudio(t, autoSaveAsset);
 			}
 		})
 		.add('.catalog-order', (e, t) => {
@@ -1193,7 +1209,7 @@ function install () {
 }
 
 /*
- * <<<1 applyDataBindings: apply a data in xml to a element, with its data binding definition
+ * <<<1 applyDataBindings: apply a data in xml to an element, with its data binding definition
  */
 
 function applyDataBindings (xml) {
@@ -7992,6 +8008,57 @@ function rangeToString (range) {
 }
 
 function displayLightbox (anchor) {
+	async function loadMetadata (anchor) {
+		if (anchor.href in metadataCache) return;
+
+		let metadata;
+
+		if (!IS_GECKO) {
+			const blob = await load(anchor.href, {}, 'blob');
+			if (blob.content) {
+				metadata = await modules('mmmf')
+					.then(mmmf => mmmf.getMetadataFrom(blob.content));
+			}
+		}
+		if (!metadata) {
+			metadata = await backend.send('get-metadata', {url: anchor.href});
+		}
+
+		metadataCache[anchor.href] = metadata;
+
+		const content = [
+			metadata.texts.length +
+			metadata.positivePrompts.length +
+			metadata.negativePrompts.length +
+			metadata.structuredData.length +
+			metadata.gpsInfo.length
+		];
+		if (metadata.exifTags.length || metadata.xmp.length) {
+			content.push('+');
+		}
+
+		if (content.length > 1 || content[0]) {
+			const saveImageAnchor = $qs(
+				`.save-image[href="${anchor.href}"]`,
+				anchor.parentNode);
+			let metadataAnchor = $qs(
+				`.image-metadata[href="${anchor.href}"]`,
+				anchor.parentNode);
+
+			if (saveImageAnchor) {
+				if (!metadataAnchor) {
+					metadataAnchor = saveImageAnchor.parentNode.insertBefore(
+						document.createElement('a'),
+						saveImageAnchor.nextSibling);
+				}
+
+				metadataAnchor.className = 'image-metadata';
+				metadataAnchor.href = anchor.href;
+				metadataAnchor.textContent = _('metadata', content.join(''))
+			}
+		}
+	}
+
 	return modules('lightbox').then(module => {
 		return new Promise(resolve => {
 			module.lightbox({
@@ -7999,6 +8066,7 @@ function displayLightbox (anchor) {
 				onenter: () => {
 					appStates.unshift('lightbox');
 					selectionMenu.enabled = false;
+					loadMetadata(anchor);
 				},
 				onleave: () => {
 					selectionMenu.enabled = true;
@@ -8037,7 +8105,7 @@ function displayLightbox (anchor) {
 	});
 }
 
-function displayInlineVideo (anchor) {
+function displayInlineVideo (anchor, onended) {
 	function createMedia () {
 		const media = document.createElement('video');
 		const props = {
@@ -8059,6 +8127,11 @@ function displayInlineVideo (anchor) {
 			storage.runtime.media.volume = e.target.volume;
 			storage.saveRuntime();
 		});
+		media.addEventListener('ended', e => {
+			if (typeof onended === 'function') {
+				onended(e);
+			}
+		}, {once: true});
 
 		return media;
 	}
@@ -8115,7 +8188,7 @@ function displayInlineVideo (anchor) {
 	}
 }
 
-function displayInlineAudio (anchor) {
+function displayInlineAudio (anchor, onended) {
 	function createMedia () {
 		const media = document.createElement('audio');
 		const props = {
@@ -8134,6 +8207,11 @@ function displayInlineAudio (anchor) {
 			storage.runtime.media.volume = e.target.volume;
 			storage.saveRuntime();
 		});
+		media.addEventListener('ended', e => {
+			if (typeof onended === 'function') {
+				onended(e);
+			}
+		}, {once: true});
 
 		return media;
 	}
@@ -9221,8 +9299,7 @@ async function extractTweets () {
 			}
 
 			const iframeId = backend.getUniqueId();
-			const iframeSource = 'https://akahukuplus.appsweets.net/twitter-frame.html';
-
+			const iframeSource = OUTER_IFRAME_ORIGIN + '/twitter-frame.html';
 			const iframe = tweets[i].parentNode.insertBefore(
 				document.createElement('iframe'),
 				tweets[i].nextSibling);
@@ -9244,7 +9321,7 @@ async function extractTweets () {
 				iframeId,
 				applyScript: true,
 				tweetData: data
-			}, '*');
+			}, OUTER_IFRAME_ORIGIN);
 		}
 
 		await delay(Math.floor(Math.random() * 1000 + 1000));
@@ -9584,6 +9661,11 @@ function updateReplies (xml, container) {
 			 *    </reply>
 			 */
 
+			// treat as deletion other than remote host mark
+			if (asset.textContent.match(/\./g)?.length ?? 0 < 2) {
+				node.classList.add('deleted');
+			}
+
 			// retrieve current comment
 			const comment = $qs('.comment', node);
 			if (!comment) {
@@ -9603,11 +9685,6 @@ function updateReplies (xml, container) {
 				}
 			}
 			if (found) return;
-
-			// treat as deletion other than remote host mark
-			if (asset.textContent.match(/\./g)?.length ?? 0 < 2) {
-				node.classList.add('deleted');
-			}
 
 			// insert mark
 			const isBracket = asset.getAttribute('bracket') === 'true';
@@ -9690,18 +9767,33 @@ function updateIdFrequency (stat) {
 		$t(span, _('not_worth_showing'));
 		node.title = originalContent;
 
-		removeChild($qs('.reply-image', node.parentNode));
+		removeReplyImageWrap(node.parentNode);
+	}
+
+	function removeReplyImageWrap (replyNode) {
+		removeChild($qs('.reply-image', replyNode));
+	}
+
+	function removeReplyImage (replyNode) {
+		for (const node of $qsa('.reply-image img, .reply-image img+br', replyNode)) {
+			removeChild(node);
+		}
 	}
 
 	timingLogger.startTag(`updateIdFrequency`);
 	for (const [id, idData] of stat.idData) {
-		// Single ID must not be counted
-		if (idData.length === 1) continue;
-
 		const selector = [
 			`article .topic-wrap span.user-id[data-id="${id}"]`,
 			`article .reply-wrap span.user-id[data-id="${id}"]`
 		].join(',');
+
+		// Single ID must not be counted
+		if (idData.length === 1) {
+			for (const node of $qsa(selector)) {
+				removeReplyImage(getWrapElement(node));
+			}
+			continue;
+		}
 
 		// Important optimization: If the total number of IDs has not changed,
 		// It is not necessary to update entire posts with current ID
@@ -9721,7 +9813,9 @@ function updateIdFrequency (stat) {
 			if (siteInfo.idDisplay) continue;
 			if (posts[i].idNode.dataset.sis) continue;
 
-			let replaced = false;
+			removeReplyImage(posts[i].commentNode.parentNode);
+
+			let foundSimilarReply = false;
 			//const logLines = [];
 			for (let j = 0; j < i; j++) {
 				const similarity = getStringSimilarity(
@@ -9731,12 +9825,12 @@ function updateIdFrequency (stat) {
 				//logLines.push(`${posts[j].offset}:${similarity.toFixed(2)}`);
 
 				if (similarity >= .9) {
-					replaced = true;
+					foundSimilarReply = true;
 					break;
 				}
 			}
 
-			if (replaced) {
+			if (foundSimilarReply) {
 				replaceComment(posts[i].commentNode, posts[i].comment);
 				posts[i].idNode.dataset.sis = '9';
 			}
@@ -11621,6 +11715,100 @@ const commands = {
 			});
 		});
 	},
+	openMetadataDialog (metadata, activeKey) {
+		return new Promise(resolve => {
+			modalDialog({
+				title: _('dialog_title_metadata'),
+				buttons: 'ok',
+				oninit: async dialog => {
+					await dialog.initFromXML(dialog.createDocument(), 'metadata-dialog');
+
+					const tabs = [];
+					if (metadata.texts.length) {
+						tabs.push({
+							title: _('metadata_tab_text'),
+							data: {
+								textual_fragments: metadata.texts
+							},
+							active: activeKey.startsWith('text_') || activeKey === 'view-all'
+						});
+					}
+					if (metadata.positivePrompts.length || metadata.negativePrompts.length) {
+						const data = {};
+						if (metadata.positivePrompts.length) {
+							data.prompts = metadata.positivePrompts;
+						}
+						if (metadata.negativePrompts.length) {
+							data.negativePrompts = metadata.negativePrompts;
+						}
+						tabs.push({
+							title: _('metadata_tab_prompts'),
+							data,
+							active: activeKey === 'pp' || activeKey === 'np'
+						});
+					}
+					if (metadata.structuredData.length) {
+						tabs.push({
+							title: _('metadata_tab_structured_data'),
+							data: {
+								structured_data: metadata.structuredData
+							},
+							active: activeKey === 'sd'
+						});
+					}
+					if (metadata.gpsInfo.length) {
+						tabs.push({
+							title: _('metadata_tab_gps'),
+							data: {
+								gps_informations: metadata.gpsInfo
+							},
+							active: activeKey.startsWith('gps_')
+						});
+					}
+					if (metadata.exifTags.length) {
+						tabs.push({
+							title: _('metadata_tab_exif'),
+							data: {
+								exif: metadata.exifTags
+							},
+							active: activeKey === 'exif'
+						});
+					}
+					if (metadata.xmp.length) {
+						tabs.push({
+							title: _('metadata_tab_xmp'),
+							data: {
+								extensible_metadata_platform: metadata.xmp
+							},
+							active: activeKey === 'xmp'
+						});
+					}
+
+					const iframeSource = OUTER_IFRAME_ORIGIN + '/json-viewer.html';
+					const iframe = dialog.content.appendChild(document.createElement('iframe'));
+					iframe.allow = 'clipboard-write';
+					iframe.src = iframeSource;
+
+					await Promise.race([
+						new Promise(resolve => {
+							iframe.onload = e => {
+								e.target.src === iframeSource && resolve();
+							};
+						}),
+						delay(1000 * 3)
+					]);
+
+					iframe.contentWindow.postMessage({
+						command: 'init-json',
+						jsonData: tabs
+					}, OUTER_IFRAME_ORIGIN);
+				},
+				onclose: () => {
+					resolve();
+				}
+			});
+		});
+	},
 	openDrawDialog () {
 		modules('momocan').then(() => {
 			if ($('momocan-container')) {
@@ -11938,7 +12126,7 @@ const commands = {
 	 * asset saving
 	 */
 
-	async saveAsset (anchor) {
+	async saveAssetViaMenu (anchor) {
 		async function createContextMenuItems () {
 			const items = [];
 
@@ -12051,6 +12239,21 @@ const commands = {
 			assetSaver.updateLRUList(item);
 			break;
 		}
+	},
+
+	async saveAsset (anchor) {
+		const assetSaver = await resourceSaver.asset();
+		if (assetSaver.busy) return;
+
+		const {permission} = await assetSaver.fileSystem.queryRootDirectoryPermission(true)
+		if (permission !== 'granted') {
+			const tree = await assetSaver.updateDirectoryTree();
+			if (!tree) return;
+		}
+
+		await assetSaver.save(anchor, {
+			template: storage.config.save_image_name_template.value
+		});
 	},
 
 	/*
@@ -12229,6 +12432,132 @@ const commands = {
 		case 'purchase-coins':
 			alert('それはまだ。');
 			break;
+		}
+	},
+
+	/*
+	 * image metadata manipulation
+	 */
+
+	async showMetadataMenu (e, t) {
+		if (!(t.href in metadataCache)) return;
+
+		const metadata = metadataCache[t.href];
+		const texts = [], gpsInfo = [], others = [];
+
+		// texts
+		for (let i = 0, goal = Math.min(10, metadata.texts.length); i < goal; i++) {
+			const item = metadata.texts[i];
+			const name = 'name' in item ? item.name : null;
+			const value = ((Array.isArray(item.value) ? item.value.join(' ') : item.value) ?? '').trim();
+			const truncated = substringWithStrictUnicode(value, 32);
+			const label = `${truncated || _('metadata_empty_text')}` + (truncated !== value ? '...' : '');
+			texts.push({
+				key: `text_${i}`,
+				label: name ? `${name}: ${label}` : label,
+				_text: name ? `${name}: ${item.value}` : item.value
+			});
+
+			if (texts.length === 1) {
+				texts[0].title = _('metadata_text_tooltip');
+			}
+		}
+		if (texts.length !== metadata.texts.length) {
+			texts.push({
+				key: 'more_texts',
+				label: _('metadata_text_more', metadata.texts.length - texts.length),
+				disabled: true
+			});
+		}
+
+		// gps informations
+		if (metadata.gpsInfo.length) {
+			for (let i = 0, goal = Math.min(3, metadata.gpsInfo.length); i < goal; i++) {
+				const item = metadata.gpsInfo[i];
+				gpsInfo.push({
+					key: `gps_${i}`,
+					label: _('metadata_menu_gps', item.value[1], item.value[2]),
+					_position: item.value[1].replace(/,\s+/g, ',')
+				});
+
+				if (gpsInfo.length === 0) {
+					gpsInfo[0].title = _('metadata_gps_tooltip');
+				}
+			}
+		}
+
+		// other stuff
+		if (metadata.positivePrompts.length
+		|| metadata.negativePrompts.length
+		|| metadata.structuredData.length
+		|| metadata.exifTags.length
+		|| metadata.xmp.length) {
+			metadata.positivePrompts.length && others.push({
+				key: 'pp',
+				label: _('metadata_menu_positive_prompts', metadata.positivePrompts.length)
+			});
+			metadata.negativePrompts.length && others.push({
+				key: 'np',
+				label: _('metadata_menu_negative_prompts', metadata.negativePrompts.length)
+			});
+			metadata.structuredData.length && others.push({
+				key: 'sd',
+				label: _('metadata_menu_structured_data', metadata.structuredData.length)
+			});
+
+			if (metadata.exifTags.length) {
+				const tagCount = metadata.exifTags.reduce((total, exif) => {
+					return total + Object.keys(exif.value).length;
+				}, 0);
+				others.push({
+					key: 'exif',
+					label: _('metadata_menu_exif', metadata.exifTags.length, tagCount)
+				});
+			}
+			if (metadata.xmp.length) {
+				const tagCount = metadata.xmp.reduce((total, xmp) => {
+					return total + Object.keys(xmp.value).length;
+				}, 0);
+				others.push({
+					key: 'xmp',
+					label: _('metadata_menu_xmp', metadata.xmp.length, tagCount)
+				});
+			}
+		}
+
+		(texts.length || gpsInfo.length) && others.length && others.unshift({key: '-'});
+		texts.length && gpsInfo.length && gpsInfo.unshift({key: '-'});
+
+		const item = await modules('menu')
+			.then(menu => menu.createContextMenu()
+				.assign({
+					key: 'metadata',
+					items: texts.concat(gpsInfo, others, [
+						{key: '-'},
+						{
+							key: 'view-all',
+							label: _('metadata_menu_view_all')
+						}
+					])
+				})
+				.open(t, 'metadata')
+			);
+		
+		if (!item) return;
+
+		if (/^text_(\d+)/.test(item.key)) {
+			const text = Array.isArray(item._text) ? item._text.join('\n') : item._text;
+			selectionMenu.dispatch('quote', text.replace(/\r\n|\r/g, '\n'));
+		}
+		else if (/^gps_(\d+)/.test(item.key)) {
+			backend.send('open', {
+				url: `https://www.google.com/maps/place/${item._position}`,
+				selfUrl: location.href
+			});
+		}
+		else {
+			// Textual fragments / Prompts / Structured Data / GPS Informations / EXIF / XMP
+			await commands.openMetadataDialog(metadata, item.key);
 		}
 	},
 

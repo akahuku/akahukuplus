@@ -770,13 +770,14 @@ export function substringWithStrictUnicode (s, maxLength = 100, minLength = 10) 
 	const LENGTH_MAX_IN_UTF16 = 200;
 
 	const segments = 'Segmenter' in Intl ?
-		Array.from((new Intl.Segmenter('ja')).segment(s)).map(seg => seg.segment) :
-		[...s];
+		Array.from(new Intl.Segmenter('ja').segment(s)).map(seg => seg.segment) :
+		Array.from(s);
+	const encoder = new TextEncoder;
 
 	for (let length = maxLength; length >= minLength; length--) {
-		let tmp = segments.slice(0, length).join('');
-		let lengthUTF8 = (new TextEncoder).encode(tmp).byteLength;
-		let lengthUTF16 = tmp.length;
+		const tmp = segments.slice(0, length).join('');
+		const lengthUTF8 = encoder.encode(tmp).byteLength;
+		const lengthUTF16 = tmp.length;
 
 		if (lengthUTF8 <= LENGTH_MAX_IN_UTF8 && lengthUTF16 <= LENGTH_MAX_IN_UTF16) {
 			s = tmp;

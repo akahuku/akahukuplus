@@ -75,7 +75,7 @@ This template can contain path."
 		"name": "Maximum length of thread topic text in filename"
 	},
 	"auto_save_image": {
-		"name": "Save a image automatically when opened"
+		"name": "Save an image automatically when opened"
 	},
 	"save_image_bell_volume": {
 		"name": "Bell volume when image saved successfully"

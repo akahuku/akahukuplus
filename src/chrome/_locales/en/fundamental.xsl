@@ -795,7 +795,7 @@ article.summary .replies {
  * save image link
  */
 
-.save-image {
+.save-image, .image-metadata {
 	display:inline-block;
 	margin:0;
 	padding:2px 3px 2px 3px;
@@ -808,7 +808,7 @@ article.summary .replies {
 	line-height:1;
 }
 
-.save-image::after {
+.save-image::after, .image-metadata::after {
 	display:inline-block;
 	content:'';
 	margin:0 0 0 2px;
@@ -819,17 +819,21 @@ article.summary .replies {
 	filter:invert(9%) sepia(53%) saturate(7418%) hue-rotate(21deg) brightness(99%) contrast(129%);
 }
 
-.save-image:hover {
+.save-image:hover, .image-metadata:hover {
 	background-color:#ea8;
 	color:#800000;
 	text-decoration:none;
 }
 
-.save-image.active {
+.save-image.active, .image-metadata.active {
 	background-color:#ea8;
 	color:#800000;
 	text-decoration:none;
 	border-radius:4px 4px 0 0;
+}
+
+.save-image + .image-metadata {
+	margin-left:6px;
 }
 
 .inline-save-image-wrap .save-image {

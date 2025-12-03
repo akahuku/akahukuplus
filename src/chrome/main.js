@@ -27,6 +27,7 @@ import {
 	offscreenCloseAlarm
 } from './lib/utils.js';
 import {SjisUtils} from './lib/utils-sjis.js';
+import {getMetadataFrom} from './lib/mmmf.js';
 import {FetchTweets} from './backend/module/FetchTweets.js';
 import * as coin from './lib/coin.js';
 
@@ -781,6 +782,21 @@ const messageHandlers = {
 	'notify-hashchange': (data, sender, respond) => {
 		try {
 			respond(assetLoadingController.register(sender.tab.id));
+		}
+		catch (err) {
+			respond({error: getErrorDescription(err)});
+			log(getErrorDescription(err));
+		}
+	},
+	'get-metadata': async (data, sender, respond) => {
+		try {
+			const blob = await load(data.url, {}, 'blob');
+			if (blob.error) {
+				respond({error: blob.error});
+			}
+			else {
+				respond(await getMetadataFrom(blob.content));
+			}
 		}
 		catch (err) {
 			respond({error: getErrorDescription(err)});

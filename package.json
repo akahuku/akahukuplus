@@ -18,10 +18,10 @@
     "encoding-japanese": "^2.2.0",
     "eslint": "^9.30.1",
     "globals": "^16.3.0",
-    "jsdom": "^26.1.0",
+    "jsdom": "^27.0.1",
     "jsdom-global": "^3.0.2",
     "mocha": "^11.0.1",
     "rollup": "^4.44.2",
-    "web-ext": "^8.2.0"
+    "web-ext": "^9.1.0"
   }
 }

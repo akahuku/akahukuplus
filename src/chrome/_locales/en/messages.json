@@ -541,5 +541,62 @@
 	},
 	"not_worth_showing": {
 		"message": "This post is not worth showing"
+	},
+	"metadata": {
+		"message": "$1 Metadata..."
+	},
+	"dialog_title_metadata": {
+		"message": "Mining Metadata from Media File"
+	},
+	"metadata_tab_text": {
+		"message": "Textual fragments"
+	},
+	"metadata_tab_prompts": {
+		"message": "Prompts"
+	},
+	"metadata_tab_structured_data": {
+		"message": "Structured Data"
+	},
+	"metadata_tab_gps": {
+		"message": "GPS Informations"
+	},
+	"metadata_tab_exif": {
+		"message": "EXIF"
+	},
+	"metadata_tab_xmp": {
+		"message": "XMP"
+	},
+	"metadata_empty_text": {
+		"message": "(empty)"
+	},
+	"metadata_text_tooltip": {
+		"message": "Click to quote in the comment section."
+	},
+	"metadata_text_more": {
+		"message": "(And there are $1 more texts...)"
+	},
+	"metadata_gps_tooltip": {
+		"message": "Click to open these coordinates in Google Maps."
+	},
+	"metadata_menu_gps": {
+		"message": "GPS: $1 ($2)"
+	},
+	"metadata_menu_positive_prompts": {
+		"message": "$1 positive\u00a0prompt"
+	},
+	"metadata_menu_negative_prompts": {
+		"message": "$1 negative\u00a0prompt"
+	},
+	"metadata_menu_structured_data": {
+		"message": "$1 structured\u00a0data"
+	},
+	"metadata_menu_exif": {
+		"message": "$1 EXIF, $2 tag"
+	},
+	"metadata_menu_xmp": {
+		"message": "$1 XMP, $2 tag"
+	},
+	"metadata_menu_view_all": {
+		"message": "View all metadata..."
 	}
 }

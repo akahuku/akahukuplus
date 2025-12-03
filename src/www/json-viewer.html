@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>JSON Viewer Frame for Akahukuplus</title>
+		<style>
+:root {
+	--base-bg-color:#3b3228;
+	--base-fg-color:#ffffff;
+	--bg-hover-color:#645240;
+	--fg-hover-color:#ffffff;
+}
+body {
+	margin:0;
+	color:#800000;
+	background-color:#ffffee;
+}
+.tab-container {
+}
+.tab-container .tab-strip {
+	display:flex;
+	position:sticky;
+	top:0;
+	list-style:none;
+	border:none;
+	margin:0;
+	padding:0 3px 0 3px;
+	background-color:#ffffee;
+	z-index:65535;
+}
+.tab-container .tab-strip a {
+	display:inline-block;
+	margin:0;
+	padding:.5em 1em;
+	border-radius:3px 3px 0 0;
+	text-decoration:none;
+	background-color:transparent;
+	color:var(--base-bg-color);
+	font-weight:normal;
+	font-size:small;
+}
+.tab-container .tab-strip a.active {
+	background-color:var(--base-bg-color);
+	color:var(--base-fg-color);
+}
+.tab-container .tab-strip a:not(.active):hover {
+	background-color:var(--bg-hover-color);
+	color:var(--fg-hover-color);
+}
+
+.tab-container .tab-content {
+	display:none;
+}
+.tab-container .tab-content.active {
+	display:block;
+}
+.dummy {
+	background-color:#800000;
+	color:#ffffff;
+	height:1024px;
+}
+		</style>
+		<script type="module" src="json-viewer.js"></script>
+		<script type="text/javascript">
+let iframeId;
+
+window.addEventListener('message', e => {
+	if (!/^https?:\/\/[^.]+\.2chan\.net$/.test(e.origin)) {
+		console.log(`json-viewer: unknown origin: "${e.origin}"`);
+		return;
+	}
+
+	switch (e.data.command) {
+	case 'init-json':
+		{
+			iframeId = e.data.iframeId;
+
+			document.body.innerHTML = '';
+			const tabContainer = document.body.appendChild(document.createElement('div'));
+			tabContainer.id = tabContainer.className = 'tab-container';
+
+			const tabStrip = tabContainer.appendChild(document.createElement('ul'));
+			tabStrip.id = tabStrip.className = 'tab-strip';
+			tabStrip.addEventListener('click', e => {
+				if (e.target.nodeName === 'A' && !e.target.classList.contains('active')) {
+					const tabContainer = document.getElementById('tab-container');
+					tabContainer
+						.querySelectorAll('.tab-strip a.active, .tab-content.active')
+						?.forEach(a => {a.classList.remove('active')});
+
+					e.target.classList.add('active');
+					tabContainer
+						.querySelectorAll(`.tab-content[data-for="${e.target.getAttribute('href')}"]`)
+						?.forEach(a => {a.classList.add('active')});
+
+					e.preventDefault();
+				}
+			});
+
+			if (!e.data.jsonData.some(tabData => !!tabData.active)) {
+				e.data.jsonData[0].active = true;
+			}
+
+			e.data.jsonData.forEach((tabData, index) => {
+				const tab = tabStrip.appendChild(document.createElement('li'));
+				const tabAnchor = tab.appendChild(document.createElement('a'));
+				tabAnchor.setAttribute('href', `#tab${index}`);
+				tabAnchor.textContent = tabData.title;
+
+				const tabContent = tabContainer.appendChild(document.createElement('div'));
+				tabContent.className = 'tab-content';
+				tabContent.dataset.for = `#tab${index}`;
+
+				const jsonViewer = tabContent.appendChild(document.createElement('andypf-json-viewer'));
+				jsonViewer.expanded = true;
+				jsonViewer.indent = 2;
+				jsonViewer.showDataTypes = false;
+				jsonViewer.theme = 'mocha';
+				jsonViewer.showToolbar = false;
+				jsonViewer.showSize = false;
+				jsonViewer.showCopy = true;
+				jsonViewer.expandIconType = 'square';
+				jsonViewer.data = tabData.data;
+
+				if (tabData.active) {
+					tabAnchor.classList.add('active');
+					tabContent.classList.add('active');
+				}
+			});
+		}
+		break;
+	}
+}, {once: true});
+
+/*
+setTimeout(() => {
+	postMessage({
+		command: 'init-json',
+		jsonData: [
+			{
+				title: 'Textual fragments',
+				data: {foo: '1'}
+			},
+			{
+				title: 'Prompts',
+				data: {prompt: '1', negativePrompt: '2'}
+			},
+			{
+				title: 'EXIF',
+				data: {bar: '1', baz: '2'}
+			},
+		]
+	});
+}, 1000);
+*/
+
+console.log(`json-viewer: loaded.`);
+		</script>
+	</head>
+	<body>
+		This is the json-viewer frame for Akahukuplus
+	</body>
+</html>
