@@ -573,7 +573,7 @@
 		"message": "クリックするとコメント欄に引用できます。"
 	},
 	"metadata_text_more": {
-		"message": "(さらに $1 個のテキストがあります...)"
+		"message": "(さらに $1 個のテキスト...)"
 	},
 	"metadata_gps_tooltip": {
 		"message": "クリックすると Google Maps で開きます。"

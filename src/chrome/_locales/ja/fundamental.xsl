@@ -562,7 +562,7 @@ twitter-widget + br {
 	font-size:small;
 	text-align:center;
 	line-height:1.25;
-	white-space:nowrap;
+	/*white-space:nowrap;*/
 }
 
 #content > article > .image > div {
@@ -797,7 +797,7 @@ article.summary .replies {
 
 .save-image, .image-metadata {
 	display:inline-block;
-	margin:0;
+	margin:0 0 2px 0;
 	padding:2px 3px 2px 3px;
 	background-color:transparent;
 	color:#800000;
@@ -806,6 +806,7 @@ article.summary .replies {
 	text-decoration:none;
 	font-size:small;
 	line-height:1;
+	white-space:nowrap;
 }
 
 .save-image::after, .image-metadata::after {

@@ -573,7 +573,7 @@
 		"message": "Click to quote in the comment section."
 	},
 	"metadata_text_more": {
-		"message": "(And there are $1 more texts...)"
+		"message": "(And $1 more texts...)"
 	},
 	"metadata_gps_tooltip": {
 		"message": "Click to open these coordinates in Google Maps."

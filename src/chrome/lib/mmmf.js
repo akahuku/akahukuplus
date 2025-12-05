@@ -26,13 +26,43 @@
  * limitations under the License.
 */
 class Parser {
+    /**
+	 * @param {object} options
+	 * @returns {function}
+	 */
     getLogFunction(options) {
         return typeof options.log === "function" ? options.log : options.log ? (...args) => {
             console.log(...args);
         } : () => {};
     }
-    getChunkHandlerFunction(options) {
+    /**
+	 * @param {object} options
+	 * @returns {function}
+	 */    getChunkHandlerFunction(options) {
         return typeof options.onchunk === "function" ? options.onchunk : () => {};
+    }
+    /**
+	 * @param {string} key
+	 * @param {string} value
+	 * @return {object}
+	 */    parseComment(key, value) {
+        if (/^\s*\[/.test(value) && /\]\s*$/.test(value) || /^\s*\{/.test(value) && /\}\s*$/.test(value)) {
+            try {
+                const result = JSON.parse(value);
+                return {
+                    type: "JSON",
+                    key: key,
+                    value: result
+                };
+            } catch (err) {
+                console.error(err);
+            }
+        }
+        return {
+            type: "asis",
+            key: key,
+            value: value
+        };
     }
     /**
 	 * Determine whether it is each format by testing the beginning of the buffer
@@ -41,7 +71,7 @@ class Parser {
 	 * @returns {boolean}
 	 */    test(buffer) {}
     /**
-	 * Parse a png file
+	 * Parse a file
 	 *
 	 * @param {Uint8Array} buffer
 	 * @param {object} options = {
@@ -92,16 +122,20 @@ class Parser {
         }
     } else if (typeof DecompressionStream !== "undefined") {
         try {
-            const uint8Array = new Uint8Array(inputArray);
+            const uint8Array = toUint8Array(inputArray);
             const readableStream = new ReadableStream({
                 start(controller) {
                     controller.enqueue(uint8Array);
                     controller.close();
                 }
             });
-            const decompressionStream = new DecompressionStream("deflate-raw");
+            const decompressionStream = new DecompressionStream("deflate");
             const decompressedStream = readableStream.pipeThrough(decompressionStream);
-            return await new Response(decompressedStream).arrayBuffer();
+            const chunks = [];
+            for await (const chunk of decompressedStream) {
+                chunks.push(chunk);
+            }
+            return await new Blob(chunks).arrayBuffer();
         } catch (err) {
             console.error("Browser decompression failed:", err);
             throw err;
@@ -2776,12 +2810,13 @@ class PngParser extends Parser {
 	 * @param {string} value
 	 * @returns {object}
 	 */
-    #parseComment(key, value) {
+    parseComment(key, value) {
         if (key === "XML:com.adobe.xmp" && /^\s*<(?:\?xpacket.+?\?|x:xmpmeta.+?)>/.test(value)) {
             try {
                 const result = getXmpMetadata(value);
                 return {
                     type: "XMP",
+                    key: key,
                     value: result
                 };
             } catch (err) {
@@ -2813,26 +2848,14 @@ class PngParser extends Parser {
                 }
                 return {
                     type: "EXIF",
-                    value: result
-                };
-            } catch (err) {
-                console.error(err);
-            }
-        } else if (/^\s*\[/.test(value) && /\]\s*$/.test(value) || /^\s*\{/.test(value) && /\}\s*$/.test(value)) {
-            try {
-                const result = JSON.parse(value);
-                return {
-                    type: "JSON",
+                    key: key,
                     value: result
                 };
             } catch (err) {
                 console.error(err);
             }
         }
-        return {
-            type: "asis",
-            value: value
-        };
+        return super.parseComment(key, value);
     }
     /**
 	 * Calculate crc32 in accordance with the PNG spec
@@ -2863,7 +2886,7 @@ class PngParser extends Parser {
 	 */    #createArgsForChunkEvent(key, value, args = {}) {
         args.key = key;
         args.value = value;
-        const content = this.#parseComment(key, value);
+        const content = this.parseComment(key, value);
         args.type = content.type;
         if (content.type === "XMP") {
             args.xmp = content.value;
@@ -3285,10 +3308,17 @@ class JpegParser extends Parser {
                 const end = topPos + 2 + chunkDataSize;
                 const decodedComment = detectEncoding(buffer.slice(start, end));
                 const comment = (decodedComment?.result ?? "").replace(/\x00.*/, "");
-                log(`\tCOM: "${comment}"`);
-                onchunk("COM", {
+                const parsedComment = this.parseComment("", comment);
+                const args = {
+                    type: parsedComment.type,
+                    key: "",
                     value: comment
-                });
+                };
+                if (parsedComment.type === "JSON") {
+                    args.json = parsedComment.value;
+                }
+                log(`\tCOM: "${comment}"`);
+                onchunk("COM", args);
                 onchunkInvoked = true;
                 if (options.stripComment || options.randomize) {
                     skip = true;
@@ -3524,6 +3554,12 @@ const parsers = [ new PngParser, new JpegParser, new WebpParser ];
                     value: value
                 });
             }
+        } else if (typeof value === "string" && /[^,]+(,\s*[^,]+){3,}/.test(value)) {
+            result.positivePrompts.push({
+                origin: origin,
+                name: key,
+                value: value
+            });
         }
         return value;
     });
@@ -3536,7 +3572,7 @@ const parsers = [ new PngParser, new JpegParser, new WebpParser ];
  * @param {object} tags
  * @param {string} origin
  */ function setTextualTagsFromExif(result, tags, origin) {
-    const textualTags = [ "Image.ImageDescription", "Image.Make", "Image.Model", "Image.Software", "Image.Copyright", "Image.Artist", "Image.Exif.DateTimeDigitized", "Image.Exif.UserComment", "Image.Exif.LensMake", "Image.Exif.LensModel", "Image.Exif.LensSpecification" ];
+    const textualTags = [ "Image.ImageDescription", "Image.Make", "Image.Model", "Image.Software", "Image.Copyright", "Image.Artist", "Image.XPTitle", "Image.XPComment", "Image.XPAuthor", "Image.XPKeywords", "Image.XPSubject", "Image.Exif.DateTimeDigitized", "Image.Exif.UserComment", "Image.Exif.LensMake", "Image.Exif.LensModel", "Image.Exif.LensSpecification" ];
     if (!tags || !result) {
         return;
     }
@@ -3570,6 +3606,8 @@ const parsers = [ new PngParser, new JpegParser, new WebpParser ];
                     } catch {
                         value = tags[textualTag];
                     }
+                } else {
+                    setPrompt(result, value, `${origin} (${textualTag})`);
                 }
             }
             result[category].push({
@@ -3600,7 +3638,7 @@ const parsers = [ new PngParser, new JpegParser, new WebpParser ];
  * @param {object} tags
  * @param {string} origin
  */ function setTextualTagsFromXmp(result, tags, origin) {
-    const textualTags = [ "dc:description", "dc:rights", "dc:creator", "tiff:Make", "tiff:Model", "tiff:Artist", "exif:UserComment", "xmp:CreatorTool", "xmp:CreateDate" ];
+    const textualTags = [ "dc:description", "dc:rights", "dc:creator", "dc:title", "tiff:Make", "tiff:Model", "tiff:Artist", "exif:UserComment", "xmp:CreatorTool", "xmp:CreateDate" ];
     if (!tags || !result) {
         return;
     }
@@ -3686,6 +3724,9 @@ const parsers = [ new PngParser, new JpegParser, new WebpParser ];
                             name: args.key,
                             value: args.value
                         });
+                        setPrompt(result, {
+                            [args.key]: args.value
+                        }, `${chunkName} chunk`);
                         break;
                     }
                 }
@@ -3718,10 +3759,27 @@ const parsers = [ new PngParser, new JpegParser, new WebpParser ];
         onchunk: (chunkName, args) => {
             switch (chunkName) {
               case "COM":
-                result.texts.push({
-                    origin: "COM segment",
-                    value: args.value
-                });
+                {
+                    switch (args.type) {
+                      case "JSON":
+                        result.structuredData.push({
+                            origin: `embedded JSON data in ${chunkName} segment`,
+                            value: args.json
+                        });
+                        setPrompt(result, args.json, `embedded JSON data in ${chunkName} chunk`);
+                        break;
+
+                      default:
+                        result.texts.push({
+                            origin: "COM segment",
+                            value: args.value
+                        });
+                        setPrompt(result, {
+                            comment: args.value
+                        }, `COM segment`);
+                        break;
+                    }
+                }
                 break;
 
               case "EXIF":

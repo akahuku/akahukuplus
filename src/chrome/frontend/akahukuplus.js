@@ -7841,7 +7841,7 @@ let $t, fixFragment, serializeXML, getCookie, setCookie,
 	transitionend, transitionendp, getBlobFrom, getImageFrom,
 	getContentsFromEditable, resolveCharacterReference,
 	新字体の漢字を舊字體に変換, osaka, reverseText, mergeDeep, substringWithStrictUnicode,
-	invokeMousewheelEvent, voice, resolveRelativePath, tweakImage,
+	invokeMousewheelEvent, voice, resolveRelativePath,
 	parseExtendJson, getStringSimilarity;
 
 // from linkifier.js
@@ -8623,7 +8623,7 @@ async function postBase (form) {
 		 *   - convert PseudoReplyFile 'upfile' into baseform with 100 coins
 		 */
 
-		const stripExif = $('post-image-unexif').checked;
+		const stripMetadata = $('post-image-unexif').checked;
 		const imageRandomize = $('post-image-randomize').checked;
 		const pseudoReplyImage = fileItems['upfile'] instanceof PseudoReplyFile;
 		const {id, coinCharge} = (imageRandomize || pseudoReplyImage) ?
@@ -8632,7 +8632,7 @@ async function postBase (form) {
 
 		if (fileItems['upfile']
 		&& fileItems['upfile'].type.startsWith('image/')
-		&& (imageRandomize || stripExif)) {
+		&& (imageRandomize || stripMetadata)) {
 			if (imageRandomize) {
 				if (!coinCharge) {
 					throw new Error(_('error_coin_charge_image_randomize'));
@@ -8641,23 +8641,24 @@ async function postBase (form) {
 					throw new Error(_('error_valid_id_image_randomize'));
 				}
 			}
-			fileItems['upfile'] = new File(
-				await tweakImage(fileItems['upfile'], {
-					comment: imageRandomize ? window.crypto.randomUUID() : null,
-					stripExif,
-					returnChunks: true
-				}).then(blob => {
-					if (!blob) {
-						throw new Error(_('failed_to_tweak_image'));
-					}
-					return blob;
-				}),
-				fileItems['upfile'].name,
+
+			const blob = await modules('mmmf').then(mmmf => mmmf.tweakMetadataOf(
+				fileItems['upfile'],
 				{
-					type: fileItems['upfile'].type,
-					lastModified: fileItems['upfile'].lastModified
+					randomize: imageRandomize,
+					stripExif: stripMetadata,
+					stripXmp: stripMetadata,
+					returnChunks: true
 				}
-			);
+			));
+			if (!blob) {
+				throw new Error(_('failed_to_tweak_image'));
+			}
+
+			fileItems['upfile'] = new File(blob, fileItems['upfile'].name, {
+				type: fileItems['upfile'].type,
+				lastModified: fileItems['upfile'].lastModified
+			});
 		}
 		if (fileItems['upfile']
 		&& fileItems['upfile'].type.startsWith('image/')
@@ -12727,7 +12728,7 @@ modules('utils', 'utils-apext', 'linkifier').then(([utils, utilsApext, linkifier
 	transitionend, transitionendp, getBlobFrom, getImageFrom,
 	getContentsFromEditable, resolveCharacterReference,
 	新字体の漢字を舊字體に変換, osaka, reverseText, mergeDeep, substringWithStrictUnicode,
-	invokeMousewheelEvent, voice, resolveRelativePath, tweakImage,
+	invokeMousewheelEvent, voice, resolveRelativePath,
 	parseExtendJson, getStringSimilarity} = utilsApext);
 
 	({linkify} = linkifier);
