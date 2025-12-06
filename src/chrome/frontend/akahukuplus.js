@@ -1072,9 +1072,9 @@ function install () {
 	// assign a behavior to each form fields
 	setupPostFormItemEvent([
 		{id:'com',              bytes:1000, lines:15},
-		{id:'name',  head:'名', bytes:100},
-		{id:'email', head:'メ', bytes:100},
-		{id:'sub',   head:'題', bytes:100}
+		{id:'name',  head:'📛', bytes:100},
+		{id:'email', head:'📧', bytes:100},
+		{id:'sub',   head:'🌹', bytes:100}
 	]);
 
 	// handle post form visibility
@@ -6876,8 +6876,8 @@ function setupPostFormItemEvent (items) {
 			result = true;
 		}
 		$t(span, [
-			item.head  ? `${item.head}:` : '',
-			item.lines ? `${lines.length}/${item.lines}行` : '',
+			item.head  ? `${item.head} ` : '',
+			item.lines ? `${lines.length}/${item.lines} ${_('form_lines')}` : '',
 			item.lines ? ' (' : '',
 			item.bytes ? `${bytes}/${item.bytes}` : '',
 			item.lines ? ')' : ''

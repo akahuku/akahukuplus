@@ -2822,13 +2822,13 @@ class PngParser extends Parser {
             } catch (err) {
                 console.error(err);
             }
-        } else if (key === "Raw profile type exif") {
+        } else if (/raw\s+profile\s+type\s+(?:exif|xmp)/i.test(key)) {
             try {
-                const header = /^[^\n]*\nexif\n[^\d]*(\d+)[^\n]*\n/.exec(value);
+                const header = /^[^\n]*\n(exif|xmp)\n[^\d]*(\d+)[^\n]*\n/.exec(value);
                 if (!header) {
                     throw new Error("invalid header");
                 }
-                const recordedSize = parseInt(header[1], 10);
+                const recordedSize = parseInt(header[2], 10);
                 if (recordedSize > MAX_EMBEDDED_EXIF_SIZE_BYTES) {
                     throw new Error("too large size");
                 }
@@ -2842,12 +2842,12 @@ class PngParser extends Parser {
                 if (writtenSize !== recordedSize) {
                     throw new Error(`invalid data size. header: ${recordedSize}, actual: ${writtenSize}`);
                 }
-                const result = getExifTags(bytes.buffer);
+                const result = header[1] === "exif" ? getExifTags(bytes.buffer) : getXmpMetadata(bytes.buffer);
                 if (!result) {
-                    throw new Error(`failed to parse the exif data`);
+                    throw new Error(`failed to parse the ${header[1]} data`);
                 }
                 return {
-                    type: "EXIF",
+                    type: header[1].toLocaleUpperCase(),
                     key: key,
                     value: result
                 };

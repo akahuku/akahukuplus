@@ -598,5 +598,8 @@
 	},
 	"metadata_menu_view_all": {
 		"message": "View all metadata..."
+	},
+	"form_lines": {
+		"message": "lines"
 	}
 }

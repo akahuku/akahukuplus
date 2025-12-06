@@ -598,5 +598,8 @@
 	},
 	"metadata_menu_view_all": {
 		"message": "すべてのメタ情報を見る..."
+	},
+	"form_lines": {
+		"message": "行"
 	}
 }
