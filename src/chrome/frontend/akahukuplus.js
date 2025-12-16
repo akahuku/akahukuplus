@@ -5687,6 +5687,14 @@ function createPostingEvaluator () {
 	let deleted = 0;
 	let liked = 0;
 
+	function getLogHeader (now = new Date) {
+		const hours = ('' + now.getHours()).padStart(2, '0');
+		const minutes = ('' + now.getMinutes()).padStart(2, '0');
+		const seconds = ('' + now.getSeconds()).padStart(2, '0');
+		const ms = ('' + now.getMilliseconds()).padEnd(3, '0');
+		return `[${hours}:${minutes}:${seconds}.${ms}]`;
+	}
+
 	function ensureArray (a) {
 		return Array.isArray(a) ? a : [a];
 	}
@@ -5733,11 +5741,12 @@ function createPostingEvaluator () {
 
 	function updateLastPostTime (reason, postNumber, responseText) {
 		const now = new Date;
-		const header = lastPostedAt[reason] ?
-			`+${Math.floor((now.getTime() - lastPostedAt[reason].getTime()) / 1000)}s` : '';
+		const lead = lastPostedAt[reason] ?
+			`(+${Math.floor((now.getTime() - lastPostedAt[reason].getTime()) / 1000)}s): ` :
+			'';
 
 		lastPostedAt[reason] = now;
-		log(`${header}: ${reason} for ${postNumber}. response: "${responseText}"`);
+		log(`${getLogHeader(now)} ${lead}${reason} for ${postNumber}. response: "${responseText}"`);
 	}
 
 	async function evaluateLoop () {
@@ -5752,12 +5761,11 @@ function createPostingEvaluator () {
 
 		function wait (reason) {
 			const minTime = getWait(reason);
-			const elapsedTime = Date.now() - (lastPostedAt[reason] || 0);
+			const elapsedTime = Date.now() - (lastPostedAt[reason]?.getTime() ?? 0);
 			if (elapsedTime < minTime) {
 				const waitMsecs = minTime - elapsedTime;
 				return delay(waitMsecs).then(() => waitMsecs);
 			}
-
 			return Promise.resolve(0);
 		}
 
@@ -5790,6 +5798,8 @@ function createPostingEvaluator () {
 		while (evalItems.length) {
 			try {
 				const {target, items} = evalItems.shift();
+				evalItems.unshift(null);
+
 				const quantity = items.length;
 				const {id, coinCharge} = quantity > 1 ?
 					await backend.send('coin', {command: 'info'}) :
@@ -5854,6 +5864,7 @@ function createPostingEvaluator () {
 			}
 			finally {
 				$('eval-stat').classList.add('hide');
+				evalItems.shift();
 			}
 		}
 	}
@@ -8327,10 +8338,6 @@ function updateCheckedPostIndicator () {
 	else {
 		indicator.classList.add('hide');
 	}
-	log([
-		'*** checkedPostNumbers ***',
-		JSON.stringify(checkedPostNumbers)
-	].join('\n'));
 }
 
 function registerAfterReloadCallback (fn) {
@@ -9807,7 +9814,8 @@ function updateIdFrequency (stat) {
 			const commentNode = $qs('.comment', wrapNode);
 			const comment = commentNode.title || commentToString(commentNode);
 			const offset = $qs('.no', wrapNode)?.textContent ?? '0';
-			return {idNode, commentNode, comment, offset};
+			const notWorthMagic = comment.match(/\p{M}/gu)?.length >= 10;
+			return {idNode, commentNode, comment, offset, notWorthMagic};
 		});
 		for (let i = 0, index = 1, goal = posts.length; i < goal; i++, index++) {
 			$t(posts[i].idNode.nextSibling, `(${index}/${idData.length})`);
@@ -9819,7 +9827,7 @@ function updateIdFrequency (stat) {
 			let foundSimilarReply = false;
 			//const logLines = [];
 			for (let j = 0; j < i; j++) {
-				const similarity = getStringSimilarity(
+				const similarity = posts[i].notWorthMagic ? 1 : getStringSimilarity(
 					posts[j].comment, posts[i].comment,
 					{normalize: true, prefixLength: 2});
 
@@ -10467,10 +10475,23 @@ function searchBase (opts) {
 				let t = opts.getTextContent(subNode);
 				t = t.replace(/^\s+|\s+$/g, '');
 				text.push(t);
-			}
-			text = module.getLegalizedStringForSearch(text.join('\t'));
 
-			if (tester.test(text)) {
+				/*
+				const markLength = t.match(/\p{M}/gu)?.length;
+				if (markLength) {
+					const restLength = t.replace(/\p{M}/gu, '');
+					const ratio = restLength / markLength;
+					console.log([
+						'*** found marks ***',
+						`   content: "${t}"`,
+						`markLength: ${markLength}`,
+						`restLength: ${restLength}`,
+						`     ratio: ${ratio}`
+					].join('\n'));
+				}
+				*/
+			}
+			if (tester.test(text.join('\t'))) {
 				const anchor = result.appendChild(document.createElement('a'));
 				const postNumber = opts.getPostNumber(node);
 				anchor.href = '#search-item';
@@ -12324,13 +12345,10 @@ const commands = {
 			targetNodesSelector: 'article .topic-wrap, article .reply-wrap',
 			targetElementSelector: '.sub, .name, .postdate, span.user-id, .email, .comment',
 			getTextContent: node => {
-				// to optimize performance
-				if (node.childElementCount === 0) {
-					return node.textContent;
-				}
-				else {
-					return commentToString(node);
-				}
+				const content = node.childElementCount === 0 ? node.textContent : commentToString(node);
+				const extra = node.title && node.title !== '' ? ` ${node.title}` : '';
+				return content + extra;
+				//return (content + extra).replace(/\p{M}/gu, '');
 			},
 			getPostNumber: node => {
 				return node.dataset.number

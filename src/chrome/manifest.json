@@ -3,7 +3,7 @@
 	"name": "__MSG_extension_name__",
 	"short_name": "__MSG_extension_shortname__",
 	"version": "0.0.1",
-	"version_name": "0.0.1",
+	"version_name": "0.0.1/develop",
 	"description": "__MSG_extension_desc__",
 	"default_locale": "ja",
 	"icons": {

@@ -246,6 +246,7 @@ export function createQueryCompiler () {
 			return [opcodeMap[inst.opcode], inst.operand];
 		});
 		return line => {
+			line = getLegalizedStringForSearch(line);
 			const stack = [];
 			for (const [opcode, operand] of instructions) {
 				switch (opcode) {
@@ -352,8 +353,10 @@ export const getLegalizedStringForSearch = (() => {
 			$0 => $0.normalize('NFD').charAt(0).toLowerCase());
 
 		// strip zero width spaces
-		s = s.replace(
-			zeroWidthPatterns, '');
+		s = s.replace(zeroWidthPatterns, '');
+
+		// strip Unicode Marks
+		s = s.replace(/\p{M}/gu, '');
 
 		// other translates
 		s = s.replace(translatePatterns, $0 => {
