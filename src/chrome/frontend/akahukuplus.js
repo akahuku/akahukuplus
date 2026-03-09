@@ -3,7 +3,7 @@
  * akahukuplus
  *
  *
- * Copyright 2012-2025 akahuku, akahuku@gmail.com
+ * Copyright 2012-2026 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -273,7 +273,7 @@ function transformWholeDocument (xsl) {
 	}
 	catch (e) {
 		log(`${APP_NAME}: transformWholeDocument: ${e.stack}`);
-		throw new Error(_('failed_to_parse_xsl_file', APP_NAME));
+		throw new Error(_('failed_to_parse_xsl_file', APP_NAME), {cause: e});
 	}
 
 	/*
@@ -297,7 +297,7 @@ function transformWholeDocument (xsl) {
 	}
 	catch (e) {
 		log(`${APP_NAME}: transformWholeDocument: ${e.stack}`);
-		throw new Error(_('failed_to_import_xsl_file', APP_NAME));
+		throw new Error(_('failed_to_import_xsl_file', APP_NAME), {cause: e});
 	}
 
 	// transform xsl into html
@@ -405,7 +405,7 @@ function transformWholeDocument (xsl) {
 		dumpDebugText(serializeXML(generateResult.xml));
 	}
 
-	fragment = xsl = null;
+	//fragment = xsl = null;
 	//bootVars = null;
 
 	$('content').classList.remove('init');
@@ -1141,7 +1141,8 @@ function install () {
 	 */
 
 	// submit button on search panel
-	$('search-form').addEventListener('submit', () => {
+	$('search-form').addEventListener('submit', e => {
+		e.preventDefault();
 		commands.search();
 	});
 
@@ -1604,7 +1605,7 @@ function createXMLGenerator () {
 				if ((re2 = /<a\b.*href="([^"]*)"/.exec(re[0]))) {
 					result.push(`<a href="${re2[1]}">`);
 				}
-				else if ((re2 = /<\/a\b/.exec(re[0]))) {
+				else if (/<\/a\b/.test(re[0])) {
 					result.push(`</a>`);
 				}
 			}
@@ -4078,7 +4079,10 @@ function createUrlStorage () {
 		}
 		catch (err) {
 			log(`${APP_NAME}: loadSlot: ${err.stack}`);
-			throw new Error(chromeWrap.i18n.getMessage('cannot_connect_to_backend_reload'));
+			throw new Error(
+				chromeWrap.i18n.getMessage('cannot_connect_to_backend_reload'),
+				{cause: err}
+			);
 		}
 	}
 
@@ -4091,7 +4095,10 @@ function createUrlStorage () {
 		}
 		catch (err) {
 			log(`${APP_NAME}: saveSlot: ${err.stack}`);
-			throw new Error(chromeWrap.i18n.getMessage('cannot_connect_to_backend_reload'));
+			throw new Error(
+				chromeWrap.i18n.getMessage('cannot_connect_to_backend_reload'),
+				{cause: err}
+			);
 		}
 
 		/*
@@ -5441,7 +5448,7 @@ function createActiveTracker () {
 
 	function computeTrackFrequency () {
 		const logs = [];
-		let median = 0;
+		let median;
 		let referencedReplyNumber = 0;
 
 		const postTimes = [...$qsa(`.replies .reply-wrap:nth-last-child(-n+${storage.config.autotrack_sampling_replies.value + 1})`)].map(node => {
@@ -7293,7 +7300,7 @@ function setupPostFormItemEvent (items) {
 	document.addEventListener('drop', handleDrop);
 
 	for (const node of $qsa('#com')) {
-		updateInfo();
+		updateInfo(node);
 	}
 
 	for (const upfile of $qsa('#upfile')) {
@@ -8150,7 +8157,7 @@ function displayInlineVideo (anchor, onended) {
 	let parent;
 
 	// up video
-	if ((parent = anchor.closest('.link-up, .link-futaba'))) {
+	if (anchor.closest('.link-up, .link-futaba')) {
 		let thumbContainer = anchor;
 
 		if (!$qs('img', anchor)) {
@@ -9431,9 +9438,11 @@ async function completeDefectiveLinks () {
 			span.textContent = _('completion_failed');
 			span.title = err.message;
 		}
+		/*
 		finally {
 			node = null;
 		}
+		*/
 	}
 
 	let files;
@@ -12363,7 +12372,7 @@ const commands = {
 		let currentMode = $qs('#catalog .catalog-options a.active');
 		if (!currentMode) return;
 
-		let re = currentMode = /#catalog-order-(\w+)/.exec(currentMode.href);
+		let re = /#catalog-order-(\w+)/.exec(currentMode.href);
 		if (!re) return;
 
 		currentMode = re[1];

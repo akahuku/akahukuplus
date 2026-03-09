@@ -2,7 +2,7 @@
  * lightbox module for akahukuplus
  *
  *
- * Copyright 2022-2025 akahuku, akahuku@gmail.com
+ * Copyright 2022-2026 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -70,12 +70,11 @@ export function lightbox (args) {
 			return rotation === 'left' || rotation === 'right';
 		}
 
-		function appendPxSuffix (obj, suffix) {
+		function appendPxSuffix (obj, suffix = 'px') {
 			const result = {};
-			suffix || (suffix = 'px');
 			for (let i in obj) {
 				if (typeof obj[i] === 'number') {
-					result[i] = obj[i] + 'px';
+					result[i] = obj[i] + suffix;
 				}
 			}
 			return result;

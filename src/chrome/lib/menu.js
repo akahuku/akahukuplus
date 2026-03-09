@@ -2,7 +2,7 @@
  * pop up menu for akahukuplus
  *
  *
- * Copyright 2022-2025 akahuku, akahuku@gmail.com
+ * Copyright 2022-2026 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -230,11 +230,10 @@ export function createContextMenu (options = {}) {
 	}
 
 	function getAnchorFrom (startTarget) {
-		let panel = null;
 		let anchor = null;
 		let key = '';
 
-		panel = startTarget.closest('div.menu-pane');
+		const panel = startTarget.closest('div.menu-pane');
 		if (panel) {
 			anchor = startTarget.closest('a');
 			if (anchor) {
@@ -242,11 +241,7 @@ export function createContextMenu (options = {}) {
 			}
 		}
 
-		return {
-			panel: panel,
-			anchor: anchor,
-			key: key
-		};
+		return {panel, anchor, key};
 	}
 
 	function createMenu (menu, key, argItems) {

@@ -3554,7 +3554,7 @@ const parsers = [ new PngParser, new JpegParser, new WebpParser ];
                     value: value
                 });
             }
-        } else if (typeof value === "string" && /[^,]+(,\s*[^,]+){3,}/.test(value)) {
+        } else if (typeof value === "string" && value.includes(",") && /[^,]+(,\s*[^,]+){3,}/.test(value)) {
             result.positivePrompts.push({
                 origin: origin,
                 name: key,
@@ -3684,6 +3684,7 @@ const parsers = [ new PngParser, new JpegParser, new WebpParser ];
  */ async function parsePng(buffer, parser) {
     const result = getInitialMetadata();
     await parser.parse(buffer, {
+        log: true,
         onchunk: (chunkName, args) => {
             switch (chunkName) {
               case "tEXt":

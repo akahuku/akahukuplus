@@ -3,7 +3,7 @@
 	The XSL file, which translates internal xml into content for akahukuplus
 -->
 <!--
- * Copyright 2024-2025 akahuku, akahuku@gmail.com
+ * Copyright 2024-2026 akahuku, akahuku@gmail.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2330,15 +2330,6 @@ div.catalog-popup span {
  * internal submit target
  */
 
-#internal-submit-target {
-	position:absolute;
-	left:-100px;
-	top:0;
-	width:100px;
-	height:100px;
-	border:none;
-}
-
 #charref-converter {
 	position:fixed;
 	left:100%;
@@ -2466,7 +2457,7 @@ div.catalog-popup span {
 				<form action="/b/futaba.php?guid=on" method="POST" target="_blank" enctype="multipart/form-data">
 					<input type="hidden" name="mode" value="search"/>
 					<label>
-						<input id="fts-query" name="keyword" type="text"/><button type="submit" id="fts-submit">検索</button>
+						<input id="fts-query" name="keyword" type="text"/><button type="submit" id="fts-submit">Search</button>
 					</label>
 				</form>
 			</div>
@@ -2509,7 +2500,7 @@ div.catalog-popup span {
 			</div>
 			<div id="panel-content-search" class="panel-content-wrap hide">
 				<div class="search-form-wrap">
-					<form id="search-form" target="internal-submit-target" method="get" action="about:blank">
+					<form id="search-form" target="_blank" method="get" action="about:blank">
 						<input id="search-text" type="text" autocomplete="on"/>
 						<button type="submit" id="search-submit">Search</button>
 					</form>
@@ -2761,9 +2752,6 @@ div.catalog-popup span {
 			</div>
 		</div>
 		<div id="charref-converter"></div>
-		<iframe id="internal-submit-target"
-			name="internal-submit-target"
-			src="about:blank"></iframe>
 	</body>
 </html>
 </xsl:template>
