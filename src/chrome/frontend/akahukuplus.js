@@ -5010,7 +5010,7 @@ function createSelectionMenu () {
 			open('https://www.google.com/search?tbm=isch&hl=ja&q=$TEXT$');
 			break;
 		case 'amazon':
-			open('https://www.amazon.co.jp/exec/obidos/external-search?mode=blended&field-keywords=$TEXT$');
+			open('https://www.amazon.co.jp/s?k=$TEXT$');
 			break;
 		case 'wikipedia':
 			open('https://ja.wikipedia.org/wiki/%E7%89%B9%E5%88%A5:Search?search=$TEXT$&go=%E8%A1%A8%E7%A4%BA');
@@ -9304,12 +9304,12 @@ async function extractTweets () {
 				tweets[i].title = `[UNKNOWN URL FORMAT: "${data.url}"]`;
 				continue;
 			}
-			if (actualURL[1] !== userId) {
+			if (actualURL[1] !== userId && userId !== 'i') {
 				tweets[i].title = `[MALFORMED USER ID: "${userId}"]`;
 				continue;
 			}
 			if (actualURL[2] !== tweetId) {
-				tweets[i].title = `[MALFORMED TWEET ID: "${tweetId}"]`;
+				tweets[i].title = `[MALFORMED POST ID: "${tweetId}"]`;
 				continue;
 			}
 
@@ -11062,8 +11062,11 @@ const commands = {
 
 			const attributeConverter2 = {
 				'data-src': (img, pad, name, value) => {
+					/*
 					img.src = storage.config.catalog_thumbnail_scale.value >= 1.5 ?
 						value.replace('/cat/', '/thumb/') : value;
+					*/
+					img.src = value.replace('/cat/', '/thumb/');
 				},
 				'width': (img, pad, name, value) => {
 					value = Math.floor((value - 0) * storage.config.catalog_thumbnail_scale.value);

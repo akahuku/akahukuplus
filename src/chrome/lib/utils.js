@@ -614,7 +614,7 @@ export function log (...args) {
 	}
 }
 
-log.config = con => {
+log.config = (con = {}) => {
 	if ('enabled' in con) {
 		enableLogFunction = !!con.enabled;
 	}
@@ -624,6 +624,11 @@ log.config = con => {
 	if ('name' in con) {
 		logName = con.name;
 	}
+	return {
+		enableLogFunction,
+		enableExternalLog,
+		logName
+	};
 };
 
 /*
@@ -634,18 +639,22 @@ log.config = con => {
  */
 
 export const {offscreenUrl, offscreenCloseAlarm} = ((c, b) => {
-	if (!c || b) {
-		return {
-			offscreenUrl: '',
-			offscreenCloseAlarm: ''
-		};
-	}
-	else {
+	if (c) {
 		return {
 			offscreenUrl: chrome.runtime.getURL('asset/offscreen.html'),
 			offscreenCloseAlarm: `offscreen-close-alarm-${chrome.runtime.id}`
 		};
 	}
+	if (b) {
+		return {
+			offscreenUrl: browser.runtime.getURL('asset/offscreen.html'),
+			offscreenCloseAlarm: `offscreen-close-alarm-${browser.runtime.id}`
+		};
+	}
+	return {
+		offscreenUrl: '',
+		offscreenCloseAlarm: ''
+	};
 })(typeof chrome !== 'undefined' ? chrome : null,
 	typeof browser !== 'undefined' ? browser : null);
 
