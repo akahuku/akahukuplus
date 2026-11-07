@@ -10,7 +10,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "devDependencies": {
-    "@babel/generator": "^7.29.13",
+    "@babel/generator": "^8.1.0",
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^10.0.1",
     "@rollup/plugin-terser": "^1.0.0",
@@ -18,11 +18,11 @@
     "encoding-japanese": "^2.2.0",
     "eslint": "^10.0.3",
     "globals": "^17.4.0",
-    "jsdom": "^28.1.0",
+    "jsdom": "^31.0.0",
     "jsdom-global": "^3.0.2",
-    "mocha": "^11.8.0",
+    "mocha": "^12.0.3",
     "rollup": "^4.44.2",
-    "web-ext": "^9.4.0"
+    "web-ext": "^10.8.0"
   },
   "dependencies": {
     "xslt-polyfill": "^1.0.34"

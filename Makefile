@@ -172,11 +172,6 @@ $(CHROME_TARGET_PATH): $(CHROME_LATEST_SRC_PATH)
 
 #	build crx
 	@echo building crx...
-#	@npx crx pack \
-#		$(CHROME_EMBRYO_SRC_PATH) \
-#		--crx-version 3 \
-#		-o $@ \
-#		-p $(PRODUCT).pem
 	@npx crx3 \
 		--crx $@ \
 		--key $(PRODUCT).pem \
@@ -184,17 +179,6 @@ $(CHROME_TARGET_PATH): $(CHROME_LATEST_SRC_PATH)
 		--appVersion $(VERSION) \
 		--crxURL "$(CHROME_EXT_LOCATION)" \
 		$(CHROME_EMBRYO_SRC_PATH)
-
-#
-#	create update description file
-#
-
-#	@echo generating update xml...
-#	@$(SED) \
-#		-e 's!@appid@!$(CHROME_EXT_ID)!g' \
-#		-e 's!@location@!$(CHROME_EXT_LOCATION)!g' \
-#		-e 's!@version@!$(VERSION)!g' \
-#		$(SRC_DIR)/update-manifest-chrome.xml > $(DIST_DIR)/$(notdir $(CHROME_UPDATE_LOCATION))
 
 	@echo ///
 	@echo /// created: $@, version $(VERSION)
@@ -282,7 +266,7 @@ asset: sjistable momocan xslt-polyfill
 
 sjistable: $(CHROME_SRC_PATH)/lib/sjis.js
 
-$(CHROME_SRC_PATH)/lib/sjis.js:
+$(CHROME_SRC_PATH)/lib/sjis.js: bin/make-sjis-table.js
 	bin/make-sjis-table.js > $(CHROME_SRC_PATH)/lib/sjis.js
 
 momocan: $(CHROME_SRC_PATH)/lib/momocan.js
@@ -293,7 +277,7 @@ $(CHROME_SRC_PATH)/lib/momocan.js:
 
 xslt-polyfill: $(CHROME_SRC_PATH)/frontend/xslt-polyfill.js
 
-$(CHROME_SRC_PATH)/frontend/xslt-polyfill.js:
+$(CHROME_SRC_PATH)/frontend/xslt-polyfill.js: bin/make-xslt-polyfill.js node_modules/xslt-polyfill/xslt-polyfill.min.js
 	bin/make-xslt-polyfill.js > $(CHROME_SRC_PATH)/frontend/xslt-polyfill.js
 
 
