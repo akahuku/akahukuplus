@@ -23,14 +23,14 @@
 
 export const {chromeWrap, IS_WEB_EXTENSION} = (() => {
 	let chromeWrap = null;
-	let isWebExtension = false;
+	let IS_WEB_EXTENSION = true;
 
 	if (typeof browser !== 'undefined') {
 		chromeWrap = browser;
-		isWebExtension = true;
 	}
 	else if (typeof chrome !== 'undefined') {
 		chromeWrap = chrome;
+		IS_WEB_EXTENSION = false;
 	}
 
 	if (typeof chromeWrap?.management?.getSelf === 'function') {
@@ -41,10 +41,7 @@ export const {chromeWrap, IS_WEB_EXTENSION} = (() => {
 		});
 	}
 
-	return {
-		chromeWrap,
-		IS_WEB_EXTENSION: isWebExtension
-	};
+	return {chromeWrap, IS_WEB_EXTENSION};
 })();
 
 /*
@@ -488,7 +485,7 @@ export const {LOCALE, _} = (() => {
 			throw new Error('This context is not a browser extension.');
 		}
 
-		if (LOCALE === '') {
+		if (!LOCALE || LOCALE === '') {
 			throw new Error('The current locale cannot be identified because the “locale_code” message is not registered.');
 		}
 	}
@@ -633,19 +630,16 @@ log.config = (con = {}) => {
 
 /*
  * offscreen utilities (relies on Chrome extension)
- *
- * note: currently we are using the “chrome” object directly,
- *       as the off-screen functionality is specific to manifest v3.
  */
 
 export const {offscreenUrl, offscreenCloseAlarm} = ((c, b) => {
-	if (c) {
+	if (c && chrome.runtime) {
 		return {
 			offscreenUrl: chrome.runtime.getURL('asset/offscreen.html'),
 			offscreenCloseAlarm: `offscreen-close-alarm-${chrome.runtime.id}`
 		};
 	}
-	if (b) {
+	if (b && browser.runtime) {
 		return {
 			offscreenUrl: browser.runtime.getURL('asset/offscreen.html'),
 			offscreenCloseAlarm: `offscreen-close-alarm-${browser.runtime.id}`
@@ -678,7 +672,7 @@ async function hasOffscreenDocument () {
 	}
 }
 
-async function setupOffscreenDocument () {
+async function setupOffscreenDocument (reasons) {
 	if (offscreenUrl == '') {
 		throw new Error('this runtime is not a chrome extension');
 	}
@@ -694,12 +688,15 @@ async function setupOffscreenDocument () {
 		await offscreenDocumentCreating;
 	}
 	else {
-		offscreenDocumentCreating = chrome.offscreen.createDocument({
-			url: offscreenUrl,
-			reasons: [
+		if (!Array.isArray(reasons)) {
+			reasons = [
 				chrome.offscreen.Reason.AUDIO_PLAYBACK,
 				chrome.offscreen.Reason.BLOBS
-			],
+			];
+		}
+		offscreenDocumentCreating = chrome.offscreen.createDocument({
+			url: offscreenUrl,
+			reasons,
 			justification: 'reason for needing the document',
 		});
 		await offscreenDocumentCreating;
@@ -709,14 +706,16 @@ async function setupOffscreenDocument () {
 }
 
 async function registerOffscreenDocumentCloser () {
-	await chrome.alarms.clear(offscreenCloseAlarm);
-	await chrome.alarms.create(offscreenCloseAlarm, {
-		delayInMinutes: 1
-	});
+	if (chrome.runtime.getManifest().permissions.includes('alarms')) {
+		await chrome.alarms.clear(offscreenCloseAlarm);
+		await chrome.alarms.create(offscreenCloseAlarm, {
+			delayInMinutes: 1
+		});
+	}
 }
 
-export async function openOffscreenDocument (command, params) {
-	await setupOffscreenDocument();
+export async function openOffscreenDocument (command, params, reasons) {
+	await setupOffscreenDocument(reasons);
 
 	const existingContexts = await hasOffscreenDocument();
 	let result;
@@ -958,14 +957,60 @@ export function empty (...args) {
 	}
 }
 
-export function updateI18n () {
-	document.querySelectorAll('[data-i18n]').forEach(node => {
-		const key = node.dataset.i18n;
-		const localized = chromeWrap.i18n.getMessage(key);
-		if (typeof localized == 'string' && localized != '') {
-			node.textContent = localized;
+export function updateI18n (root = document) {
+	function getSlotMap (node) {
+		const result = new Map;
+		for (const slot of $qsa('[data-i18n-slot]', node)) {
+			result.set(slot.dataset.i18nSlot, slot);
 		}
-	});
+		return result;
+	}
+
+	function parseTemplate (template, slotMap) {
+		const parts = [];
+		let numberOfTexts = 0;
+		let numberOfPlaceHolders = 0;
+		for (const part of template.matchAll(/\{([^}]+)\}|[^{]+/g)) {
+			if (part[0].startsWith('{')) {
+				numberOfPlaceHolders++;
+				if (!slotMap.has(part[1])) {
+					console.error(`updateI18n: placeholder "${part[1]}" is not in the document.`);
+					return null;
+				}
+				parts.push(part[0]);
+			}
+			else {
+				numberOfTexts++;
+				parts.push(part[0]);
+			}
+		}
+		return {parts, numberOfTexts, numberOfPlaceHolders};
+	}
+
+	log(`enter updateI18n...`);
+	for (const node of $qsa('[data-i18n]', root)) {
+		const localized = _(node.dataset.i18n);
+		log(`localized string for ${node.dataset.i18n}: "${localized}"`);
+		const slots = getSlotMap(node);
+		const p = parseTemplate(localized, slots);
+		if (!p) {
+			console.error(`updateI18n: invalid template, "${localized}"`);
+		}
+		else if (p.numberOfTexts === 1 && p.numberOfPlaceHolders === 0) {
+			node.textContent = p.parts[0];
+		}
+		else {
+			empty(node);
+			for (const part of p.parts) {
+				if (part.startsWith('{')) {
+					node.appendChild(slots.get(part.slice(1, part.length - 1)));
+				}
+				else {
+					node.appendChild(document.createTextNode(part));
+				}
+			}
+		}
+	}
 }
 
 export function getErrorDescription (err) {
@@ -1120,13 +1165,20 @@ export function getReadableSize (size) {
 
 export function debounce (fn, interval = 100) {
 	let timerId;
-	return (...args) => {
+	const wrap =  (...args) => {
 		timerId && clearTimeout(timerId);
 		timerId = setTimeout(() => {
 			timerId = undefined;
 			fn.apply(null, args);
 		}, interval);
-	}
+	};
+	wrap.stop = () => {
+		if (timerId) {
+			clearTimeout(timerId);
+			timerId = undefined;
+		}
+	};
+	return wrap;
 }
 
 export function throttle (fn, limit) {

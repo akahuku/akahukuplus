@@ -276,19 +276,6 @@ function transformWholeDocument (xsl) {
 		throw new Error(_('failed_to_parse_xsl_file', APP_NAME), {cause: e});
 	}
 
-	/*
-	 * note: Chrome seems to be planning to remove XSLT support (!),
-	 *       so we may eventually have to use a polyfill.
-	 *
-	 *       Announce:
-	 *         https://developer.chrome.com/docs/web-platform/deprecating-xslt
-	 *
-	 *       Bug tracker:
-	 *         https://issues.chromium.org/issues/435623334
-	 *
-	 *       polyfill extension:
-	 *         https://chromewebstore.google.com/detail/xslt-polyfill/hlahhpnhgficldhfioiafojgdhcppklm
-	 */
 	xsltProcessor = new XSLTProcessor;
 	try {
 		timingLogger.startTag('constructing xsl');
@@ -1695,6 +1682,18 @@ function createXMLGenerator () {
 		}
 	}
 
+	function stripUnneededPost (node) {
+		if (siteInfo.server === 'img'
+			&& siteInfo.board === 'b'
+			&& node.querySelector('image')
+			&& /\.2chan\.net\//.test([...node.querySelectorAll('comment a')].map(node => node.getAttribute('href')).join(' '))) {
+			//node.remove();
+			node.querySelector('image')?.remove();
+			node.querySelector('thumb')?.remove();
+			node.querySelector('comment').textContent = '';
+		}
+	}
+
 	function getExpirationDate (s, fromDate) {
 		let Y, M, D, h, m, expireDate;
 
@@ -2692,6 +2691,7 @@ function createXMLGenerator () {
 			}
 			*/
 			pushComment(element(replyNode, 'comment'), text, comment);
+			stripUnneededPost(replyNode);
 		}
 
 		return {
@@ -2776,7 +2776,7 @@ function createXMLGenerator () {
 					];
 				}
 				else {
-					re = /(\[|dice\d+d\d+=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(reply.com);
+					re = /(\[|dice\d+d\d+(?:[-+]\d+)?=)?<font\s+color="#ff0000">(.+?)<\/font>\]?/i.exec(reply.com);
 				}
 				if (re && (!re[1] || re[1].substr(-1) !== '=')) {
 					if (!$qs('deleted', replyNode)) {
@@ -2884,6 +2884,7 @@ function createXMLGenerator () {
 			}
 
 			pushComment(element(replyNode, 'comment'), text, reply.com);
+			stripUnneededPost(replyNode);
 		}
 
 		/*
@@ -3458,7 +3459,7 @@ function createKeyManager () {
 		const focusedNodeName = getDetailedNodeName(e.target);
 		const mode = appStates[0] + (isTextInputElement(focusedNodeName) ? '.edit' : '');
 
-		debugMode && backend.log([
+		debugMode && console.log([
 			`*** keydown ***`,
 			`     target: "${e.target.nodeName}"`,
 			`       code: "${e.code}"`,
@@ -3473,16 +3474,20 @@ function createKeyManager () {
 		/*
 		 * a quick fix for an issue that Chrome failing to control input methods
 		 */
+		/*
 		if (e.target.nodeName === 'BODY' && stroke === 'Process') {
 			setBottomStatus('detect input method bug!');
 			commands.activatePostForm();
 			return;
 		}
+		*/
 
-		if (e.isComposing) {
+		if (e.isComposing || e.keyCode === 229) {
+			/*
 			if (e.ctrlKey && e.key === 'h') {
 				e.preventDefault();
 			}
+			*/
 			return;
 		}
 
@@ -9024,7 +9029,7 @@ async function reloadBase (opts = {}) {
 		throw new Error(`${_('network_error')}\n(${result.status} ${result.error})`);
 	}
 
-	if ('last-modified' in result.headers) {
+	if (opts.updateLastModified && 'last-modified' in result.headers) {
 		siteInfo.lastModified = result.headers['last-modified'];
 	}
 
@@ -10755,7 +10760,7 @@ const commands = {
 
 		let canInvokeReloadCallbacks = true;
 		try {
-			const {doc, status} = await reloadBase();
+			const {doc, status} = await reloadBase({updateLastModified: true});
 			let result;
 
 			reloadStatus.lastStatus = status;
@@ -10904,7 +10909,7 @@ const commands = {
 		try {
 			const headResult = opts.skipHead ?
 				{doc: null, now: Date.now(), status: 200} :
-				await reloadBase({method: 'head'});
+				await reloadBase({method: 'head', updateLastModified: true});
 
 			reloadStatus.lastStatus = headResult.status;
 			reloadStatus.state = 'waiting';

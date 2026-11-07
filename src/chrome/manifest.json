@@ -39,6 +39,7 @@
 			],
 			"js": [
 				"frontend/global.js",
+				"frontend/xslt-polyfill.js",
 				"frontend/akahukuplus.js"
 			],
 			"run_at": "document_start",
